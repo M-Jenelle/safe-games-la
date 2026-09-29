@@ -1,0 +1,107 @@
+station_id,station_name,address,zip_code,latitude,longitude,department,source
+1,Fire Station 1,2230 PASADENA AVE,90031,34.0751376342948,-118.21830358129615,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+10,Fire Station 10,1335 S OLIVE ST,90015,34.03737026897688,-118.26403870865165,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+100,Fire Station 100,6751 LOUISE AVE,91406,34.192900556972354,-118.5100228348254,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+101,Fire Station 101,1414 W 25TH ST,90732,33.721922264383515,-118.31028149179164,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+102,Fire Station 102,13200 BURBANK BLVD,91401,34.17186986296526,-118.42135820574181,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+103,Fire Station 103,18143 PARTHENIA ST,91325,34.22894682269816,-118.52838891955325,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+104,Fire Station 104,8349 WINNETKA AVE,91306,34.22117551645663,-118.57137040785489,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+105,Fire Station 105,6345 FALLBROOK AVE,91367,34.185444217528875,-118.62368786670643,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+106,Fire Station 106,23004 ROSCOE BLVD,91304,34.21904320387493,-118.62791498253536,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+107,Fire Station 107,20225 DEVONSHIRE ST,91311,34.25752597245919,-118.57347587033405,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+108,Fire Station 108,12520 MULHOLLAND DR,90210,34.127097716473564,-118.40616939509613,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+109,Fire Station 109,16500 MULHOLLAND DR,90049,34.13068421802411,-118.49264169914534,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+11,Fire Station 11,1819 W 7TH ST,90057,34.05543491365177,-118.27384152593281,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+110,Fire Station 110,2945 MINER ST,90731,33.71848242754944,-118.2759786078279,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+111,Fire Station 111,1444 S SEASIDE AVE,90731,33.73000858434234,-118.26813028712391,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+112,Fire Station 112,444 S HARBOR BLVD,90731,33.74055629592701,-118.27830206826947,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+114,Air Operation,16617 ARMINTA ST,91406,34.21605331343816,-118.49451884473707,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+12,Fire Station 12,5921 N FIGUEROA ST,90042,34.11091760266492,-118.19074248113876,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+13,Fire Station 13,2401 W PICO BLVD,90006,34.047518357055196,-118.28937816222225,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+14,Fire Station 14,3401 S CENTRAL AV,90011,34.012745664219786,-118.25685009332506,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+15,Fire Station 15,915 W JEFFERSON BLVD,90007,34.02414823190091,-118.28429977089868,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+16,Fire Station 16,2011 N EASTERN AV,90032,34.066175918675896,-118.18058304972818,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+17,Fire Station 17,1601 S SANTA FE AV,90021,34.0257327362655,-118.23035853213779,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+18,Fire Station 18,12050 BALBOA BLVD,91344,34.289600743071965,-118.50139670323307,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+19,Fire Station 19,12229 SUNSET BLVD,90049,34.05869604102462,-118.47866149702475,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+2,Fire Station 2,1962 E CESAR E CHAVEZ AVE,90033,34.0491756310637,-118.21377595696214,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+20,Fire Station 20,2144 W SUNSET BLVD,90026,34.077197656814384,-118.26540609527,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+21,Fire Station 21,1192 E 51ST ST,90011,33.996905503210186,-118.25487269802431,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+23,Fire Station 23,17281 SUNSET BLVD,90272,34.04253109515529,-118.55425974749117,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+24,Fire Station 24,9411 WENTWORTH ST,91040,34.26401364326457,-118.33703764881889,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+25,Fire Station 25,2927 WHITTIER BLVD,90023,34.03106151229337,-118.20758753213707,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+26,Fire Station 26,2009 S WESTERN AVE,90018,34.03874934525785,-118.30932299546562,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+27,Fire Station 27,1327 N COLE AVE,90028,34.09562688506799,-118.33016178511232,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+28,Fire Station 28,11641 CORBIN AVE,91326,34.28126792068409,-118.56967232979086,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+29,Fire Station 29,4029 W WILSHIRE BLVD,90010,34.06198076216567,-118.31535193155199,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+3,Fire Station 3,108 N. FREMONT AVE,90012,34.05851213320664,-118.25200920290452,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+33,Fire Station 33,6406 S MAIN ST,90003,33.981331046548206,-118.27358929106366,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+34,Fire Station 34,3661 7TH AVE,90018,34.02122865160606,-118.32511182723297,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+35,Fire Station 35,1601 N HILLHURST AVE,90027,34.100217673230304,-118.28774653869456,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+36,Fire Station 36,1005 N GAFFEY ST,90732,33.7530857446022,-118.29344225387213,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+37,Fire Station 37,1090 VETERAN AVE,90024,34.059993904521505,-118.44910614638131,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+38,Fire Station 38,124 E I ST,90744,33.78100737708232,-118.26169554419245,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+39,Fire Station 39,14415 SYLVAN ST,91401,34.1849379728373,-118.44686811745778,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+4,Fire Station 4,450 E TEMPLE ST,90012,34.050171452491895,-118.2360793261555,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+40,Fire Station 40,330 FERRY ST,90731,33.746877440917,-118.26148720702263,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+41,Fire Station 41,1439 N GARDNER ST,90046,34.09690613237493,-118.35315183308775,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+42,Fire Station 42,2021 COLORADO BLVD,90041,34.13948426993484,-118.21073194836286,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+43,Fire Station 43,3690 S. MOTOR AVE,90034,34.023085283729976,-118.40554452300081,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+44,Fire Station 44,1410 CYPRESS AVE,90065,34.09685137694621,-118.23097808594562,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+46,Fire Station 46,4370 S. HOOVER ST.,90037,34.00425147707448,-118.28678871805577,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+47,Fire Station 47,4575 S HUNTINGTON DR,90032,34.08546216180681,-118.18695549002491,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+48,Fire Station 48,1601 S GRAND AVE,90731,33.729689420173976,-118.29049852281366,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+49,Fire Station 49,400 YACHT ST,90744,33.76568595704989,-118.25556561504338,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+5,Fire Station 5,8900 EMERSON AVE,90045,33.955648038995335,-118.40367050081025,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+50,Fire Station 50,3036 FLETCHER DR,90065,34.11533892720518,-118.2445650758705,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+51,Fire Station 51,10435 S SEPULVEDA BLVD,90045,33.9404853540229,-118.3971902418473,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+52,Fire Station 52,4957 MELROSE AVE.,90029,34.08375012794097,-118.30847478565374,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+55,Fire Station 55,4455 E YORK BLVD,90041,34.12416049793684,-118.21936667211293,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+56,Fire Station 56,2759 ROWENA AVE,90039,34.107571072314315,-118.26362282735617,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+57,Fire Station 57,7800 S. VERMONT AVE.,90044,33.968767788084904,-118.29120647521931,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+58,Fire Station 58,1556 S ROBERTSON BLVD,90035,34.050699789423014,-118.3839676448887,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+59,Fire Station 59,11505 W OLYMPIC BLVD,90025,34.03667357305661,-118.44438310627994,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+6,Fire Station 6,326 N. VIRGIL AVE.,90004,34.07708277350275,-118.28654226892745,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+60,Fire Station 60,5320 TUJUNGA AVE,91601,34.16750196113168,-118.37861115007448,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+61,Fire Station 61,5821 W 3RD ST,90036,34.06941193256844,-118.34708449440089,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+62,Fire Station 62,11970 W. VENICE BLVD,90066,34.005880095228164,-118.42817163868972,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+63,Fire Station 63,1930 SHELL AVE,90291,33.991124554981624,-118.45837615115826,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+64,Fire Station 64,10811 S. MAIN ST,90061,33.9380314189331,-118.27432813839545,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+65,Fire Station 65,1801 E CENTURY BLVD,90002,33.946055695122816,-118.24025977006441,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+66,Fire Station 66,1909 W SLAUSON BLVD,90047,33.98941934918524,-118.31156538931904,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+67,Fire Station 67,5451 PLAYA VISTA DR,90094,33.97421379432723,-118.42849660365967,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+68,Fire Station 68,5023 W WASHINGTON BLVD,90019,34.04102556541158,-118.3492472791763,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+69,Fire Station 69,15045 SUNSET BLVD,90272,34.04457134771043,-118.52190004739653,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+7,Fire Station 7,14123 NORDHOFF ST,91331,34.235585723757346,-118.43977765909119,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+70,Fire Station 70,9861 RESEDA BLVD,91324,34.24943012846408,-118.53642079516824,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+71,Fire Station 71,107 S BEVERLY GLEN BLVD,90024,34.08052088855879,-118.43553107930846,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+72,Fire Station 72,6811 DE SOTO AVE,91303,34.19395093246489,-118.58876718472386,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+73,Fire Station 73,7419 RESEDA BLVD,91335,34.20513950686476,-118.53637774516599,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+74,Fire Station 74,7777 FOOTHILL BLVD,91042,34.258651032352134,-118.30178822261583,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+75,Fire Station 75,15345 SAN FERNANDO MISSION BLV,91345,34.27246110929507,-118.46657804382652,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+76,Fire Station 76,3111 N CAHUENGA BLVD WEST,90068,34.12669517691025,-118.34581339017929,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+77,Fire Station 77,9224 SUNLAND BLVD,91352,34.236294355377716,-118.36694483072537,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+78,Fire Station 78,4041 WHITSETT AVE,91604,34.144447832764875,-118.4057508505372,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+79,Fire Station 79,18030 S VERMONT AVE,90248,33.86844338279925,-118.29029737711149,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+8,Fire Station 8,11351 TAMPA AVE,91326,34.27680196879182,-118.55891757771558,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+80,Fire Station 80,7250 WORLD WAY WEST,90045,33.940631724725186,-118.41940284058768,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+81,Fire Station 81,14355 ARMINTA ST,91402,34.21334138587794,-118.44426999530748,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+82,Fire Station 82,5769 HOLLYWOOD BLVD,90028,34.1020464036287,-118.31545604892439,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+83,Fire Station 83,4960 BALBOA BLVD,91436,34.16104807938862,-118.50058837316446,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+84,Fire Station 84,21050 BURBANK BLVD,91367,34.172777745754104,-118.59146650583604,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+85,Fire Station 85,1331 W 253RD ST,90710,33.79502243814195,-118.30002885108439,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+86,Fire Station 86,4305 VINELAND AVE.,91602,34.150323746290034,-118.37021389769752,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+87,Fire Station 87,10124 BALBOA BLVD,91343,34.25472608909484,-118.50172032004558,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+88,Fire Station 88,5101 N SEPULVEDA BLVD,91403,34.16305654051595,-118.46649272689847,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+89,Fire Station 89,7063 LAUREL CANYON BLVD,91605,34.19911583475195,-118.39680470661675,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+9,Fire Station 9,430 E 7TH ST,90014,34.04123701497589,-118.24789716684731,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+90,Fire Station 90,7921 WOODLEY AVE,91406,34.2143810811325,-118.48400983609078,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+91,Fire Station 91,14430 POLK ST,91342,34.309405430767676,-118.44721705585009,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+92,Fire Station 92,10556 W. PICO BLVD,90064,34.04404529506214,-118.42037285259569,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+93,Fire Station 93,19059 VENTURA BLVD,91356,34.17282039981702,-118.54883591782553,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+94,Fire Station 94,4470 COLISEUM ST,90008,34.01756739620395,-118.34538583385286,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+95,Fire Station 95,10010 INTERNATIONAL RD,90045,33.94533044036069,-118.38123385196457,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+96,Fire Station 96,21800 MARILLA ST,91311,34.24735510683549,-118.60304855411374,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+97,Fire Station 97,8021 MULHOLLAND DR,90046,34.125457236119516,-118.37458795801471,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+98,Fire Station 98,13035 VAN NUYS BLVD,91331,34.27006673612912,-118.4171439999908,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw
+99,Fire Station 99,14145 MULHOLLAND DR,90210,34.13181663904646,-118.44036903493422,FIRE,https://data.lacity.org/Public-Safety/FireStations/rnb4-daiw

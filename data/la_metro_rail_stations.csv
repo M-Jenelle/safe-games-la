@@ -1,0 +1,112 @@
+station_id,station_name,lines,rail_mode,service_status,zip_code,latitude,longitude,source
+80101S,Downtown Long Beach Station,A,light_rail,operating,90802,33.768071,-118.192921,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80102S,Pacific Ave Station,A,light_rail,operating,90801,33.772258,-118.1937,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80105S,Anaheim Street Station,A,light_rail,operating,90813,33.78183,-118.189384,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80106S,Pacific Coast Hwy Station,A,light_rail,operating,90813,33.78909,-118.189382,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80107S,Willow Street Station,A,light_rail,operating,90806,33.807079,-118.189834,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80108S,Wardlow Station,A,light_rail,operating,90807,33.819865,-118.19609,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80109S,Del Amo Station,A,light_rail,operating,90701,33.848222,-118.211017,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80110S,Artesia Station,A,light_rail,operating,90220,33.876082,-118.222503,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80111S,Compton Station,A,light_rail,operating,90220,33.89749,-118.224249,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80112S,Willowbrook - Rosa Parks Station,A;C,light_rail,operating,90059,33.928048,-118.237555,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80113S,103rd Street / Watts Towers Station,A,light_rail,operating,90059,33.94222,-118.243159,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80114S,Firestone Station,A,light_rail,operating,90002,33.959611,-118.243205,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80115S,Florence Station,A,light_rail,operating,90001,33.97374,-118.243271,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80116S,Slauson Station,A,light_rail,operating,90255,33.98876,-118.243398,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80117S,Vernon Station,A,light_rail,operating,90058,34.00292,-118.243303,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80118S,Washington Station,A,light_rail,operating,90021,34.01965,-118.243084,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80119S,San Pedro Street Station,A,light_rail,operating,90021,34.026807,-118.255505,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80120S,Grand / LATTC Station,A,light_rail,operating,90015,34.033155,-118.269333,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80121S,Pico Station,A;E,light_rail,operating,90007,34.040735,-118.266118,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80122S,7th Street / Metro Center Station,A;B;D;E,subway,operating,90017,34.04861,-118.258822,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80123S,LATTC / Ortho Institute Station,E,light_rail,operating,90007,34.029112,-118.273603,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80124S,Jefferson / USC Station,E,light_rail,operating,90007,34.022123,-118.278118,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80125S,Expo Park / USC Station,E,light_rail,operating,90089,34.018227,-118.285734,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80126S,Expo / Vermont Station,E,light_rail,operating,90089,34.018245,-118.29154,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80127S,Expo / Western Station,E,light_rail,operating,90062,34.018331,-118.30891,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80128S,Expo / Crenshaw E-Line Station,E,light_rail,operating,90008,34.022526,-118.335078,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80129S,Farmdale Station,E,light_rail,operating,90016,34.023981,-118.346095,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80130S,Expo / La Brea / Ethel Bradley Station,E,light_rail,operating,90064,34.024803,-118.355159,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80131S,La Cienega / Jefferson Station,E,light_rail,operating,90064,34.026355,-118.37212,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80132S,Culver City Station,E,light_rail,operating,90034,34.027896,-118.388986,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80133S,Palms Station,E,light_rail,operating,90034,34.029323,-118.404255,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80134S,Westwood / Rancho Park Station,E,light_rail,operating,90067,34.036816,-118.424576,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80135S,Expo / Sepulveda Station,E,light_rail,operating,90025,34.035408,-118.434234,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80136S,Expo / Bundy Station,E,light_rail,operating,90025,34.031705,-118.452896,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80137S,26th Street / Bergamot Station,E,light_rail,operating,90404,34.027995,-118.46912,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80138S,17th Street / SMC Station,E,light_rail,operating,90404,34.023155,-118.480372,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80139S,Downtown Santa Monica Station,E,light_rail,operating,90401,34.01401,-118.491384,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80153S,1st Street Station,A,light_rail,operating,90802,33.76874,-118.189362,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80154S,5th Street Station,A,light_rail,operating,90801,33.773598,-118.189412,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+801100S,Glendora Station,A,light_rail,operating,91741,34.1319,-117.8663,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+801101S,San Dimas Station,A,light_rail,operating,91773,34.1052,-117.8058,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+801102S,La Verne / Fairplex Station,A,light_rail,operating,91773,34.0972,-117.7681,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+801103S,Pomona North Station,A,light_rail,operating,91767,34.094,-117.7522,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80201S,North Hollywood Station,B,subway,operating,91601,34.168504,-118.376808,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80202S,Universal / Studio City Station,B,subway,operating,91608,34.140002,-118.362699,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80203S,Hollywood / Highland Station,B,subway,operating,90028,34.101547,-118.338549,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80204S,Hollywood / Vine Station,B,subway,operating,90028,34.10163,-118.32518,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80205S,Hollywood / Western Station,B,subway,operating,90027,34.101737,-118.308117,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80206S,Vermont / Sunset Station,B,subway,operating,90027,34.097708,-118.291756,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80207S,Vermont / Santa Monica Station,B,subway,operating,90029,34.08991,-118.29173,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80208S,Vermont / Beverly Station,B,subway,operating,90004,34.076526,-118.291686,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80209S,Wilshire / Vermont Station,B;D,subway,operating,90020,34.062701,-118.290082,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80210S,Westlake / MacArthur Park Station,B;D,subway,operating,90006,34.056368,-118.274879,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80212S,Pershing Square Station,B;D,subway,operating,90013,34.049316,-118.251259,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80213S,Civic Center / Grand Park Station,B;D,subway,operating,90012,34.0549,-118.246057,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80214S,Union Station,A;B;D,subway,operating,90086,34.056197,-118.234249,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80215S,Wilshire / Normandie Station,D,subway,operating,90010,34.061753,-118.301458,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80216S,Wilshire / Western Station,D,subway,operating,90010,34.061689,-118.308756,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80229S,Wilshire / La Brea Station,D,subway,operating,90036,34.06221475,-118.3434467,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80230S,Wilshire / Fairfax Station,D,subway,operating,90036,34.06296708,-118.3611657,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80231S,Wilshire / La Cienega Station,D,subway,operating,90211,34.06483444,-118.3747009,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80301S,Redondo Beach Station,K,light_rail,operating,90260,33.89464,-118.369196,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80302S,Douglas Station,K,light_rail,operating,90245,33.905299,-118.383113,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80303S,El Segundo Station,K,light_rail,operating,90245,33.916063,-118.386539,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80304S,Mariposa Station,K,light_rail,operating,90245,33.9232,-118.387572,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80305S,Aviation / Imperial Station,C,light_rail,operating,90045,33.929621,-118.377134,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80306S,Hawthorne / Lennox Station,C,light_rail,operating,90304,33.933408,-118.351602,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80307S,Crenshaw Station,C,light_rail,operating,90303,33.925201,-118.32655,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80308S,Vermont / Athens Station,C,light_rail,operating,90061,33.928683,-118.291733,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80309S,Harbor Freeway Station,C,light_rail,operating,90061,33.928714,-118.2811,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80310S,Avalon Station,C,light_rail,operating,90061,33.927465,-118.265217,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80312S,Lynwood Station,C,light_rail,operating,90262,33.92488,-118.209945,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80313S,Lakewood Blvd Station,C,light_rail,operating,90243,33.91307,-118.1406,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80314S,Norwalk Station,C,light_rail,operating,90650,33.914033,-118.104717,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80401S,Atlantic Station,E,light_rail,operating,90022,34.033398,-118.154469,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80402S,East LA Civic Center Station,E,light_rail,operating,90022,34.033364,-118.161206,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80403S,Maravilla Station,E,light_rail,operating,90022,34.033319,-118.16814,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80404S,Indiana Station,E,light_rail,operating,90063,34.0343,-118.192182,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80405S,Soto Station,E,light_rail,operating,90033,34.043747,-118.210061,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80406S,Mariachi Plaza / Boyle Heights Station,E,light_rail,operating,90033,34.047215,-118.219648,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80407S,Pico / Aliso Station,E,light_rail,operating,90033,34.047634,-118.22594,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80410S,Chinatown Station,A,light_rail,operating,90086,34.063861,-118.23584,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80411S,Lincoln Heights / Cypress Park Station,A,light_rail,operating,90031,34.080949,-118.220429,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80412S,Heritage Square / Arroyo Station,A,light_rail,operating,90031,34.087227,-118.213213,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80413S,Southwest Museum Station,A,light_rail,operating,90065,34.098243,-118.206712,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80414S,Highland Park Station,A,light_rail,operating,90042,34.111179,-118.192606,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80415S,South Pasadena Station,A,light_rail,operating,91030,34.115186,-118.157886,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80416S,Fillmore Station,A,light_rail,operating,91105,34.133521,-118.148126,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80417S,Del Mar Station,A,light_rail,operating,91105,34.14191,-118.148214,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80418S,Memorial Park Station,A,light_rail,operating,91129,34.148356,-118.147512,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80419S,Lake Station,A,light_rail,operating,91182,34.151806,-118.13139,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80420S,Allen Station,A,light_rail,operating,91104,34.152417,-118.114348,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80421S,Sierra Madre Villa Station,A,light_rail,operating,91107,34.147752,-118.081212,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80422S,Arcadia Station,A,light_rail,operating,91066,34.14286,-118.029199,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80423S,Monrovia Station,A,light_rail,operating,91016,34.133155,-118.003473,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80424S,Duarte / City of Hope Station,A,light_rail,operating,91010,34.132518,-117.96768,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80425S,Irwindale Station,A,light_rail,operating,91702,34.129048,-117.932506,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80426S,Azusa Downtown Station,A,light_rail,operating,91702,34.135863,-117.906631,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80427S,APU / Citrus College Station,A,light_rail,operating,91742,34.136814,-117.891636,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80701S,Aviation / Century Station,C;K,light_rail,operating,90045,33.94557205,-118.378683,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80702S,LAX / Metro Transit Center,C;K,light_rail,operating,90009,33.9500753,-118.37866,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80703S,Westchester / Veterans Station,K,light_rail,operating,90301,33.96203144,-118.374378,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80704S,Downtown Inglewood Station,K,light_rail,operating,90301,33.96715635,-118.3514966,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80705S,Fairview Heights Station,K,light_rail,operating,90302,33.97525155,-118.3360716,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80706S,Hyde Park Station,K,light_rail,operating,90043,33.98818653,-118.3308158,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80707S,Leimert Park Station,K,light_rail,operating,90008,34.00390927,-118.3320162,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80708S,Martin Luther King Jr Station,K,light_rail,operating,90008,34.00956339,-118.3353594,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+80709S,Expo / Crenshaw K-Line Station,K,light_rail,operating,90008,34.02215554,-118.3348508,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+81401S,Grand Ave Arts / Bunker Hill Station,A;E,light_rail,operating,90071,34.05472448,-118.2515307,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+81402S,Historic Broadway Station,A;E,light_rail,operating,90013,34.05215607,-118.2463211,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
+81403S,Little Tokyo / Arts District Station,A;E,light_rail,operating,90013,34.04884524,-118.2387567,https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip
