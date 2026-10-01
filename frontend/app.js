@@ -27,7 +27,11 @@ const sortMode = document.querySelector("#sort-mode");
 const metaStrip = document.querySelector("#meta-strip");
 const detail = document.querySelector("#detail");
 const mapCanvas = document.querySelector("#map-canvas");
+const mapViewport = document.querySelector("#map-viewport");
+const mapFrame = document.querySelector("#map-frame");
+const mapPanel = document.querySelector(".map-panel");
 const mapHint = document.querySelector("#map-hint");
+const ZOOM = 7;
 const chatContext = document.querySelector("#chat-context");
 
 rosterList.addEventListener("click", (event) => {
@@ -204,6 +208,8 @@ function project(latitude, longitude) {
 
 function renderMap() {
   if (!state.map) return;
+  const zoomed = Boolean(state.selectedId);
+  const markerScale = zoomed ? 1 / ZOOM : 1;
   const markers = state.map.markers.map((marker) => {
     const spot = project(marker.latitude, marker.longitude);
     const selected = marker.venue_id === state.selectedId;
@@ -222,7 +228,7 @@ function renderMap() {
       "data-venue-id": marker.venue_id,
       "aria-pressed": selected ? "true" : "false",
       "aria-label": `${marker.venue_name}, ${formatNumber(marker.crime_per_km2)} per square kilometer`,
-      style: `left: ${spot.x}%; top: ${spot.y}%; width: ${size}px; height: ${size}px; background: ${densityColor(marker.crime_per_km2)}`,
+      style: `left: ${spot.x}%; top: ${spot.y}%; width: ${size}px; height: ${size}px; background: ${densityColor(marker.crime_per_km2)}; transform: translate(-50%, -50%) scale(${markerScale})`,
     }, children);
   });
   const labels = state.map.labels.map((label) => {
@@ -232,13 +238,37 @@ function renderMap() {
       style: `left: ${spot.x}%; top: ${spot.y}%`,
     }, [text(label.name)]);
   });
-  const legend = el("div", { className: "map-legend" }, [
-    text("Low"),
-    el("i"),
-    text("High"),
-  ]);
-  mapCanvas.replaceChildren(...labels, ...markers, legend);
+  mapCanvas.replaceChildren(...labels, ...markers);
+  syncMapFrame();
 }
+
+function syncMapFrame() {
+  const zoomed = Boolean(state.selectedId);
+  mapPanel.classList.toggle("has-briefing", zoomed);
+  mapFrame.classList.toggle("is-zoomed", zoomed);
+  requestAnimationFrame(applyZoom);
+}
+
+function applyZoom() {
+  if (!state.selectedId || !state.map) {
+    mapCanvas.style.transform = "translate(0px, 0px) scale(1)";
+    return;
+  }
+  const marker = state.map.markers.find((item) => item.venue_id === state.selectedId);
+  if (!marker) return;
+  const spot = project(marker.latitude, marker.longitude);
+  const width = mapViewport.clientWidth;
+  const height = mapViewport.clientHeight;
+  const markerX = (spot.x / 100) * width;
+  const markerY = (spot.y / 100) * height;
+  const tx = width / 2 - markerX * ZOOM;
+  const ty = height / 2 - markerY * ZOOM;
+  mapCanvas.style.transform = `translate(${tx}px, ${ty}px) scale(${ZOOM})`;
+}
+
+window.addEventListener("resize", () => {
+  if (state.map) applyZoom();
+});
 
 function renderChatContext() {
   const venue = state.venues.find((item) => item.venue_id === state.selectedId);
@@ -433,6 +463,7 @@ async function selectVenue(venueId) {
   detail.hidden = false;
   mapHint.hidden = true;
   detail.replaceChildren(el("p", { className: "empty-detail" }, [text("Loading briefing…")]));
+  if (window.innerWidth <= 980) detail.scrollIntoView({ block: "start" });
   try {
     const venue = await fetchJson(`/api/venues/${encodeURIComponent(venueId)}`);
     if (token !== requestToken) return;

@@ -47,13 +47,16 @@
           <h2 id="map-heading">Los Angeles</h2>
           <span class="placeholder-pill">Map placeholder</span>
         </div>
-        <div class="map-frame">
-          <div class="map-canvas" id="map-canvas"></div>
+        <div class="map-frame" id="map-frame">
+          <div class="map-viewport" id="map-viewport">
+            <div class="map-canvas" id="map-canvas"></div>
+          </div>
           <p class="map-hint" id="map-hint">Click a venue on the map or in the list. The crime heatmap is not wired yet.</p>
-          <section class="detail" id="detail" hidden aria-live="polite" aria-labelledby="detail-heading">
-            <h2 id="detail-heading" class="visually-hidden">Venue briefing</h2>
-          </section>
+          <div class="map-legend"><span>Low</span><i></i><span>High</span></div>
         </div>
+        <section class="detail" id="detail" hidden aria-live="polite" aria-labelledby="detail-heading">
+          <h2 id="detail-heading" class="visually-hidden">Venue briefing</h2>
+        </section>
       </section>
     </main>
 

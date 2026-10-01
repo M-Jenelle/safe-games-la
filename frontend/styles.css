@@ -219,24 +219,42 @@ select, .chat-form input {
   display: flex;
   flex-direction: column;
   background: #f3f6f2;
+  overflow: hidden;
 }
 
 .map-frame {
   position: relative;
-  flex: 1;
+  flex: 1 1 auto;
   margin: 0 16px 16px;
   min-height: 0;
+}
+
+.map-panel.has-briefing .map-frame {
+  flex: 0 0 240px;
+  margin-bottom: 12px;
+}
+
+.map-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border: 1.5px dashed #8aa398;
+  border-radius: 12px;
+  background: #e7f0e8;
 }
 
 .map-canvas {
   position: absolute;
   inset: 0;
-  border: 1.5px dashed #8aa398;
-  border-radius: 12px;
-  overflow: visible;
+  transform-origin: 0 0;
+  transition: transform 0.45s ease;
   background:
     linear-gradient(90deg, rgba(126, 176, 190, 0.45) 0%, rgba(126, 176, 190, 0) 18%),
     linear-gradient(180deg, #e7f0e8 0%, #f7f4ee 70%);
+}
+
+.map-frame.is-zoomed .map-label {
+  opacity: 0;
 }
 
 .map-label {
@@ -324,18 +342,18 @@ select, .chat-form input {
 }
 
 .detail {
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
-  z-index: 4;
-  max-height: 46%;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0 16px 16px;
   overflow: auto;
   padding: 14px 16px 18px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
-  box-shadow: 0 12px 28px rgba(27, 36, 48, 0.14);
+}
+
+.detail[hidden] {
+  display: none;
 }
 
 .detail-head {
@@ -569,13 +587,14 @@ select, .chat-form input {
     flex-direction: column;
   }
   .topbar, .meta { text-align: left; display: block; }
+  .map-panel { overflow: visible; }
   .roster-list { max-height: 420px; }
   .stage { display: flex; flex-direction: column; }
-  .map-frame { min-height: 68vh; }
-  .detail {
-    position: static;
-    max-height: none;
-    margin: 12px 16px 16px;
+  .map-frame { min-height: 68vh; flex: none; }
+  .map-panel.has-briefing .map-frame {
+    flex: none;
+    height: 46vh;
+    min-height: 280px;
   }
   .stats, .station-grid { display: grid; grid-template-columns: 1fr 1fr; }
   .chat-log { min-height: 120px; }
