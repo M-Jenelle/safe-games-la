@@ -58,3 +58,31 @@ A public-safety readiness tool for LA agencies ahead of the 2028 Olympics. It ha
 3. Agent: define tool schema against `venue_summary.json` fields, get basic Q&A working end-to-end with real data
 4. Once both core features work end-to-end: revisit jurisdiction flag fix, traffic data join, and stretch goals (NIBRS layer, anomaly detection) if time remains
 
+## How to run
+
+From the repo root, with Python 3.10+:
+
+```bash
+python -m pip install -r requirements.txt
+python -m uvicorn backend.main:app --reload
+```
+
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+
+The app serves the processed JSON already in `data/processed/`. If those files are missing, build them first:
+
+```bash
+python -m pipeline.run
+```
+
+Default buffer is 800 m. Pass `--radius-m` to change it. The API reloads the JSON when those files change on disk.
+
+Click a marker or a venue in the list to zoom in and open its briefing under the map. Close returns to the full city view. The basemap heatmap and the assistant are still placeholders.
+
+Useful endpoints: `/api/health`, `/api/meta`, `/api/map`, `/api/venues`, `/api/venues/{venue_id}`, `/api/venues/{venue_id}/crime-points`.
+
+Run the checks from the repo root:
+
+```bash
+python -m unittest tests.test_pipeline tests.test_api
+```
