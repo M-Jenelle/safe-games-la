@@ -281,6 +281,17 @@ select { width: 132px; }
   background: #f1efeb;
 }
 
+#google-map {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #e7f0e8;
+}
+
+.venue-popup strong { display: block; margin-bottom: 3px; }
+.venue-popup small { color: var(--muted); }
+
 .map-canvas {
   position: absolute;
   inset: 0;

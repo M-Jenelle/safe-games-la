@@ -12,7 +12,8 @@
       "rail_stations": "la_metro_rail_stations.csv",
       "bus_stops": "la_metro_bus_stops.csv",
       "fire_stations": "lafd_fire_stations.csv",
-      "police_stations": "la_county_police_stations.csv"
+      "police_stations": "la_county_police_stations.csv",
+      "hospitals": "hospitals_in_LA.csv"
     },
     "venue_count": 14
   },
@@ -174,7 +175,15 @@
       "data_quality_flags": [
         "no_rail_stations_within_radius",
         "geocode_mismatch"
-      ]
+      ],
+      "nearest_hospital": {
+        "station_id": "930000014",
+        "station_name": "BARLOW RESPIRATORY HOSPITAL",
+        "distance_m": 779.4,
+        "emergency_room": "No",
+        "hospital_type": "GACH",
+        "bed_capacity": "109"
+      }
     },
     {
       "venue_id": "V02",
@@ -392,7 +401,15 @@
       "lapd_jurisdiction": true,
       "data_quality_flags": [
         "geocode_mismatch"
-      ]
+      ],
+      "nearest_hospital": {
+        "station_id": "930000002",
+        "station_name": "CALIFORNIA HOSPITAL MEDICAL CENTER - LOS ANGELES",
+        "distance_m": 640.3,
+        "emergency_room": "Yes",
+        "hospital_type": "GACH",
+        "bed_capacity": "392"
+      }
     },
     {
       "venue_id": "V03",
@@ -613,7 +630,15 @@
       "lapd_jurisdiction": true,
       "data_quality_flags": [
         "geocode_mismatch"
-      ]
+      ],
+      "nearest_hospital": {
+        "station_id": "930000002",
+        "station_name": "CALIFORNIA HOSPITAL MEDICAL CENTER - LOS ANGELES",
+        "distance_m": 483.7,
+        "emergency_room": "Yes",
+        "hospital_type": "GACH",
+        "bed_capacity": "392"
+      }
     },
     {
       "venue_id": "V04",
@@ -829,7 +854,15 @@
         "agency": "Los Angeles Police Department"
       },
       "lapd_jurisdiction": true,
-      "data_quality_flags": []
+      "data_quality_flags": [],
+      "nearest_hospital": {
+        "station_id": "930000002",
+        "station_name": "CALIFORNIA HOSPITAL MEDICAL CENTER - LOS ANGELES",
+        "distance_m": 789.3,
+        "emergency_room": "Yes",
+        "hospital_type": "GACH",
+        "bed_capacity": "392"
+      }
     },
     {
       "venue_id": "V05",
@@ -1039,7 +1072,15 @@
       "lapd_jurisdiction": true,
       "data_quality_flags": [
         "geocode_mismatch"
-      ]
+      ],
+      "nearest_hospital": {
+        "station_id": "930000002",
+        "station_name": "CALIFORNIA HOSPITAL MEDICAL CENTER - LOS ANGELES",
+        "distance_m": 3300.7,
+        "emergency_room": "Yes",
+        "hospital_type": "GACH",
+        "bed_capacity": "392"
+      }
     },
     {
       "venue_id": "V06",
@@ -1245,7 +1286,15 @@
       "lapd_jurisdiction": true,
       "data_quality_flags": [
         "geocode_mismatch"
-      ]
+      ],
+      "nearest_hospital": {
+        "station_id": "930000002",
+        "station_name": "CALIFORNIA HOSPITAL MEDICAL CENTER - LOS ANGELES",
+        "distance_m": 3243.5,
+        "emergency_room": "Yes",
+        "hospital_type": "GACH",
+        "bed_capacity": "392"
+      }
     },
     {
       "venue_id": "V07",
@@ -1460,7 +1509,15 @@
         "agency": "Los Angeles Police Department"
       },
       "lapd_jurisdiction": true,
-      "data_quality_flags": []
+      "data_quality_flags": [],
+      "nearest_hospital": {
+        "station_id": "930000002",
+        "station_name": "CALIFORNIA HOSPITAL MEDICAL CENTER - LOS ANGELES",
+        "distance_m": 2249.9,
+        "emergency_room": "Yes",
+        "hospital_type": "GACH",
+        "bed_capacity": "392"
+      }
     },
     {
       "venue_id": "V08",
@@ -1557,7 +1614,15 @@
         "no_rail_stations_within_radius",
         "geocode_mismatch",
         "city_of_la_but_nearest_station_is_not_lapd"
-      ]
+      ],
+      "nearest_hospital": {
+        "station_id": "930000093",
+        "station_name": "GLENDALE MEMORIAL HOSPITAL AND HEALTH CENTER",
+        "distance_m": 3467.3,
+        "emergency_room": "Yes",
+        "hospital_type": "GACH",
+        "bed_capacity": "255"
+      }
     },
     {
       "venue_id": "V09",
@@ -1695,7 +1760,15 @@
         "no_rail_stations_within_radius",
         "no_bus_stops_within_radius",
         "geocode_mismatch"
-      ]
+      ],
+      "nearest_hospital": {
+        "station_id": "930000072",
+        "station_name": "KAISER FOUNDATION HOSPITAL - LOS ANGELES",
+        "distance_m": 2275.5,
+        "emergency_room": "Yes",
+        "hospital_type": "GACH",
+        "bed_capacity": "492"
+      }
     },
     {
       "venue_id": "V10",
@@ -1812,7 +1885,15 @@
         "no_rail_stations_within_radius",
         "geocode_mismatch",
         "city_of_la_but_nearest_station_is_not_lapd"
-      ]
+      ],
+      "nearest_hospital": {
+        "station_id": "930000049",
+        "station_name": "SANTA MONICA - UCLA MEDICAL CENTER AND ORTHOPAEDIC HOSPITAL",
+        "distance_m": 2987.2,
+        "emergency_room": "Yes",
+        "hospital_type": "GACH",
+        "bed_capacity": "281"
+      }
     },
     {
       "venue_id": "V11",
@@ -2005,7 +2086,15 @@
       "data_quality_flags": [
         "no_rail_stations_within_radius",
         "geocode_mismatch"
-      ]
+      ],
+      "nearest_hospital": {
+        "station_id": "930000157",
+        "station_name": "PROVIDENCE LITTLE COMPANY OF MARY MEDICAL CENTER SAN PEDRO",
+        "distance_m": 2042.5,
+        "emergency_room": "Yes",
+        "hospital_type": "GACH",
+        "bed_capacity": "158"
+      }
     },
     {
       "venue_id": "V12",
@@ -2161,7 +2250,15 @@
       "data_quality_flags": [
         "no_rail_stations_within_radius",
         "geocode_not_found"
-      ]
+      ],
+      "nearest_hospital": {
+        "station_id": "930000054",
+        "station_name": "ENCINO HOSPITAL MEDICAL CENTER",
+        "distance_m": 2318.4,
+        "emergency_room": "Yes",
+        "hospital_type": "GACH",
+        "bed_capacity": "107"
+      }
     },
     {
       "venue_id": "V13",
@@ -2350,7 +2447,15 @@
         "no_rail_stations_within_radius",
         "geocode_not_found",
         "city_of_la_but_nearest_station_is_not_lapd"
-      ]
+      ],
+      "nearest_hospital": {
+        "station_id": "930000044",
+        "station_name": "CEDARS-SINAI MARINA HOSPITAL",
+        "distance_m": 2910.9,
+        "emergency_room": "Yes",
+        "hospital_type": "GACH",
+        "bed_capacity": "103"
+      }
     },
     {
       "venue_id": "V14",
@@ -2535,7 +2640,15 @@
         "no_rail_stations_within_radius",
         "geocode_not_found",
         "city_of_la_but_nearest_station_is_not_lapd"
-      ]
+      ],
+      "nearest_hospital": {
+        "station_id": "930000044",
+        "station_name": "CEDARS-SINAI MARINA HOSPITAL",
+        "distance_m": 3024.7,
+        "emergency_room": "Yes",
+        "hospital_type": "GACH",
+        "bed_capacity": "103"
+      }
     }
   ]
 }

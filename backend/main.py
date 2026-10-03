@@ -8,6 +8,7 @@ Run from the repo root:
 from __future__ import annotations
 
 from pathlib import Path
+import os
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -53,6 +54,12 @@ def _missing(exc: DatasetNotFound) -> HTTPException:
 @app.get("/api/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/api/config")
+def config() -> dict:
+    """Public browser configuration; the Maps key must be referrer-restricted."""
+    return {"google_maps_api_key": os.environ.get("GOOGLE_MAPS_API_KEY", "")}
 
 
 @app.get("/api/meta")

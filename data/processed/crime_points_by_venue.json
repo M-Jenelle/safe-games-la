@@ -12,7 +12,8 @@
       "rail_stations": "la_metro_rail_stations.csv",
       "bus_stops": "la_metro_bus_stops.csv",
       "fire_stations": "lafd_fire_stations.csv",
-      "police_stations": "la_county_police_stations.csv"
+      "police_stations": "la_county_police_stations.csv",
+      "hospitals": "hospitals_in_LA.csv"
     },
     "venue_count": 14
   },

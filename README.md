@@ -14,7 +14,7 @@ A public-safety readiness tool for LA agencies ahead of the 2028 Olympics. It ha
 
 ### ✅ Done
 - **Venue dataset finalized** — 14 confirmed Olympic venues inside the City of LA (`la28_venues.csv`), addresses and coordinates geocoded/verified against the official LA28 venues page and the US Census geocoder.
-- **Supporting datasets collected**: LA Metro rail stations, LA Metro bus stops, LAFD fire stations, LA County/municipal police stations — all point-based, all cleaned.
+- **Supporting datasets collected**: LA Metro rail stations, LA Metro bus stops, LAFD fire stations, LA County/municipal police stations, and LA County hospitals — all point-based, all cleaned.
 - **Crime dataset pulled**: `Crime_Data_from_2020_to_2024.csv` from the LA Open Data Portal (official LAPD source, the dataset our hackathon doc names). 1,002,654 usable rows after dropping ~2,240 with missing or invalid coordinates.
 - **Data pipeline built and run** (`pipeline/`):
   - `pipeline/geo.py` — reusable `buffer_zone()` spatial join (bounding box filter, then haversine distance in meters)
@@ -35,7 +35,7 @@ A public-safety readiness tool for LA agencies ahead of the 2028 Olympics. It ha
 
 ### To DO
 - **Backend API** — no FastAPI layer yet; frontend and agent will currently need to read the processed JSON files directly, or someone needs to stand up basic endpoints (`/venues`, `/venue/{id}/crime-points`, `/venue/{id}/summary`).
-- **Frontend map** — no heatmap UI built yet. Should consume `venue_summary.json` for circle markers and `crime_points_by_venue.json` (filtered per-venue) for the Leaflet.heat density layer.
+- **Frontend map** — first heatmap version is wired in `frontend/index.html` and `frontend/app.js`. Google Maps provides the basemap; venue markers are colored/sized by crime density; selecting a venue loads its per-venue crime points and displays a deck.gl heatmap inside the analysis radius. Emergency-service and transit overlays remain the next map-layer additions.
 - **AI agent / chatbot** — no agent built yet. Should use `venue_summary.json` fields (especially `crime_by_category`, `crime_by_month`) as tool outputs so answers are grounded in real numbers.
 - **Traffic data integration** — we have a few manual traffic-count PDFs (Dodger Stadium, Exposition Park, Venice Beach) but haven't joined them in yet. These are area-matched by name, not by coordinates, so they need manual mapping to venues rather than a spatial join.
 - **Jurisdiction boundary fix** — cross-check the 4 flagged venues against an actual LAPD division boundary map instead of relying on nearest-station distance.
@@ -51,10 +51,11 @@ A public-safety readiness tool for LA agencies ahead of the 2028 Olympics. It ha
 | Metro rail/bus | LA Metro GTFS (via LACMTA GitHub) | Static schedule data, not live |
 | Fire stations | data.lacity.org | Static |
 | Police/Sheriff stations | LA County GIS | Static |
+| Hospitals | `hospitals_in_LA.csv` | LA County hospital facility data; normalized by the pipeline |
 
 ## Immediate next steps 
 1. Stand up minimal backend endpoints serving the two processed JSON files (unblocks frontend + agent to work in parallel)
-2. Frontend: build the map with venue circle markers from `venue_summary.json`, then add the Leaflet.heat point layer per-venue
+2. Frontend: extend the Google Maps/deck.gl map with emergency-service and transit overlay toggles
 3. Agent: define tool schema against `venue_summary.json` fields, get basic Q&A working end-to-end with real data
 4. Once both core features work end-to-end: revisit jurisdiction flag fix, traffic data join, and stretch goals (NIBRS layer, anomaly detection) if time remains
 
@@ -77,7 +78,11 @@ python -m pipeline.run
 
 Default buffer is 800 m. Pass `--radius-m` to change it. The API reloads the JSON when those files change on disk.
 
-Click a marker or a venue in the list to zoom in and open its briefing under the map. Close returns to the full city view. The basemap heatmap and the assistant are still placeholders.
+Click a marker or a venue in the list to zoom in and open its briefing under the map. The selected venue's crime heatmap and analysis radius appear on the map. Close returns to the full venue view. Configure a referrer-restricted Google Maps JavaScript API key before starting the server:
+
+```bash
+GOOGLE_MAPS_API_KEY=your_key_here python -m uvicorn backend.main:app --reload
+```
 
 Useful endpoints: `/api/health`, `/api/meta`, `/api/map`, `/api/venues`, `/api/venues/{venue_id}`, `/api/venues/{venue_id}/crime-points`.
 

@@ -21,6 +21,7 @@ from pipeline.loaders import (
     load_bus_stops,
     load_crime,
     load_fire_stations,
+    load_hospitals,
     load_police_stations,
     load_rail_stations,
     load_venues,
@@ -119,8 +120,14 @@ def _log_preview(summary: dict) -> None:
             police_text = f"{police['agency']} / {police['station_name']} ({police['distance_m']} m)"
         else:
             police_text = "none"
+        hospital = venue["nearest_hospital"]
+        hospital_text = (
+            f"{hospital['station_name']} ({hospital['distance_m']} m)"
+            if hospital
+            else "none"
+        )
         logger.info(
-            "%s  crimes=%s  rail=%s  bus_stops=%s  bus_lines=%s  lapd=%s  police=%s",
+            "%s  crimes=%s  rail=%s  bus_stops=%s  bus_lines=%s  lapd=%s  police=%s  hospital=%s",
             venue["venue_id"],
             f"{venue['crime_count_nearby']:,}",
             venue["rail_stations_nearby"]["count"],
@@ -128,6 +135,7 @@ def _log_preview(summary: dict) -> None:
             len(venue["bus_stops_nearby"]["lines"]),
             venue["lapd_jurisdiction"],
             police_text,
+            hospital_text,
         )
 
 
@@ -142,6 +150,7 @@ def build(
     bus_path = data_dir / "la_metro_bus_stops.csv"
     fire_path = data_dir / "lafd_fire_stations.csv"
     police_path = data_dir / "la_county_police_stations.csv"
+    hospital_path = data_dir / "hospitals_in_LA.csv"
 
     venues, venue_report = load_venues(venue_path)
     crime, crime_report = load_crime(crime_path)
@@ -149,6 +158,7 @@ def build(
     bus, bus_report = load_bus_stops(bus_path)
     fire, fire_report = load_fire_stations(fire_path)
     police, police_report = load_police_stations(police_path)
+    hospitals, hospital_report = load_hospitals(hospital_path)
 
     for report in (
         venue_report,
@@ -157,6 +167,7 @@ def build(
         bus_report,
         fire_report,
         police_report,
+        hospital_report,
     ):
         _log_report(report)
 
@@ -167,6 +178,7 @@ def build(
         "bus_stops": bus_path.name,
         "fire_stations": fire_path.name,
         "police_stations": police_path.name,
+        "hospitals": hospital_path.name,
     }
     summary, points = build_venue_outputs(
         venues,
@@ -177,6 +189,7 @@ def build(
         police,
         radius_m=radius_m,
         source_names=source_names,
+        hospitals=hospitals,
     )
     _log_venue_flags(summary, radius_m)
     _log_preview(summary)

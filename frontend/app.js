@@ -4,6 +4,7 @@ const FLAG_LABELS = {
   no_bus_stops_within_radius: "No bus stops in the buffer",
   no_fire_stations_loaded: "No fire stations in the dataset",
   no_police_stations_loaded: "No police stations in the dataset",
+  no_hospitals_loaded: "No hospitals in the dataset",
   geocode_mismatch: "Listed coordinates differ from the geocoder",
   geocode_not_found: "Geocoder could not confirm this address",
   city_of_la_but_nearest_station_is_not_lapd: "Nearest station is not LAPD",
@@ -12,6 +13,10 @@ const FLAG_LABELS = {
 const state = {
   meta: null,
   map: null,
+  googleMap: null,
+  venueMarkers: [],
+  heatOverlay: null,
+  bufferCircle: null,
   venues: [],
   selectedId: null,
   detail: null,
@@ -26,8 +31,6 @@ const zoneFilter = document.querySelector("#zone-filter");
 const sortMode = document.querySelector("#sort-mode");
 const metaStrip = document.querySelector("#meta-strip");
 const detail = document.querySelector("#detail");
-const mapCanvas = document.querySelector("#map-canvas");
-const mapViewport = document.querySelector("#map-viewport");
 const mapFrame = document.querySelector("#map-frame");
 const mapPanel = document.querySelector(".map-panel");
 const mapHint = document.querySelector("#map-hint");
@@ -39,12 +42,6 @@ rosterList.addEventListener("click", (event) => {
   const card = event.target.closest("[data-venue-id]");
   if (!card) return;
   selectVenue(card.dataset.venueId);
-});
-
-mapCanvas.addEventListener("click", (event) => {
-  const marker = event.target.closest("[data-venue-id]");
-  if (!marker) return;
-  selectVenue(marker.dataset.venueId);
 });
 
 detail.addEventListener("click", (event) => {
@@ -216,68 +213,127 @@ function project(latitude, longitude) {
 }
 
 function renderMap() {
-  if (!state.map) return;
-  const zoomed = Boolean(state.selectedId);
-  const markerScale = zoomed ? 1 / ZOOM : 1;
-  const markers = state.map.markers.map((marker) => {
-    const spot = project(marker.latitude, marker.longitude);
+  if (!state.map || !state.googleMap) return;
+  state.venueMarkers.forEach((marker) => marker.setMap(null));
+  state.venueMarkers = [];
+  if (state.bufferCircle) state.bufferCircle.setMap(null);
+  const bounds = [];
+  for (const marker of state.map.markers) {
     const selected = marker.venue_id === state.selectedId;
-    const dimmed = state.zone !== "all" && marker.olympic_zone !== state.zone;
-    const size = 14 + densityT(marker.crime_per_km2) * 12;
-    const classes = ["marker"];
-    if (selected) classes.push("selected");
-    if (dimmed) classes.push("dimmed");
-    const children = [];
-    if (selected) {
-      children.push(el("span", { className: "marker-label" }, [text(marker.venue_name)]));
-    }
-    return el("button", {
-      className: classes.join(" "),
-      type: "button",
-      "data-venue-id": marker.venue_id,
-      "aria-pressed": selected ? "true" : "false",
-      "aria-label": `${marker.venue_name}, ${formatNumber(marker.crime_per_km2)} per square kilometer`,
-      style: `left: ${spot.x}%; top: ${spot.y}%; width: ${size}px; height: ${size}px; background: ${densityColor(marker.crime_per_km2)}; transform: translate(-50%, -50%) scale(${markerScale})`,
-    }, children);
-  });
-  const labels = state.map.labels.map((label) => {
-    const spot = project(label.latitude, label.longitude);
-    return el("span", {
-      className: "map-label",
-      style: `left: ${spot.x}%; top: ${spot.y}%`,
-    }, [text(label.name)]);
-  });
-  mapCanvas.replaceChildren(...labels, ...markers);
-  syncMapFrame();
-}
-
-function syncMapFrame() {
-  const zoomed = Boolean(state.selectedId);
-  mapPanel.classList.toggle("has-briefing", zoomed);
-  mapFrame.classList.toggle("is-zoomed", zoomed);
-  requestAnimationFrame(applyZoom);
-}
-
-function applyZoom() {
-  if (!state.selectedId || !state.map) {
-    mapCanvas.style.transform = "translate(0px, 0px) scale(1)";
-    return;
+    const visible = state.zone === "all" || marker.olympic_zone === state.zone;
+    const circle = new google.maps.Circle({
+      map: state.googleMap,
+      center: { lat: marker.latitude, lng: marker.longitude },
+      radius: 55 + densityT(marker.crime_per_km2) * 65,
+      strokeColor: "#ffffff",
+      strokeWeight: selected ? 4 : 2,
+      fillColor: densityColor(marker.crime_per_km2),
+      fillOpacity: visible ? 0.92 : 0.22,
+      strokeOpacity: visible ? 1 : 0.35,
+      zIndex: selected ? 10 : 1,
+    });
+    const infoWindow = new google.maps.InfoWindow({
+      content: `<div class="venue-popup"><strong>${escapeHtml(marker.venue_name)}</strong><small>${formatNumber(marker.crime_per_km2)} incidents / km²</small></div>`,
+    });
+    circle.addListener("click", () => {
+      infoWindow.open({ map: state.googleMap, position: { lat: marker.latitude, lng: marker.longitude } });
+      selectVenue(marker.venue_id);
+    });
+    state.venueMarkers.push(circle);
+    bounds.push([marker.latitude, marker.longitude]);
   }
-  const marker = state.map.markers.find((item) => item.venue_id === state.selectedId);
-  if (!marker) return;
-  const spot = project(marker.latitude, marker.longitude);
-  const width = mapViewport.clientWidth;
-  const height = mapViewport.clientHeight;
-  const markerX = (spot.x / 100) * width;
-  const markerY = (spot.y / 100) * height;
-  const tx = width / 2 - markerX * ZOOM;
-  const ty = height / 2 - markerY * ZOOM;
-  mapCanvas.style.transform = `translate(${tx}px, ${ty}px) scale(${ZOOM})`;
+  mapPanel.classList.toggle("has-briefing", Boolean(state.selectedId));
+  if (!state.selectedId && bounds.length) {
+    const mapBounds = new google.maps.LatLngBounds();
+    bounds.forEach(([lat, lng]) => mapBounds.extend({ lat, lng }));
+    state.googleMap.fitBounds(mapBounds, 28);
+  }
+  if (state.selectedId) {
+    const selected = state.map.markers.find((item) => item.venue_id === state.selectedId);
+    if (selected) {
+      state.googleMap.panTo({ lat: selected.latitude, lng: selected.longitude });
+      state.googleMap.setZoom(13);
+      loadCrimeHeatmap(selected);
+    }
+  } else {
+    state.heatOverlay?.setProps({ layers: [] });
+  }
+  setTimeout(() => state.googleMap?.trigger("resize"), 50);
 }
 
-window.addEventListener("resize", () => {
-  if (state.map) applyZoom();
-});
+async function ensureGoogleMap() {
+  if (state.googleMap) return;
+  const config = await fetchJson("/api/config");
+  if (!config.google_maps_api_key) {
+    throw new Error("Google Maps is not configured. Set GOOGLE_MAPS_API_KEY before starting the server.");
+  }
+  await loadGoogleMaps(config.google_maps_api_key);
+  state.googleMap = new google.maps.Map(document.querySelector("#google-map"), {
+    center: { lat: 34.05, lng: -118.25 },
+    zoom: 10,
+    mapTypeControl: false,
+    streetViewControl: false,
+    fullscreenControl: true,
+    clickableIcons: false,
+  });
+  state.heatOverlay = new deck.GoogleMapsOverlay({ layers: [] });
+  state.heatOverlay.setMap(state.googleMap);
+}
+
+function loadGoogleMaps(apiKey) {
+  if (window.google?.maps?.Map) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const callbackName = "safeGamesGoogleMapsReady";
+    window[callbackName] = resolve;
+    const script = document.createElement("script");
+    script.async = true;
+    script.defer = true;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&loading=async&callback=${callbackName}&v=weekly`;
+    script.onerror = () => reject(new Error("Google Maps JavaScript API could not load."));
+    document.head.append(script);
+  });
+}
+
+async function loadCrimeHeatmap(marker) {
+  const token = requestToken;
+  state.heatOverlay.setProps({ layers: [] });
+  if (state.bufferCircle) state.bufferCircle.setMap(null);
+  state.bufferCircle = new google.maps.Circle({
+    map: state.googleMap,
+    center: { lat: marker.latitude, lng: marker.longitude },
+    radius: state.meta.buffer_radius_m,
+    strokeColor: "#123f4d",
+    strokeWeight: 2,
+    strokeOpacity: 0.8,
+    fillOpacity: 0,
+    clickable: false,
+  });
+  try {
+    const payload = await fetchJson(`/api/venues/${encodeURIComponent(marker.venue_id)}/crime-points`);
+    if (token !== requestToken) return;
+    const heatmap = new deck.HeatmapLayer({
+      id: `crime-heatmap-${marker.venue_id}`,
+      data: payload.points,
+      getPosition: (point) => [point.longitude, point.latitude],
+      getWeight: () => 1,
+      radiusPixels: 30,
+      intensity: 1,
+      threshold: 0.03,
+      colorRange: [[42, 107, 79], [184, 122, 46], [196, 71, 41], [141, 47, 31]],
+    });
+    state.heatOverlay.setProps({ layers: [heatmap] });
+  } catch (error) {
+    if (token === requestToken) mapHint.textContent = `Could not load crime points: ${error.message}`;
+  }
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>'"]/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
+  }[character]));
+}
+
+window.addEventListener("resize", () => state.googleMap?.trigger("resize"));
 
 function renderChatContext() {
   const venue = state.venues.find((item) => item.venue_id === state.selectedId);
@@ -442,10 +498,11 @@ function renderDetail() {
       text(`Bus · ${formatNumber(venue.bus_stops_nearby.count)} stops · ${venue.bus_stops_nearby.lines.length} lines`),
     ]),
     el("div", { className: "pills" }, buses.length ? buses : [el("span", { className: "muted" }, [text("None in the buffer.")])]),
-    el("h3", { className: "section-title" }, [text("Nearest response")]),
+    el("h3", { className: "section-title" }, [text("Nearest response and care")]),
     el("div", { className: "station-grid" }, [
       stationCard("Fire", venue.nearest_fire_station),
       stationCard("Police", venue.nearest_police_station),
+      stationCard("Hospital", venue.nearest_hospital),
     ]),
     el("p", { className: "footnote" }, [text(state.meta.jurisdiction_method)]),
   );
@@ -499,8 +556,14 @@ async function init() {
     renderMeta();
     renderZoneOptions();
     renderRoster();
-    renderMap();
     renderChatContext();
+    try {
+      await ensureGoogleMap();
+      renderMap();
+    } catch (error) {
+      mapHint.textContent = error.message;
+      mapHint.style.pointerEvents = "auto";
+    }
   } catch (error) {
     metaStrip.textContent = error.message;
     detail.hidden = false;

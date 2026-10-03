@@ -65,6 +65,7 @@ def _quality_flags(
     fire_hit: bool,
     police_hit: bool,
     lapd: bool | None,
+    hospital_hit: bool = True,
 ) -> list[str]:
     flags: list[str] = []
     if crime_count == 0:
@@ -77,6 +78,8 @@ def _quality_flags(
         flags.append("no_fire_stations_loaded")
     if not police_hit:
         flags.append("no_police_stations_loaded")
+    if not hospital_hit:
+        flags.append("no_hospitals_loaded")
     geocode = str(venue.get("geocode_result", "") or "")
     if geocode.startswith("MISMATCH"):
         flags.append("geocode_mismatch")
@@ -122,6 +125,7 @@ def build_venue_outputs(
     police: pd.DataFrame,
     radius_m: float = DEFAULT_BUFFER_RADIUS_M,
     source_names: dict[str, str] | None = None,
+    hospitals: pd.DataFrame | None = None,
 ) -> tuple[dict, dict]:
     """Build ``venue_summary`` and ``crime_points_by_venue`` documents.
 
@@ -144,6 +148,7 @@ def build_venue_outputs(
         bus_nearby = buffer_zone(bus, origin_lat, origin_lon, radius_m)
         fire_hit = nearest_row(fire, origin_lat, origin_lon)
         police_hit = nearest_row(police, origin_lat, origin_lon)
+        hospital_hit = nearest_row(hospitals, origin_lat, origin_lon) if hospitals is not None else None
 
         crime_count = int(len(crime_nearby))
         rail_stations = [
@@ -169,6 +174,15 @@ def build_venue_outputs(
                 ["agency"],
             )
             lapd = is_lapd_agency(str(police_hit[0]["agency"]))
+        nearest_hospital = (
+            _station_payload(
+                hospital_hit[0],
+                hospital_hit[1],
+                ["emergency_room", "hospital_type", "bed_capacity"],
+            )
+            if hospital_hit
+            else None
+        )
 
         venue_series = ordered.loc[ordered["venue_id"] == venue.venue_id].iloc[0]
         flags = _quality_flags(
@@ -179,6 +193,7 @@ def build_venue_outputs(
             fire_hit is not None,
             police_hit is not None,
             lapd,
+            hospital_hit is not None if hospitals is not None else True,
         )
 
         summary_rows.append(
@@ -206,6 +221,7 @@ def build_venue_outputs(
                 },
                 "nearest_fire_station": nearest_fire,
                 "nearest_police_station": nearest_police,
+                "nearest_hospital": nearest_hospital,
                 "lapd_jurisdiction": lapd,
                 "data_quality_flags": flags,
             }
