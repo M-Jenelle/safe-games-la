@@ -302,8 +302,8 @@ function mapZoom() {
 }
 
 function pointPixelRadius(zoom) {
-  const px = 22 - (zoom - 10) * 2.6;
-  return Math.max(6, Math.min(32, px));
+  const px = 11 - (zoom - 10) * 1.3;
+  return Math.max(4, Math.min(14, px));
 }
 
 const VENUE_PIN_PATH = "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z";
@@ -311,7 +311,7 @@ const VENUE_PIN_PATH = "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3
 function venuePinIcon(selected) {
   return {
     path: VENUE_PIN_PATH,
-    fillColor: "#0085C7",
+    fillColor: "#FF4F9A",
     fillOpacity: 1,
     strokeColor: "#ffffff",
     strokeWeight: selected ? 2 : 1.25,
@@ -417,14 +417,15 @@ function facilityLayers() {
       data,
       pickable: true,
       stroked: true,
+      parameters: { depthTest: false },
       radiusUnits: "pixels",
       lineWidthUnits: "pixels",
       getPosition: (point) => [point.longitude, point.latitude],
       getFillColor: style.color,
       getRadius: radius * style.scale,
       getLineColor: [255, 255, 255],
-      getLineWidth: zoom < 13 ? 2 : 1,
-      updateTriggers: { getRadius: zoom, getLineWidth: zoom < 13 },
+      getLineWidth: 1,
+      updateTriggers: { getRadius: zoom },
     }));
   }
   return layers;
@@ -541,9 +542,10 @@ function syncOverlay() {
   if (!state.heatOverlay) return;
   overlayZoom = Math.round(mapZoom() * 2) / 2;
   syncCrimeLegend();
-  const layers = facilityLayers();
+  const layers = [];
   const heatmap = crimeHeatmapLayer();
   if (heatmap) layers.push(heatmap);
+  layers.push(...facilityLayers());
   state.heatOverlay.setProps({
     layers,
     getCursor: ({ object }) => (object ? "pointer" : "grab"),
