@@ -32,6 +32,8 @@ _summary: dict | None = None
 _summary_mtime: float | None = None
 _points: dict | None = None
 _points_mtime: float | None = None
+_month_categories: dict[str, dict[str, dict[str, int]]] = {}
+_month_categories_mtime: float | None = None
 _crime_views: dict | None = None
 _crime_heat_mtime: float | None = None
 
@@ -118,10 +120,39 @@ def list_venues() -> list[dict]:
     return [venue_card(venue) for venue in load_summary()["venues"]]
 
 
+def crime_categories_by_month(venue_id: str) -> dict[str, dict[str, int]]:
+    """Incident-type counts for each YYYY-MM inside one venue buffer."""
+    global _month_categories_mtime
+    try:
+        points = load_crime_points()
+    except DatasetNotFound:
+        return {}
+    if _month_categories_mtime != _points_mtime:
+        _month_categories.clear()
+        _month_categories_mtime = _points_mtime
+    cached = _month_categories.get(venue_id)
+    if cached is not None:
+        return cached
+    block = points.get("by_venue", {}).get(venue_id) or {}
+    counts: dict[str, dict[str, int]] = {}
+    for point in block.get("points", []):
+        date = point.get("date") or ""
+        if len(date) < 7:
+            continue
+        month = date[:7]
+        category = point.get("category") or "Unknown"
+        bucket = counts.setdefault(month, {})
+        bucket[category] = bucket.get(category, 0) + 1
+    _month_categories[venue_id] = counts
+    return counts
+
+
 def get_venue(venue_id: str) -> dict | None:
     for venue in load_summary()["venues"]:
         if venue["venue_id"] == venue_id:
-            return venue
+            enriched = dict(venue)
+            enriched["crime_categories_by_month"] = crime_categories_by_month(venue_id)
+            return enriched
     return None
 
 

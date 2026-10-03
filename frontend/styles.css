@@ -717,13 +717,10 @@ select { width: 132px; }
 }
 
 .venue-back {
-  position: sticky;
-  top: 0;
-  z-index: 2;
   display: inline-flex;
-  margin: 0 0 8px;
-  padding: 12px 0;
-  background: var(--bg);
+  margin: 4px 0 8px;
+  padding: 8px 0;
+  background: transparent;
   border: 0;
   cursor: pointer;
   font-size: 0.84rem;
@@ -806,6 +803,52 @@ select { width: 132px; }
   color: var(--data);
   font-weight: 700;
 }
+
+.month-table td[data-month]:not([data-month=""]) { cursor: pointer; }
+
+.month-table td.is-active { background: rgba(223, 0, 36, 0.08); }
+
+.table-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  align-items: end;
+  margin: 4px 0 12px;
+}
+
+.table-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+}
+
+.table-filters select {
+  width: auto;
+  min-width: 8.5rem;
+}
+
+.month-detail {
+  margin: 4px 0 20px;
+}
+
+.show-more {
+  margin: 10px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--navy);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.show-more:hover { color: #006a9e; }
 
 .chart rect { cursor: pointer; }
 

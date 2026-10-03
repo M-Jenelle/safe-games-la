@@ -44,6 +44,10 @@ class ApiTests(unittest.TestCase):
             sum(body["crime_by_category"].values()),
             body["crime_count_nearby"],
         )
+        by_month = body["crime_categories_by_month"]
+        self.assertEqual(set(by_month), set(body["crime_by_month"]))
+        for month, count in body["crime_by_month"].items():
+            self.assertEqual(sum(by_month[month].values()), count)
 
     def test_unknown_venue(self):
         response = self.client.get("/api/venues/V99")
