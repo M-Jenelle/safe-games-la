@@ -33,6 +33,7 @@ const mapPanel = document.querySelector(".map-panel");
 const mapHint = document.querySelector("#map-hint");
 const ZOOM = 7;
 const chatContext = document.querySelector("#chat-context");
+const analysisLead = document.querySelector("#analysis-lead");
 
 rosterList.addEventListener("click", (event) => {
   const card = event.target.closest("[data-venue-id]");
@@ -95,6 +96,14 @@ function formatDistance(meters) {
   return `${(meters / 1000).toFixed(1)} km`;
 }
 
+function formatSports(value) {
+  return String(value || "")
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function formatWhen(iso) {
   if (!iso) return "unknown date";
   const date = new Date(iso);
@@ -152,14 +161,15 @@ function jurisdictionLabel(value) {
 function renderMeta() {
   const metaData = state.meta;
   metaStrip.replaceChildren(
-    text("Buffer "),
-    el("strong", {}, [text(`${Math.round(metaData.buffer_radius_m)} m`)]),
-    text(` · ${metaData.venue_count} venues · built ${formatWhen(metaData.generated_at)}`),
-    el("br"),
-    text("Densest "),
-    el("strong", {}, [text(metaData.densest_venue.venue_name)]),
-    text(` (${formatNumber(metaData.densest_venue.crime_per_km2)} / km²) · quietest `),
-    el("strong", {}, [text(metaData.quietest_venue.venue_name)]),
+    el("p", { className: "meta-line" }, [
+      text(`${Math.round(metaData.buffer_radius_m)} m buffer · ${metaData.venue_count} venues`),
+    ]),
+    el("p", { className: "meta-line" }, [
+      text(`Updated ${formatWhen(metaData.generated_at)}`),
+    ]),
+    el("p", { className: "meta-line meta-quiet" }, [
+      text(`Densest ${metaData.densest_venue.venue_name} (${formatNumber(metaData.densest_venue.crime_per_km2)}/km²) · quietest ${metaData.quietest_venue.venue_name}`),
+    ]),
   );
 }
 
@@ -183,14 +193,13 @@ function renderRoster() {
       type: "button",
       "data-venue-id": venue.venue_id,
       "aria-pressed": selected ? "true" : "false",
-      style: `border-left-color: ${densityColor(venue.crime_per_km2)}`,
     }, [
       el("div", { className: "card-top" }, [
         el("span", { className: "zone" }, [text(venue.olympic_zone)]),
-        el("span", { className: "rate" }, [text(`${formatNumber(venue.crime_per_km2)} / km²`)]),
+        el("span", { className: "rate" }, [text(`${formatNumber(venue.crime_per_km2)}/km²`)]),
       ]),
       el("h3", {}, [text(venue.venue_name)]),
-      el("div", { className: "sports" }, [text(venue.sports)]),
+      el("div", { className: "sports" }, [text(formatSports(venue.sports))]),
       el("div", { className: "card-foot" }, [
         text(`${formatNumber(venue.crime_count_nearby)} incidents · ${jurisdictionLabel(venue.lapd_jurisdiction)}`),
       ]),
@@ -274,8 +283,10 @@ function renderChatContext() {
   const venue = state.venues.find((item) => item.venue_id === state.selectedId);
   if (!venue) {
     chatContext.textContent = "No briefing open. General questions are in scope.";
+    analysisLead.hidden = false;
     return;
   }
+  analysisLead.hidden = true;
   chatContext.textContent = `Briefing open: ${venue.venue_name}. Questions can be about that venue or about the city as a whole.`;
 }
 
@@ -334,7 +345,7 @@ function monthChart(byMonth) {
     rect.setAttribute("y", String(120 - height));
     rect.setAttribute("width", String(Math.max(width - 0.8, 0.4)));
     rect.setAttribute("height", String(height));
-    rect.setAttribute("fill", entry.key === peak.key ? "#9a4e24" : "#123f4d");
+    rect.setAttribute("fill", entry.key === peak.key ? "#8d4b2b" : "#1c3144");
     svg.append(rect);
   });
   return svg;
@@ -403,7 +414,7 @@ function renderDetail() {
   detail.replaceChildren(
     el("div", { className: "detail-head" }, [
       el("div", {}, [
-        el("p", { className: "zone" }, [text(`${venue.olympic_zone} · ${venue.sports}`)]),
+        el("p", { className: "zone" }, [text(`${venue.olympic_zone} · ${formatSports(venue.sports)}`)]),
         el("h2", { className: "detail-title", id: "detail-heading" }, [text(venue.venue_name)]),
       ]),
       el("button", { className: "close-briefing", type: "button", "data-close-briefing": "true" }, [text("Close")]),

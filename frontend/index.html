@@ -13,8 +13,8 @@
   <div class="app">
     <header class="topbar">
       <div class="brand">
-        <p class="kicker">Olympic Shield</p>
         <h1>Safe Games LA</h1>
+        <p class="tagline">Los Angeles venue safety intelligence</p>
       </div>
       <div class="meta" id="meta-strip">Loading briefing data…</div>
     </header>
@@ -45,7 +45,6 @@
       <section class="map-panel" aria-labelledby="map-heading">
         <div class="panel-label">
           <h2 id="map-heading">Los Angeles</h2>
-          <span class="placeholder-pill">Map placeholder</span>
         </div>
         <div class="map-frame" id="map-frame">
           <div class="map-viewport" id="map-viewport">
@@ -62,17 +61,20 @@
 
     <aside class="chat-panel" aria-labelledby="chat-heading">
       <div class="panel-label">
-        <h2 id="chat-heading">Assistant</h2>
-        <span class="placeholder-pill">Placeholder</span>
+        <h2 id="chat-heading">Analysis</h2>
       </div>
       <div class="chat-log" id="chat-log">
-        <p>Ask a general question about Safe Games LA, or about a briefing you have open. The assistant is not connected yet.</p>
-        <p class="examples-label">Examples</p>
-        <ul>
-          <li>Which venues have the highest nearby crime density?</li>
-          <li>How is the LAPD flag decided?</li>
-          <li>Which sites have rail inside the buffer?</li>
-        </ul>
+        <div class="chat-body">
+          <p class="analysis-lead" id="analysis-lead">Select a venue to explore its safety context.</p>
+          <p>Ask a question about Safe Games LA, or about a venue briefing you have open.</p>
+          <p class="chat-status">The assistant is not connected yet.</p>
+          <p class="examples-label">Suggested questions</p>
+          <ul>
+            <li>Which venues have the highest nearby crime density?</li>
+            <li>How is the LAPD flag decided?</li>
+            <li>Which sites have rail inside the buffer?</li>
+          </ul>
+        </div>
       </div>
       <form class="chat-form" id="chat-form">
         <label class="visually-hidden" for="chat-input">Message the assistant</label>
