@@ -22,6 +22,13 @@ const state = {
   crimeView: "all",
   crimeHot: false,
   crimeCache: {},
+  layerViews: {
+    fire: "all",
+    hospitals: "all",
+    police: "all",
+    rail: "all",
+    bus: "all",
+  },
   layers: {
     venues: true,
     crime: true,
@@ -395,9 +402,12 @@ function facilityLayers() {
     if (!state.layers[name]) continue;
     const block = state.facilities[name];
     if (!block?.points?.length) continue;
+    const view = state.layerViews[name] || "all";
+    const data = block.points.filter((point) => !point.views || point.views.includes(view));
+    if (!data.length) continue;
     layers.push(new deck.ScatterplotLayer({
-      id: `facility-${name}`,
-      data: block.points,
+      id: `facility-${name}-${view}`,
+      data,
       pickable: true,
       stroked: true,
       radiusUnits: "pixels",
@@ -443,10 +453,8 @@ function syncCrimeLegend() {
   }
 }
 
-function fillCrimeView(options) {
-  const select = document.querySelector("#crime-view");
+function fillSelect(select, options, current) {
   if (!select || !options?.length) return;
-  const current = state.crimeView;
   select.replaceChildren();
   const groups = new Map();
   for (const option of options) {
@@ -464,7 +472,25 @@ function fillCrimeView(options) {
     group.append(node);
   }
   if ([...select.options].some((option) => option.value === current)) select.value = current;
-  select.disabled = !state.layers.crime;
+}
+
+function fillCrimeView(options) {
+  const select = document.querySelector("#crime-view");
+  fillSelect(select, options, state.crimeView);
+  if (select) select.disabled = !state.layers.crime;
+}
+
+function fillLayerView(name, options) {
+  const select = document.querySelector(`#${name}-view`);
+  fillSelect(select, options, state.layerViews[name] || "all");
+  if (select) select.disabled = !state.layers[name];
+}
+
+function facilityPopup(point) {
+  const lines = [`<strong>${escapeHtml(point.name || "Location")}</strong>`];
+  if (point.location) lines.push(`<small>${escapeHtml(point.location)}</small>`);
+  if (point.detail) lines.push(`<small>${escapeHtml(point.detail)}</small>`);
+  return `<div class="venue-popup">${lines.join("")}</div>`;
 }
 
 function syncOverlay() {
@@ -476,12 +502,12 @@ function syncOverlay() {
   if (heatmap) layers.push(heatmap);
   state.heatOverlay.setProps({
     layers,
+    getCursor: ({ object }) => (object ? "pointer" : "grab"),
     onClick: (info) => {
       const point = info.object;
       if (!point || !String(info.layer?.id || "").startsWith("facility-")) return;
-      const detail = point.detail ? `<small>${escapeHtml(point.detail)}</small>` : "";
       if (!state.layerInfo) state.layerInfo = new google.maps.InfoWindow();
-      state.layerInfo.setContent(`<div class="venue-popup"><strong>${escapeHtml(point.name)}</strong>${detail}</div>`);
+      state.layerInfo.setContent(facilityPopup(point));
       state.layerInfo.open({
         map: state.googleMap,
         position: { lat: point.latitude, lng: point.longitude },
@@ -505,8 +531,11 @@ function bindLayerToggles() {
         const select = document.querySelector("#crime-view");
         if (select) select.disabled = !input.checked;
         refreshCrimeLayer();
+      } else {
+        const select = document.querySelector(`#${name}-view`);
+        if (select) select.disabled = !input.checked;
+        syncOverlay();
       }
-      else syncOverlay();
     });
   });
 }
@@ -771,6 +800,17 @@ async function selectVenue(venueId) {
 
 let crimeRequest = 0;
 
+function bindFacilityViews() {
+  for (const name of Object.keys(state.layerViews)) {
+    const select = document.querySelector(`#${name}-view`);
+    if (!select) continue;
+    select.addEventListener("change", () => {
+      state.layerViews[name] = select.value;
+      if (state.layers[name]) syncOverlay();
+    });
+  }
+}
+
 function bindCrimeView() {
   const select = document.querySelector("#crime-view");
   if (!select) return;
@@ -822,6 +862,7 @@ async function loadCrimeHeat(view = state.crimeView || "all") {
 async function init() {
   bindLayerToggles();
   bindCrimeView();
+  bindFacilityViews();
   try {
     const [metaData, list, mapData, facilities] = await Promise.all([
       fetchJson("/api/meta"),
@@ -833,6 +874,11 @@ async function init() {
     state.venues = list.venues;
     state.map = mapData;
     state.facilities = facilities;
+    if (facilities) {
+      for (const name of Object.keys(state.layerViews)) {
+        fillLayerView(name, facilities[name]?.options);
+      }
+    }
     if (!facilities) {
       document.querySelectorAll("#layer-toggles input[data-layer]").forEach((input) => {
         if (input.dataset.layer !== "venues" && input.dataset.layer !== "crime") input.disabled = true;

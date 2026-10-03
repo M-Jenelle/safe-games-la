@@ -116,7 +116,7 @@ def read_map_layers() -> dict:
         layers = map_layers()
     except DatasetNotFound as exc:
         raise _missing(exc) from exc
-    return {name: {"count": len(points), "points": points} for name, points in layers.items()}
+    return layers
 
 
 @app.get("/api/venues")

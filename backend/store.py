@@ -20,6 +20,7 @@ from pipeline.loaders import (
     load_hospitals,
     load_police_stations,
     load_rail_stations,
+    is_lapd_agency,
 )
 from pipeline.run import find_crime_csv, resolve_data_dir
 
@@ -324,16 +325,56 @@ def _layer_sources() -> dict[str, Path]:
     }
 
 
-def _point(row_id: str, name: str, latitude: float, longitude: float, detail: str = "") -> dict:
+def _text(value) -> str:
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except TypeError:
+        pass
+    text = str(value).strip()
+    if text.lower() in {"nan", "none"}:
+        return ""
+    if text.endswith(".0") and text[:-2].isdigit():
+        return text[:-2]
+    return text
+
+
+def _location(*parts) -> str:
+    return ", ".join(part for part in (_text(part) for part in parts) if part)
+
+
+def _place(
+    row_id: str,
+    name: str,
+    latitude: float,
+    longitude: float,
+    views: list[str],
+    location: str = "",
+    detail: str = "",
+) -> dict:
     point = {
         "id": row_id,
-        "name": name,
+        "name": name or "Unnamed",
         "latitude": round(float(latitude), 6),
         "longitude": round(float(longitude), 6),
+        "views": views,
     }
+    if location:
+        point["location"] = location
     if detail:
         point["detail"] = detail
     return point
+
+
+def _options(entries: list[tuple[str, str, str | None]], present: set[str]) -> list[dict]:
+    options = []
+    for option_id, label, group in entries:
+        if option_id not in present:
+            continue
+        options.append({"id": option_id, "label": label, "group": group})
+    return options
 
 
 def map_layers() -> dict:
@@ -353,41 +394,170 @@ def map_layers() -> dict:
     police, _report = load_police_stations(sources["police"])
     rail, _report = load_rail_stations(sources["rail"])
     bus, _report = load_bus_stops(sources["bus"])
+    def near(frame: pd.DataFrame) -> list[bool]:
+        if frame.empty:
+            return []
+        mask = _venue_mask(frame["latitude"], frame["longitude"])
+        return [bool(value) for value in mask.to_numpy()]
+
+    def pack(points: list[dict], entries: list[tuple[str, str, str | None]]) -> dict:
+        present = {view for point in points for view in point["views"]}
+        return {"count": len(points), "options": _options(entries, present), "points": points}
+
+    fire_near = near(fire)
+    fire_points = []
+    for index, row in enumerate(fire.itertuples(index=False)):
+        views = ["all"]
+        if fire_near[index]:
+            views.append("venues")
+        fire_points.append(
+            _place(
+                _text(row.station_id),
+                _text(row.station_name) or "Fire station",
+                row.latitude,
+                row.longitude,
+                views,
+                _location(getattr(row, "address", ""), getattr(row, "zip_code", "")),
+            )
+        )
+
+    hospital_near = near(hospitals)
+    hospital_points = []
+    for index, row in enumerate(hospitals.itertuples(index=False)):
+        emergency = _text(getattr(row, "emergency_room", "")).lower() in {"yes", "y", "true", "1"}
+        views = ["all"]
+        if emergency:
+            views.append("er")
+        if hospital_near[index]:
+            views.append("venues")
+        hospital_points.append(
+            _place(
+                _text(row.station_id),
+                _text(row.station_name) or "Hospital",
+                row.latitude,
+                row.longitude,
+                views,
+                _location(getattr(row, "address", ""), getattr(row, "city", ""), getattr(row, "zip_code", "")),
+                "Emergency room" if emergency else "No emergency room",
+            )
+        )
+
+    police_near = near(police)
+    police_points = []
+    for index, row in enumerate(police.itertuples(index=False)):
+        agency = _text(row.agency)
+        if is_lapd_agency(agency):
+            kind = "lapd"
+        elif "sheriff" in agency.casefold():
+            kind = "sheriff"
+        else:
+            kind = "other"
+        views = ["all", kind]
+        if police_near[index]:
+            views.append("venues")
+        police_points.append(
+            _place(
+                _text(row.station_id),
+                _text(row.station_name) or "Police station",
+                row.latitude,
+                row.longitude,
+                views,
+                _location(getattr(row, "address", ""), getattr(row, "city", ""), getattr(row, "zip_code", "")),
+                agency,
+            )
+        )
+
+    rail_lines: set[str] = set()
+    rail_near = near(rail)
+    rail_points = []
+    for index, row in enumerate(rail.itertuples(index=False)):
+        lines = [part.strip() for part in _text(row.lines).replace(",", ";").split(";") if part.strip()]
+        rail_lines.update(lines)
+        views = ["all", *[f"line:{line}" for line in lines]]
+        if rail_near[index]:
+            views.append("venues")
+        mode = _text(getattr(row, "rail_mode", "")).replace("_", " ")
+        line_text = f"Lines {', '.join(lines)}" if lines else ""
+        detail = " · ".join(part for part in (line_text, mode) if part)
+        rail_points.append(
+            _place(
+                _text(row.station_id),
+                _text(row.station_name) or "Rail station",
+                row.latitude,
+                row.longitude,
+                views,
+                detail=detail,
+            )
+        )
+
     bus_stops = (
         bus.groupby("stop_id", as_index=False)
         .agg(
+            station_name=("station_name", "first") if "station_name" in bus.columns else ("bus_line", "first"),
             latitude=("latitude", "first"),
             longitude=("longitude", "first"),
-            lines=("bus_line", lambda values: ", ".join(sorted({str(value) for value in values if str(value)}))),
+            lines=("bus_line", lambda values: ", ".join(sorted({_text(value) for value in values if _text(value)}))),
+            rapid=("rapid_service", lambda values: any(_text(value).lower() in {"yes", "y", "true", "1"} or "rapid" in _text(value).lower() for value in values))
+            if "rapid_service" in bus.columns
+            else ("bus_line", lambda values: False),
         )
     )
-
-    def rows(frame, id_field: str, name_field: str, detail_field: str | None = None) -> list[dict]:
-        points = []
-        for row in frame.itertuples(index=False):
-            detail = ""
-            if detail_field is not None:
-                detail = str(getattr(row, detail_field) or "")
-            points.append(
-                _point(
-                    str(getattr(row, id_field)),
-                    str(getattr(row, name_field) or "Unnamed"),
-                    row.latitude,
-                    row.longitude,
-                    detail,
-                )
+    bus_near = near(bus_stops)
+    bus_points = []
+    for index, row in enumerate(bus_stops.itertuples(index=False)):
+        rapid = bool(row.rapid)
+        views = ["all"]
+        if rapid:
+            views.append("rapid")
+        if bus_near[index]:
+            views.append("venues")
+        bus_points.append(
+            _place(
+                _text(row.stop_id),
+                _text(row.station_name) or "Bus stop",
+                row.latitude,
+                row.longitude,
+                views,
+                detail=" · ".join(part for part in (f"Lines {row.lines}" if row.lines else "", "Rapid" if rapid else "") if part),
             )
-        return points
+        )
 
     _layers = {
-        "fire": rows(fire, "station_id", "station_name"),
-        "hospitals": rows(hospitals, "station_id", "station_name"),
-        "police": rows(police, "station_id", "station_name", "agency"),
-        "rail": rows(rail, "station_id", "station_name", "lines"),
-        "bus": [
-            _point(str(row.stop_id), "Bus stop", row.latitude, row.longitude, str(row.lines or ""))
-            for row in bus_stops.itertuples(index=False)
-        ],
+        "fire": pack(
+            fire_points,
+            [("all", "All stations", None), ("venues", "Around venues", None)],
+        ),
+        "hospitals": pack(
+            hospital_points,
+            [
+                ("all", "All hospitals", None),
+                ("er", "Emergency rooms", None),
+                ("venues", "Around venues", None),
+            ],
+        ),
+        "police": pack(
+            police_points,
+            [
+                ("all", "All stations", None),
+                ("lapd", "LAPD", None),
+                ("sheriff", "Sheriff", None),
+                ("other", "Other cities", None),
+                ("venues", "Around venues", None),
+            ],
+        ),
+        "rail": pack(
+            rail_points,
+            [("all", "All stations", None), ("venues", "Around venues", None)]
+            + [(f"line:{line}", f"Line {line}", "Line") for line in sorted(rail_lines)],
+        ),
+        "bus": pack(
+            bus_points,
+            [
+                ("all", "All stops", None),
+                ("venues", "Around venues", None),
+                ("rapid", "Rapid", None),
+            ],
+        ),
     }
     _layers_stamp = stamp
     return _layers

@@ -341,14 +341,14 @@ select { width: 132px; }
   accent-color: var(--navy);
 }
 
-.crime-control {
+.layer-control {
   display: inline-flex;
   flex-direction: column;
   align-items: stretch;
   gap: 4px;
 }
 
-.crime-control select {
+.layer-control select {
   font: inherit;
   font-size: 0.72rem;
   line-height: 1.2;
@@ -360,7 +360,7 @@ select { width: 132px; }
   max-width: 168px;
 }
 
-.crime-control select:disabled {
+.layer-control select:disabled {
   opacity: 0.45;
 }
 
@@ -406,7 +406,7 @@ select { width: 132px; }
 }
 
 .venue-popup strong { display: block; margin-bottom: 3px; }
-.venue-popup small { color: var(--muted); }
+.venue-popup small { display: block; color: var(--muted); line-height: 1.35; }
 
 .map-canvas {
   position: absolute;

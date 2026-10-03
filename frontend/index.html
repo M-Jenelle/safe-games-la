@@ -65,7 +65,7 @@
           <fieldset class="layer-toggles" id="layer-toggles">
             <legend>Map layers</legend>
             <label><input type="checkbox" data-layer="venues" checked> Venues</label>
-            <span class="crime-control">
+            <span class="layer-control">
               <label title="LAPD incidents, 2020–2024, across the city. Green is fewer, red is more."><input type="checkbox" data-layer="crime" checked> Crime</label>
               <select id="crime-view" aria-label="Crime view">
                 <option value="all">All crime</option>
@@ -73,11 +73,46 @@
                 <option value="venues">Around venues</option>
               </select>
             </span>
-            <label><input type="checkbox" data-layer="fire"> <i class="swatch swatch-fire"></i> Fire</label>
-            <label><input type="checkbox" data-layer="hospitals"> <i class="swatch swatch-hospital"></i> Hospitals</label>
-            <label><input type="checkbox" data-layer="police"> <i class="swatch swatch-police"></i> Police</label>
-            <label><input type="checkbox" data-layer="rail"> <i class="swatch swatch-rail"></i> Rail</label>
-            <label title="About 12,000 stops. Off until you turn it on."><input type="checkbox" data-layer="bus"> <i class="swatch swatch-bus"></i> Bus</label>
+            <span class="layer-control">
+              <label><input type="checkbox" data-layer="fire"> <i class="swatch swatch-fire"></i> Fire</label>
+              <select id="fire-view" aria-label="Fire view" disabled>
+                <option value="all">All stations</option>
+                <option value="venues">Around venues</option>
+              </select>
+            </span>
+            <span class="layer-control">
+              <label><input type="checkbox" data-layer="hospitals"> <i class="swatch swatch-hospital"></i> Hospitals</label>
+              <select id="hospitals-view" aria-label="Hospital view" disabled>
+                <option value="all">All hospitals</option>
+                <option value="er">Emergency rooms</option>
+                <option value="venues">Around venues</option>
+              </select>
+            </span>
+            <span class="layer-control">
+              <label><input type="checkbox" data-layer="police"> <i class="swatch swatch-police"></i> Police</label>
+              <select id="police-view" aria-label="Police view" disabled>
+                <option value="all">All stations</option>
+                <option value="lapd">LAPD</option>
+                <option value="sheriff">Sheriff</option>
+                <option value="other">Other cities</option>
+                <option value="venues">Around venues</option>
+              </select>
+            </span>
+            <span class="layer-control">
+              <label><input type="checkbox" data-layer="rail"> <i class="swatch swatch-rail"></i> Rail</label>
+              <select id="rail-view" aria-label="Rail view" disabled>
+                <option value="all">All stations</option>
+                <option value="venues">Around venues</option>
+              </select>
+            </span>
+            <span class="layer-control">
+              <label title="About 12,000 stops. Off until you turn it on."><input type="checkbox" data-layer="bus"> <i class="swatch swatch-bus"></i> Bus</label>
+              <select id="bus-view" aria-label="Bus view" disabled>
+                <option value="all">All stops</option>
+                <option value="venues">Around venues</option>
+                <option value="rapid">Rapid</option>
+              </select>
+            </span>
           </fieldset>
         </div>
         <div class="map-frame" id="map-frame">

@@ -121,7 +121,18 @@ class ApiTests(unittest.TestCase):
             point = body[name]["points"][0]
             self.assertIn("latitude", point)
             self.assertIn("longitude", point)
-            self.assertIn("name", point)
+            self.assertTrue(point["name"])
+            self.assertIn("all", point["views"])
+            option_ids = {option["id"] for option in body[name]["options"]}
+            self.assertIn("all", option_ids)
+        for name in ("fire", "hospitals", "rail", "bus"):
+            self.assertIn("venues", {option["id"] for option in body[name]["options"]})
+        self.assertTrue(any(point.get("location") for point in body["fire"]["points"]))
+        self.assertTrue(any(point.get("location") for point in body["hospitals"]["points"]))
+        self.assertIn("er", {option["id"] for option in body["hospitals"]["options"]})
+        self.assertIn("lapd", {option["id"] for option in body["police"]["options"]})
+        self.assertIn("line:A", {option["id"] for option in body["rail"]["options"]})
+        self.assertIn("rapid", {option["id"] for option in body["bus"]["options"]})
 
     def test_meta_highlights(self):
         response = self.client.get("/api/meta")
