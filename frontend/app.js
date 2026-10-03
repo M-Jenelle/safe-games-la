@@ -17,6 +17,29 @@ const state = {
   venueMarkers: [],
   heatOverlay: null,
   bufferCircle: null,
+  facilities: null,
+  crimePoints: null,
+  crimeView: "all",
+  crimeHot: false,
+  crimeCache: {},
+  layerViews: {
+    fire: "all",
+    hospitals: "all",
+    police: "all",
+    rail: "all",
+    bus: "all",
+  },
+  layers: {
+    venues: true,
+    crime: true,
+    fire: false,
+    hospitals: false,
+    police: false,
+    rail: false,
+    bus: false,
+  },
+  layerInfo: null,
+  tipKey: "",
   venues: [],
   selectedId: null,
   detail: null,
@@ -30,12 +53,83 @@ const rosterList = document.querySelector("#roster-list");
 const zoneFilter = document.querySelector("#zone-filter");
 const sortMode = document.querySelector("#sort-mode");
 const metaStrip = document.querySelector("#meta-strip");
-const detail = document.querySelector("#detail");
+const overview = document.querySelector("#detail");
+const detail = document.querySelector("#venue-page");
 const mapFrame = document.querySelector("#map-frame");
 const mapPanel = document.querySelector(".map-panel");
 const mapHint = document.querySelector("#map-hint");
 const ZOOM = 7;
 const chatContext = document.querySelector("#chat-context");
+const analysisLead = document.querySelector("#analysis-lead");
+const chatPanel = document.querySelector("#chat-panel");
+const chatLauncher = document.querySelector("#chat-launcher");
+const chatClose = document.querySelector("#chat-close");
+
+function setChatOpen(open) {
+  chatPanel.hidden = !open;
+  chatLauncher.hidden = open;
+  chatLauncher.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) chatClose.focus();
+  else chatLauncher.focus();
+}
+
+chatLauncher.addEventListener("click", () => setChatOpen(true));
+chatClose.addEventListener("click", () => setChatOpen(false));
+const appShell = document.querySelector(".app");
+const roster = document.querySelector("#roster");
+const rosterToggle = document.querySelector("#roster-toggle");
+const rosterToggleLabel = rosterToggle.querySelector(".visually-hidden");
+const rosterBackdrop = document.querySelector("#roster-backdrop");
+const NARROW_ROSTER = 980;
+let rosterNarrow = window.innerWidth <= NARROW_ROSTER;
+
+function rosterIsNarrow() {
+  return window.innerWidth <= NARROW_ROSTER;
+}
+
+function syncHeaderHeight() {
+  const header = document.querySelector(".topbar");
+  if (header) document.documentElement.style.setProperty("--header-h", `${header.offsetHeight}px`);
+}
+
+function resizeMap() {
+  const map = state.googleMap;
+  if (!map || !window.google?.maps?.event) return;
+  google.maps.event.trigger(map, "resize");
+}
+
+function setRosterCollapsed(collapsed) {
+  appShell.classList.toggle("roster-collapsed", collapsed);
+  roster.setAttribute("aria-hidden", collapsed ? "true" : "false");
+  if (collapsed) roster.setAttribute("inert", "");
+  else roster.removeAttribute("inert");
+  rosterToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  rosterToggleLabel.textContent = collapsed ? "Show venues" : "Hide venues";
+  window.setTimeout(resizeMap, 220);
+}
+
+rosterToggle.addEventListener("click", () => {
+  setRosterCollapsed(!appShell.classList.contains("roster-collapsed"));
+});
+rosterBackdrop.addEventListener("click", () => {
+  setRosterCollapsed(true);
+  rosterToggle.focus();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  if (!chatPanel.hidden) {
+    setChatOpen(false);
+    return;
+  }
+  if (rosterIsNarrow() && !appShell.classList.contains("roster-collapsed")) {
+    setRosterCollapsed(true);
+    rosterToggle.focus();
+  }
+});
+
+syncHeaderHeight();
+setRosterCollapsed(rosterIsNarrow());
 
 rosterList.addEventListener("click", (event) => {
   const card = event.target.closest("[data-venue-id]");
@@ -43,8 +137,13 @@ rosterList.addEventListener("click", (event) => {
   selectVenue(card.dataset.venueId);
 });
 
-detail.addEventListener("click", (event) => {
+overview.addEventListener("click", (event) => {
   if (event.target.closest("[data-close-briefing]")) clearSelection();
+  if (event.target.closest("[data-expand-briefing]")) openVenuePage();
+});
+
+detail.addEventListener("click", (event) => {
+  if (event.target.closest("[data-close-briefing]")) closeVenuePage();
 });
 
 zoneFilter.addEventListener("change", () => {
@@ -92,6 +191,14 @@ function formatDistance(meters) {
   return `${(meters / 1000).toFixed(1)} km`;
 }
 
+function formatSports(value) {
+  return String(value || "")
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function formatWhen(iso) {
   if (!iso) return "unknown date";
   const date = new Date(iso);
@@ -102,29 +209,6 @@ function formatWhen(iso) {
     day: "numeric",
     timeZone: "UTC",
   });
-}
-
-function densityT(value) {
-  const rates = state.venues.map((venue) => venue.crime_per_km2);
-  const min = Math.log(Math.min(...rates) + 1);
-  const max = Math.log(Math.max(...rates) + 1);
-  if (max === min) return 0.5;
-  return (Math.log(value + 1) - min) / (max - min);
-}
-
-function densityColor(value) {
-  const t = densityT(value);
-  const low = [42, 107, 79];
-  const mid = [184, 122, 46];
-  const high = [141, 47, 31];
-  const mix = t < 0.5
-    ? lerp(low, mid, t / 0.5)
-    : lerp(mid, high, (t - 0.5) / 0.5);
-  return `rgb(${mix.map((channel) => Math.round(channel)).join(", ")})`;
-}
-
-function lerp(a, b, t) {
-  return a.map((channel, index) => channel + (b[index] - channel) * t);
 }
 
 function visibleVenues() {
@@ -147,16 +231,18 @@ function jurisdictionLabel(value) {
 }
 
 function renderMeta() {
+  if (!metaStrip || !state.meta) return;
   const metaData = state.meta;
   metaStrip.replaceChildren(
-    text("Buffer "),
-    el("strong", {}, [text(`${Math.round(metaData.buffer_radius_m)} m`)]),
-    text(` · ${metaData.venue_count} venues · built ${formatWhen(metaData.generated_at)}`),
-    el("br"),
-    text("Densest "),
-    el("strong", {}, [text(metaData.densest_venue.venue_name)]),
-    text(` (${formatNumber(metaData.densest_venue.crime_per_km2)} / km²) · quietest `),
-    el("strong", {}, [text(metaData.quietest_venue.venue_name)]),
+    el("p", { className: "meta-line" }, [
+      text(`${Math.round(metaData.buffer_radius_m)} m buffer · ${metaData.venue_count} venues`),
+    ]),
+    el("p", { className: "meta-line" }, [
+      text(`Updated ${formatWhen(metaData.generated_at)}`),
+    ]),
+    el("p", { className: "meta-line meta-quiet" }, [
+      text(`Densest ${metaData.densest_venue.venue_name} (${formatNumber(metaData.densest_venue.crime_per_km2)}/km²) · quietest ${metaData.quietest_venue.venue_name}`),
+    ]),
   );
 }
 
@@ -180,14 +266,13 @@ function renderRoster() {
       type: "button",
       "data-venue-id": venue.venue_id,
       "aria-pressed": selected ? "true" : "false",
-      style: `border-left-color: ${densityColor(venue.crime_per_km2)}`,
     }, [
       el("div", { className: "card-top" }, [
         el("span", { className: "zone" }, [text(venue.olympic_zone)]),
-        el("span", { className: "rate" }, [text(`${formatNumber(venue.crime_per_km2)} / km²`)]),
+        el("span", { className: "rate" }, [text(`${formatNumber(venue.crime_per_km2)}/km²`)]),
       ]),
       el("h3", {}, [text(venue.venue_name)]),
-      el("div", { className: "sports" }, [text(venue.sports)]),
+      el("div", { className: "sports" }, [text(formatSports(venue.sports))]),
       el("div", { className: "card-foot" }, [
         text(`${formatNumber(venue.crime_count_nearby)} incidents · ${jurisdictionLabel(venue.lapd_jurisdiction)}`),
       ]),
@@ -203,34 +288,61 @@ function project(latitude, longitude) {
   return { x, y };
 }
 
+const FACILITY_STYLE = {
+  fire: { color: [223, 0, 36], scale: 0.9 },
+  hospitals: { color: [0, 133, 199], scale: 0.9 },
+  police: { color: [26, 26, 26], scale: 0.9 },
+  rail: { color: [0, 159, 61], scale: 0.85 },
+  bus: { color: [200, 150, 0], scale: 0.5 },
+};
+
+function mapZoom() {
+  const zoom = state.googleMap?.getZoom?.();
+  return Number.isFinite(zoom) ? zoom : 10;
+}
+
+function pointPixelRadius(zoom) {
+  const px = 22 - (zoom - 10) * 2.6;
+  return Math.max(6, Math.min(32, px));
+}
+
+const VENUE_PIN_PATH = "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z";
+
+function venuePinIcon(selected) {
+  return {
+    path: VENUE_PIN_PATH,
+    fillColor: "#0085C7",
+    fillOpacity: 1,
+    strokeColor: "#ffffff",
+    strokeWeight: selected ? 2 : 1.25,
+    scale: selected ? 1.55 : 1.25,
+    anchor: new google.maps.Point(12, 22),
+  };
+}
+
+function crimeRadiusPixels(zoom) {
+  const px = 30 - (zoom - 10) * 1.5;
+  return Math.max(16, Math.min(34, px));
+}
+
 function renderMap() {
   if (!state.map || !state.googleMap) return;
   state.venueMarkers.forEach((marker) => marker.setMap(null));
   state.venueMarkers = [];
-  if (state.bufferCircle) state.bufferCircle.setMap(null);
   const bounds = [];
   for (const marker of state.map.markers) {
     const selected = marker.venue_id === state.selectedId;
     const visible = state.zone === "all" || marker.olympic_zone === state.zone;
-    const circle = new google.maps.Circle({
-      map: state.googleMap,
-      center: { lat: marker.latitude, lng: marker.longitude },
-      radius: 55 + densityT(marker.crime_per_km2) * 65,
-      strokeColor: "#ffffff",
-      strokeWeight: selected ? 4 : 2,
-      fillColor: densityColor(marker.crime_per_km2),
-      fillOpacity: visible ? 0.92 : 0.22,
-      strokeOpacity: visible ? 1 : 0.35,
+    const pin = new google.maps.Marker({
+      map: state.layers.venues ? state.googleMap : null,
+      position: { lat: marker.latitude, lng: marker.longitude },
+      title: marker.venue_name,
+      icon: venuePinIcon(selected),
+      opacity: visible ? 1 : 0.35,
       zIndex: selected ? 10 : 1,
     });
-    const infoWindow = new google.maps.InfoWindow({
-      content: `<div class="venue-popup"><strong>${escapeHtml(marker.venue_name)}</strong><small>${formatNumber(marker.crime_per_km2)} incidents / km²</small></div>`,
-    });
-    circle.addListener("click", () => {
-      infoWindow.open({ map: state.googleMap, position: { lat: marker.latitude, lng: marker.longitude } });
-      selectVenue(marker.venue_id);
-    });
-    state.venueMarkers.push(circle);
+    pin.addListener("click", () => selectVenue(marker.venue_id));
+    state.venueMarkers.push(pin);
     bounds.push([marker.latitude, marker.longitude]);
   }
   mapPanel.classList.toggle("has-briefing", Boolean(state.selectedId));
@@ -244,12 +356,235 @@ function renderMap() {
     if (selected) {
       state.googleMap.panTo({ lat: selected.latitude, lng: selected.longitude });
       state.googleMap.setZoom(13);
-      loadCrimeHeatmap(selected);
     }
-  } else {
-    state.heatOverlay?.setProps({ layers: [] });
   }
-  setTimeout(() => state.googleMap?.trigger("resize"), 50);
+  syncBuffer();
+  refreshCrimeLayer();
+  setTimeout(resizeMap, 50);
+}
+
+function setVenueLayerVisible(visible) {
+  state.venueMarkers.forEach((marker) => marker.setMap(visible ? state.googleMap : null));
+}
+
+function facilityLayerEnabled() {
+  return Object.keys(FACILITY_STYLE).some((name) => state.layers[name]);
+}
+
+let overlayZoom = null;
+
+function onMapIdle() {
+  if (!state.layers.crime && !facilityLayerEnabled()) return;
+  const zoomKey = Math.round(mapZoom() * 2) / 2;
+  if (zoomKey === overlayZoom) return;
+  syncOverlay();
+}
+
+function syncBuffer() {
+  if (state.bufferCircle) {
+    state.bufferCircle.setMap(null);
+    state.bufferCircle = null;
+  }
+  if (!state.selectedId || !state.googleMap || !state.meta || !state.map) return;
+  const marker = state.map.markers.find((item) => item.venue_id === state.selectedId);
+  if (!marker) return;
+  state.bufferCircle = new google.maps.Circle({
+    map: state.googleMap,
+    center: { lat: marker.latitude, lng: marker.longitude },
+    radius: state.meta.buffer_radius_m,
+    strokeColor: "#0085C7",
+    strokeWeight: 2,
+    strokeOpacity: 0.8,
+    fillOpacity: 0,
+    clickable: false,
+  });
+}
+
+function facilityLayers() {
+  if (!state.facilities || typeof deck === "undefined") return [];
+  const zoom = mapZoom();
+  const radius = pointPixelRadius(zoom);
+  const layers = [];
+  for (const [name, style] of Object.entries(FACILITY_STYLE)) {
+    if (!state.layers[name]) continue;
+    const block = state.facilities[name];
+    if (!block?.points?.length) continue;
+    const view = state.layerViews[name] || "all";
+    const data = block.points.filter((point) => !point.views || point.views.includes(view));
+    if (!data.length) continue;
+    layers.push(new deck.ScatterplotLayer({
+      id: `facility-${name}-${view}`,
+      data,
+      pickable: true,
+      stroked: true,
+      radiusUnits: "pixels",
+      lineWidthUnits: "pixels",
+      getPosition: (point) => [point.longitude, point.latitude],
+      getFillColor: style.color,
+      getRadius: radius * style.scale,
+      getLineColor: [255, 255, 255],
+      getLineWidth: zoom < 13 ? 2 : 1,
+      updateTriggers: { getRadius: zoom, getLineWidth: zoom < 13 },
+    }));
+  }
+  return layers;
+}
+
+function crimeHeatmapLayer() {
+  if (!state.layers.crime || !state.crimePoints?.length || typeof deck === "undefined") return null;
+  const zoom = mapZoom();
+  const radiusPixels = crimeRadiusPixels(zoom);
+  state.heatmapLayer = new deck.HeatmapLayer({
+    id: "crime-heatmap",
+    data: state.crimePoints,
+    getPosition: (point) => [point.longitude, point.latitude],
+    getWeight: (point) => Math.log(point.weight + 1),
+    radiusPixels,
+    intensity: 1,
+    threshold: zoom < 12 ? 0.02 : 0,
+    colorRange: state.crimeHot
+      ? [[244, 195, 0], [232, 96, 28], [223, 0, 36], [140, 0, 20]]
+      : [[0, 159, 61], [120, 186, 48], [244, 195, 0], [232, 96, 28], [223, 0, 36]],
+  });
+  return state.heatmapLayer;
+}
+
+function syncCrimeLegend() {
+  const legend = document.querySelector("#crime-legend");
+  if (!legend) return;
+  legend.classList.toggle("is-hidden", !state.layers.crime);
+  const labels = legend.querySelectorAll("span");
+  if (labels.length >= 2) {
+    labels[0].textContent = state.crimeHot ? "High" : "Less";
+    labels[1].textContent = state.crimeHot ? "Highest" : "More";
+  }
+}
+
+function fillSelect(select, options, current) {
+  if (!select || !options?.length) return;
+  select.replaceChildren();
+  const groups = new Map();
+  for (const option of options) {
+    const node = el("option", { value: option.id }, [text(option.label)]);
+    if (!option.group) {
+      select.append(node);
+      continue;
+    }
+    let group = groups.get(option.group);
+    if (!group) {
+      group = el("optgroup", { label: option.group });
+      groups.set(option.group, group);
+      select.append(group);
+    }
+    group.append(node);
+  }
+  if ([...select.options].some((option) => option.value === current)) select.value = current;
+}
+
+function fillCrimeView(options) {
+  const select = document.querySelector("#crime-view");
+  fillSelect(select, options, state.crimeView);
+  if (select) select.disabled = !state.layers.crime;
+}
+
+function fillLayerView(name, options) {
+  const select = document.querySelector(`#${name}-view`);
+  fillSelect(select, options, state.layerViews[name] || "all");
+  if (select) select.disabled = !state.layers[name];
+}
+
+function facilityPopup(point) {
+  const lines = [`<strong>${escapeHtml(point.name || "Location")}</strong>`];
+  if (point.location) lines.push(`<small>${escapeHtml(point.location)}</small>`);
+  if (point.detail) lines.push(`<small>${escapeHtml(point.detail)}</small>`);
+  return `<div class="venue-popup">${lines.join("")}</div>`;
+}
+
+function facilityPoint(info) {
+  const point = info?.object;
+  if (!point || !String(info.layer?.id || "").startsWith("facility-")) return null;
+  return point;
+}
+
+function hideFacilityTip() {
+  const tip = document.querySelector("#facility-tip");
+  if (!tip) return;
+  tip.hidden = true;
+  state.tipKey = "";
+}
+
+function showFacilityTip(info) {
+  const tip = document.querySelector("#facility-tip");
+  const point = facilityPoint(info);
+  if (!tip || !point || info.x == null || info.y == null) {
+    hideFacilityTip();
+    return;
+  }
+  const key = `${point.name}|${point.location || ""}|${point.detail || ""}`;
+  if (state.tipKey !== key) {
+    tip.innerHTML = facilityPopup(point);
+    state.tipKey = key;
+  }
+  tip.hidden = false;
+  const frame = tip.parentElement;
+  const margin = 8;
+  const offset = 14;
+  let left = info.x + offset;
+  let top = info.y + offset;
+  if (left + tip.offsetWidth > frame.clientWidth - margin) left = info.x - tip.offsetWidth - offset;
+  if (top + tip.offsetHeight > frame.clientHeight - margin) top = info.y - tip.offsetHeight - offset;
+  tip.style.left = `${Math.max(margin, left)}px`;
+  tip.style.top = `${Math.max(margin, top)}px`;
+}
+
+function syncOverlay() {
+  if (!state.heatOverlay) return;
+  overlayZoom = Math.round(mapZoom() * 2) / 2;
+  syncCrimeLegend();
+  const layers = facilityLayers();
+  const heatmap = crimeHeatmapLayer();
+  if (heatmap) layers.push(heatmap);
+  state.heatOverlay.setProps({
+    layers,
+    getCursor: ({ object }) => (object ? "pointer" : "grab"),
+    onHover: (info) => showFacilityTip(info),
+    onClick: (info) => {
+      const point = facilityPoint(info);
+      if (!point) return;
+      if (!state.layerInfo) state.layerInfo = new google.maps.InfoWindow();
+      state.layerInfo.setContent(facilityPopup(point));
+      state.layerInfo.open({
+        map: state.googleMap,
+        position: { lat: point.latitude, lng: point.longitude },
+      });
+    },
+  });
+}
+
+function refreshCrimeLayer() {
+  if (!state.googleMap || !state.heatOverlay) return;
+  syncOverlay();
+}
+
+function bindLayerToggles() {
+  document.querySelector("#map-viewport")?.addEventListener("mouseleave", hideFacilityTip);
+  document.querySelectorAll("#layer-toggles input[data-layer]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const name = input.dataset.layer;
+      state.layers[name] = input.checked;
+      if (name === "venues") setVenueLayerVisible(input.checked);
+      else if (name === "crime") {
+        const select = document.querySelector("#crime-view");
+        if (select) select.disabled = !input.checked;
+        refreshCrimeLayer();
+      } else {
+        const select = document.querySelector(`#${name}-view`);
+        if (select) select.disabled = !input.checked;
+        hideFacilityTip();
+        syncOverlay();
+      }
+    });
+  });
 }
 
 async function ensureGoogleMap() {
@@ -269,6 +604,7 @@ async function ensureGoogleMap() {
   });
   state.heatOverlay = new deck.GoogleMapsOverlay({ layers: [] });
   state.heatOverlay.setMap(state.googleMap);
+  state.googleMap.addListener("idle", onMapIdle);
 }
 
 function loadGoogleMaps(apiKey) {
@@ -285,61 +621,75 @@ function loadGoogleMaps(apiKey) {
   });
 }
 
-async function loadCrimeHeatmap(marker) {
-  const token = requestToken;
-  state.heatOverlay.setProps({ layers: [] });
-  if (state.bufferCircle) state.bufferCircle.setMap(null);
-  state.bufferCircle = new google.maps.Circle({
-    map: state.googleMap,
-    center: { lat: marker.latitude, lng: marker.longitude },
-    radius: state.meta.buffer_radius_m,
-    strokeColor: "#123f4d",
-    strokeWeight: 2,
-    strokeOpacity: 0.8,
-    fillOpacity: 0,
-    clickable: false,
-  });
-  try {
-    const payload = await fetchJson(`/api/venues/${encodeURIComponent(marker.venue_id)}/crime-points`);
-    if (token !== requestToken) return;
-    const heatmap = new deck.HeatmapLayer({
-      id: `crime-heatmap-${marker.venue_id}`,
-      data: payload.points,
-      getPosition: (point) => [point.longitude, point.latitude],
-      getWeight: () => 1,
-      radiusPixels: 30,
-      intensity: 1,
-      threshold: 0.03,
-      colorRange: [[42, 107, 79], [184, 122, 46], [196, 71, 41], [141, 47, 31]],
-    });
-    state.heatOverlay.setProps({ layers: [heatmap] });
-  } catch (error) {
-    if (token === requestToken) mapHint.textContent = `Could not load crime points: ${error.message}`;
-  }
-}
-
 function escapeHtml(value) {
   return String(value).replace(/[&<>'"]/g, (character) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
   }[character]));
 }
 
-window.addEventListener("resize", () => state.googleMap?.trigger("resize"));
+window.addEventListener("resize", () => {
+  syncHeaderHeight();
+  const narrow = rosterIsNarrow();
+  if (narrow !== rosterNarrow) {
+    rosterNarrow = narrow;
+    setRosterCollapsed(narrow);
+  }
+  resizeMap();
+});
 
 function renderChatContext() {
   const venue = state.venues.find((item) => item.venue_id === state.selectedId);
   if (!venue) {
     chatContext.textContent = "No briefing open. General questions are in scope.";
+    analysisLead.hidden = false;
     return;
   }
+  analysisLead.hidden = true;
   chatContext.textContent = `Briefing open: ${venue.venue_name}. Questions can be about that venue or about the city as a whole.`;
 }
 
-function clearSelection() {
+function venueIdFromLocation() {
+  const match = location.hash.match(/^#\/venue\/([A-Za-z0-9_-]+)$/);
+  return match ? match[1] : null;
+}
+
+function rememberVenue(venueId) {
+  const next = `#/venue/${venueId}`;
+  if (location.hash === next) return;
+  history.pushState({ venue: venueId }, "", next);
+}
+
+function forgetVenue() {
+  if (!location.hash.startsWith("#/venue/")) return;
+  history.pushState({}, "", `${location.pathname}${location.search}`);
+}
+
+function closeVenuePage(options = {}) {
+  if (options.history !== false) forgetVenue();
+  detail.hidden = true;
+  resizeMap();
+}
+
+function openVenuePage(options = {}) {
+  const venueId = state.detail?.venue_id || state.selectedId;
+  if (!venueId) return;
+  if (options.history !== false) rememberVenue(venueId);
+  if (!state.detail) {
+    detail.hidden = false;
+    detail.replaceChildren(el("div", { className: "venue-sheet" }, [
+      el("p", { className: "empty-detail" }, [text("Loading briefing…")]),
+    ]));
+    return;
+  }
+  renderDetail();
+}
+
+function clearSelection(options = {}) {
   requestToken += 1;
+  closeVenuePage(options);
   state.selectedId = null;
   state.detail = null;
-  detail.hidden = true;
+  overview.hidden = true;
   mapHint.hidden = false;
   renderRoster();
   renderMap();
@@ -366,7 +716,73 @@ function filledMonths(byMonth) {
   return entries;
 }
 
-function monthChart(byMonth) {
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function monthLabel(key) {
+  const [year, month] = key.split("-");
+  return `${MONTH_NAMES[Number(month) - 1]} ${year}`;
+}
+
+function monthChart(entries, peakKey, onFocus) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "chart");
+  svg.setAttribute("viewBox", "0 0 960 200");
+  svg.setAttribute("role", "img");
+  if (!entries.length) {
+    svg.setAttribute("aria-label", "No dated incidents in this buffer");
+    return svg;
+  }
+  const max = Math.max(...entries.map((entry) => entry.count), 1);
+  const peak = entries.find((entry) => entry.key === peakKey) || entries[0];
+  svg.setAttribute(
+    "aria-label",
+    `Monthly incidents from ${monthLabel(entries[0].key)} to ${monthLabel(entries[entries.length - 1].key)}. Peak ${monthLabel(peak.key)} with ${formatNumber(peak.count)}.`,
+  );
+  const width = 960 / entries.length;
+  entries.forEach((entry, index) => {
+    const height = Math.max((entry.count / max) * 168, entry.count ? 2 : 0);
+    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    rect.setAttribute("x", String(index * width + 0.6));
+    rect.setAttribute("y", String(176 - height));
+    rect.setAttribute("width", String(Math.max(width - 1.2, 0.6)));
+    rect.setAttribute("height", String(height));
+    rect.setAttribute("fill", entry.key === peakKey ? "#DF0024" : "#0085C7");
+    rect.dataset.month = entry.key;
+    rect.addEventListener("click", () => onFocus(entry.key));
+    svg.append(rect);
+    if (entry.key.endsWith("-01")) {
+      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      label.setAttribute("x", String(index * width));
+      label.setAttribute("y", "194");
+      label.setAttribute("fill", "#4e5963");
+      label.setAttribute("font-size", "11");
+      label.textContent = entry.key.slice(0, 4);
+      svg.append(label);
+    }
+  });
+  return svg;
+}
+
+function categoryRows(byCategory, total, options = {}) {
+  let entries = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+  if (options.limit) entries = entries.slice(0, options.limit);
+  const max = entries.length ? entries[0][1] : 1;
+  return entries.map(([category, count]) => {
+    const share = total ? Math.round((count / total) * 100) : 0;
+    const countLabel = options.share === false ? formatNumber(count) : `${formatNumber(count)} · ${share}%`;
+    return el("div", { className: "bar-row" }, [
+      el("div", {}, [
+        el("div", { className: "bar-label", title: category }, [text(category)]),
+        el("div", { className: "bar-track" }, [
+          el("div", { className: "bar-fill", style: `width: ${(count / max) * 100}%` }),
+        ]),
+      ]),
+      el("div", { className: "bar-count" }, [text(countLabel)]),
+    ]);
+  });
+}
+
+function overviewChart(byMonth) {
   const entries = filledMonths(byMonth);
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("class", "chart");
@@ -390,26 +806,10 @@ function monthChart(byMonth) {
     rect.setAttribute("y", String(120 - height));
     rect.setAttribute("width", String(Math.max(width - 0.8, 0.4)));
     rect.setAttribute("height", String(height));
-    rect.setAttribute("fill", entry.key === peak.key ? "#9a4e24" : "#123f4d");
+    rect.setAttribute("fill", entry.key === peak.key ? "#DF0024" : "#0085C7");
     svg.append(rect);
   });
   return svg;
-}
-
-function categoryRows(byCategory) {
-  const entries = Object.entries(byCategory)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6);
-  const max = entries.length ? entries[0][1] : 1;
-  return entries.map(([category, count]) => el("div", { className: "bar-row" }, [
-    el("div", {}, [
-      el("div", { className: "bar-label", title: category }, [text(category)]),
-      el("div", { className: "bar-track" }, [
-        el("div", { className: "bar-fill", style: `width: ${(count / max) * 100}%` }),
-      ]),
-    ]),
-    el("div", { className: "bar-count" }, [text(formatNumber(count))]),
-  ]));
 }
 
 function stationCard(label, station) {
@@ -427,13 +827,68 @@ function stationCard(label, station) {
   if (station.agency) {
     lines.push(el("p", { className: "muted" }, [text(station.agency)]));
   }
+  if (station.emergency_room) {
+    const room = String(station.emergency_room).toLowerCase() === "yes"
+      ? "Emergency room"
+      : `Emergency room: ${station.emergency_room}`;
+    lines.push(el("p", { className: "muted" }, [text(room)]));
+  }
+  const beds = Number(station.bed_capacity);
+  if (Number.isFinite(beds) && beds > 0) {
+    lines.push(el("p", { className: "muted" }, [text(`${formatNumber(beds)} beds`)]));
+  }
   return el("article", { className: "station" }, lines);
 }
 
-function renderDetail() {
+function yearTotals(entries) {
+  const totals = new Map();
+  for (const entry of entries) {
+    const year = entry.key.slice(0, 4);
+    totals.set(year, (totals.get(year) || 0) + entry.count);
+  }
+  return [...totals.entries()];
+}
+
+function monthTable(entries, peakKey, activeKey, fromMonth, toMonth) {
+  const indexes = [];
+  for (let month = fromMonth; month <= toMonth; month += 1) indexes.push(month);
+  const byYear = new Map();
+  for (const entry of entries) {
+    const [year, month] = entry.key.split("-");
+    const monthNumber = Number(month);
+    if (monthNumber < fromMonth || monthNumber > toMonth) continue;
+    if (!byYear.has(year)) byYear.set(year, Array(12).fill(null));
+    byYear.get(year)[monthNumber - 1] = entry;
+  }
+  const head = el("tr", {}, [
+    el("th", {}, [text("Year")]),
+    ...indexes.map((month) => el("th", {}, [text(MONTH_NAMES[month - 1])])),
+  ]);
+  const rows = [...byYear.entries()].map(([year, months]) => el("tr", {}, [
+    el("th", {}, [text(year)]),
+    ...indexes.map((month) => {
+      const entry = months[month - 1];
+      const classes = [];
+      if (entry && entry.key === peakKey) classes.push("is-peak");
+      if (entry && entry.key === activeKey) classes.push("is-active");
+      return el("td", {
+        className: classes.join(" "),
+        "data-month": entry ? entry.key : "",
+      }, [text(entry ? formatNumber(entry.count) : "")]);
+    }),
+  ]));
+  return el("table", { className: "month-table" }, [
+    el("thead", {}, [head]),
+    el("tbody", {}, rows),
+  ]);
+}
+
+function renderOverview() {
   const venue = state.detail;
+  overview.hidden = false;
+  mapHint.hidden = true;
   if (!venue) {
-    detail.replaceChildren(el("p", { className: "empty-detail" }, [text("Select a venue to open its briefing.")]));
+    overview.replaceChildren(el("p", { className: "empty-detail" }, [text("Loading briefing…")]));
     return;
   }
   const months = filledMonths(venue.crime_by_month);
@@ -441,7 +896,7 @@ function renderDetail() {
     (best, entry) => (entry.count > best.count ? entry : best),
     months[0],
   );
-  const categories = categoryRows(venue.crime_by_category);
+  const categories = categoryRows(venue.crime_by_category, venue.crime_count_nearby, { limit: 6, share: false });
   const flags = venue.data_quality_flags.map((flag) => (
     el("span", { className: "flag" }, [text(FLAG_LABELS[flag] || flag)])
   ));
@@ -453,16 +908,16 @@ function renderDetail() {
   const buses = venue.bus_stops_nearby.lines.map((line) => (
     el("span", { className: "pill" }, [text(line)])
   ));
-
-  detail.hidden = false;
-  mapHint.hidden = true;
-  detail.replaceChildren(
+  overview.replaceChildren(
     el("div", { className: "detail-head" }, [
       el("div", {}, [
-        el("p", { className: "zone" }, [text(`${venue.olympic_zone} · ${venue.sports}`)]),
-        el("h2", { className: "detail-title", id: "detail-heading" }, [text(venue.venue_name)]),
+        el("p", { className: "zone" }, [text(`${venue.olympic_zone} · ${formatSports(venue.sports)}`)]),
+        el("h2", { className: "detail-title", id: "overview-heading" }, [text(venue.venue_name)]),
       ]),
-      el("button", { className: "close-briefing", type: "button", "data-close-briefing": "true" }, [text("Close")]),
+      el("div", { className: "detail-actions" }, [
+        el("button", { className: "expand-briefing", type: "button", "data-expand-briefing": "true" }, [text("Expand")]),
+        el("button", { className: "close-briefing", type: "button", "data-close-briefing": "true" }, [text("Close")]),
+      ]),
     ]),
     el("p", { className: "address" }, [text(`${venue.address}, ${venue.city}`)]),
     el("div", { className: "stats" }, [
@@ -477,7 +932,7 @@ function renderDetail() {
       ? categories
       : [el("p", { className: "muted" }, [text("No incidents in this buffer.")])]),
     el("h3", { className: "section-title" }, [text("Incidents by month")]),
-    monthChart(venue.crime_by_month),
+    overviewChart(venue.crime_by_month),
     el("p", { className: "chart-caption muted" }, [
       text(peak ? `Peak ${peak.key}: ${formatNumber(peak.count)} incidents.` : "No dated incidents."),
     ]),
@@ -493,8 +948,219 @@ function renderDetail() {
       stationCard("Police", venue.nearest_police_station),
       stationCard("Hospital", venue.nearest_hospital),
     ]),
-    el("p", { className: "footnote" }, [text(state.meta.jurisdiction_method)]),
+    el("p", { className: "footnote" }, [text(state.meta?.jurisdiction_method || "")]),
   );
+}
+
+function renderDetail() {
+  const venue = state.detail;
+  if (!venue) {
+    detail.replaceChildren(el("p", { className: "empty-detail" }, [text("Select a venue to open its briefing.")]));
+    return;
+  }
+  const months = filledMonths(venue.crime_by_month);
+  const peak = months.reduce(
+    (best, entry) => (entry.count > best.count ? entry : best),
+    months[0],
+  );
+  const years = yearTotals(months);
+  const peakYear = years.reduce((best, entry) => (entry[1] > best[1] ? entry : best), years[0] || ["", 0]);
+  const total = venue.crime_count_nearby;
+  const typeCount = Object.keys(venue.crime_by_category || {}).length;
+  const flags = venue.data_quality_flags.map((flag) => (
+    el("span", { className: "flag" }, [text(FLAG_LABELS[flag] || flag)])
+  ));
+  const rail = venue.rail_stations_nearby.stations.map((station) => (
+    el("li", {}, [
+      el("strong", {}, [text(station.station_name)]),
+      text(` · ${station.lines} · ${formatDistance(station.distance_m)}`),
+    ])
+  ));
+  const buses = venue.bus_stops_nearby.lines.map((line) => (
+    el("span", { className: "pill" }, [text(line)])
+  ));
+  let tableYear = "all";
+  let fromMonth = 1;
+  let toMonth = 12;
+  let selectedKey = peak?.key || "";
+  let categoriesExpanded = false;
+  let monthExpanded = false;
+
+  const categoryList = el("div", { className: "category-list" });
+  const categoryToggle = el("button", { className: "show-more", type: "button" }, [text("Show more")]);
+  const monthTitle = el("h3", { className: "section-title" });
+  const monthCount = el("p", { className: "month-readout" });
+  const monthList = el("div", { className: "category-list" });
+  const monthToggle = el("button", { className: "show-more", type: "button" }, [text("Show more")]);
+  const monthPanel = el("section", { className: "month-detail", "aria-live": "polite" }, [
+    monthTitle,
+    monthCount,
+    monthList,
+    monthToggle,
+  ]);
+  const tableWrap = el("div", { className: "month-table-wrap" });
+  const yearSelect = el("select", { "aria-label": "Year" }, [
+    el("option", { value: "all" }, [text("All years")]),
+    ...years.map(([year]) => el("option", { value: year }, [text(year)])),
+  ]);
+  const fromSelect = el("select", { "aria-label": "From month" }, MONTH_NAMES.map((name, index) => (
+    el("option", { value: String(index + 1) }, [text(name)])
+  )));
+  const toSelect = el("select", { "aria-label": "To month" }, MONTH_NAMES.map((name, index) => (
+    el("option", { value: String(index + 1) }, [text(name)])
+  )));
+  toSelect.value = "12";
+
+  function paintCategories() {
+    const rows = categoryRows(venue.crime_by_category, total, {
+      limit: categoriesExpanded ? undefined : 5,
+    });
+    categoryList.replaceChildren(...(rows.length
+      ? rows
+      : [el("p", { className: "muted" }, [text("No incidents in this buffer.")])]));
+    categoryToggle.hidden = typeCount <= 5;
+    categoryToggle.textContent = categoriesExpanded ? "Show less" : "Show more";
+  }
+
+  function paintMonth() {
+    const entry = months.find((item) => item.key === selectedKey);
+    if (!entry) {
+      monthTitle.textContent = "Month";
+      monthCount.textContent = "Select a month.";
+      monthList.replaceChildren();
+      monthToggle.hidden = true;
+      return;
+    }
+    const byCategory = (venue.crime_categories_by_month || {})[entry.key] || {};
+    const monthTypes = Object.keys(byCategory).length;
+    const rows = categoryRows(byCategory, entry.count, {
+      limit: monthExpanded ? undefined : 5,
+    });
+    monthTitle.textContent = monthLabel(entry.key);
+    monthCount.textContent = `${formatNumber(entry.count)} incidents`;
+    monthList.replaceChildren(...(rows.length
+      ? rows
+      : [el("p", { className: "muted" }, [text("No typed incidents in this month.")])]));
+    monthToggle.hidden = monthTypes <= 5;
+    monthToggle.textContent = monthExpanded ? "Show less" : "Show more";
+  }
+
+  function markMonth(key) {
+    detail.querySelectorAll("[data-month]").forEach((node) => {
+      const active = node.dataset.month === key;
+      node.classList.toggle("is-active", active);
+      if (node.tagName === "rect") {
+        node.setAttribute("fill", node.dataset.month === peak?.key ? "#DF0024" : (active ? "#1a1a1a" : "#0085C7"));
+      }
+    });
+  }
+
+  function paintTable() {
+    const filtered = months.filter((entry) => {
+      const [year, month] = entry.key.split("-");
+      const monthNumber = Number(month);
+      if (tableYear !== "all" && year !== tableYear) return false;
+      return monthNumber >= fromMonth && monthNumber <= toMonth;
+    });
+    if (!filtered.length) {
+      tableWrap.replaceChildren(el("p", { className: "muted" }, [text("No incidents in this range.")]));
+      return;
+    }
+    const table = monthTable(filtered, peak?.key, selectedKey, fromMonth, toMonth);
+    table.addEventListener("click", (event) => {
+      const cell = event.target.closest("td[data-month]");
+      if (cell?.dataset.month) selectMonth(cell.dataset.month);
+    });
+    tableWrap.replaceChildren(table);
+  }
+
+  function selectMonth(key) {
+    if (key !== selectedKey) monthExpanded = false;
+    selectedKey = key;
+    markMonth(key);
+    paintMonth();
+  }
+
+  function readRange(changed) {
+    let nextFrom = Number(fromSelect.value);
+    let nextTo = Number(toSelect.value);
+    if (nextFrom > nextTo) {
+      if (changed === "from") nextTo = nextFrom;
+      else nextFrom = nextTo;
+      fromSelect.value = String(nextFrom);
+      toSelect.value = String(nextTo);
+    }
+    tableYear = yearSelect.value;
+    fromMonth = nextFrom;
+    toMonth = nextTo;
+    paintTable();
+    markMonth(selectedKey);
+  }
+
+  categoryToggle.addEventListener("click", () => {
+    categoriesExpanded = !categoriesExpanded;
+    paintCategories();
+  });
+  monthToggle.addEventListener("click", () => {
+    monthExpanded = !monthExpanded;
+    paintMonth();
+  });
+  yearSelect.addEventListener("change", () => readRange("year"));
+  fromSelect.addEventListener("change", () => readRange("from"));
+  toSelect.addEventListener("change", () => readRange("to"));
+
+  const chart = monthChart(months, peak?.key, selectMonth);
+  paintCategories();
+  paintTable();
+
+  detail.hidden = false;
+  detail.scrollTop = 0;
+  detail.replaceChildren(el("div", { className: "venue-sheet" }, [
+    el("button", { className: "venue-back", type: "button", "data-close-briefing": "true" }, [text("Back to map")]),
+    el("p", { className: "zone" }, [text(`${venue.olympic_zone} · ${formatSports(venue.sports)}`)]),
+    el("h2", { className: "detail-title", id: "detail-heading" }, [text(venue.venue_name)]),
+    el("p", { className: "address" }, [text(`${venue.address}, ${venue.city}`)]),
+    el("div", { className: "stats" }, [
+      stat("Incidents", formatNumber(total), "inside the buffer, 2020–2024"),
+      stat("Density", formatNumber(venue.crime_per_km2), "per km²"),
+      stat("Busiest month", peak ? monthLabel(peak.key) : "None", peak ? `${formatNumber(peak.count)} incidents` : "No dated incidents"),
+      stat("Buffer", `${Math.round(venue.buffer_radius_m)} m`, jurisdictionLabel(venue.lapd_jurisdiction)),
+    ]),
+    flags.length ? el("div", { className: "flags" }, flags) : el("span"),
+    el("h3", { className: "section-title" }, [text("Incidents by month")]),
+    el("p", { className: "muted" }, [text("Click a bar or a table cell to see that month. Red is the busiest month.")]),
+    years.length ? el("div", { className: "year-row" }, years.map(([year, count]) => (
+      el("article", { className: year === peakYear[0] ? "year-card is-peak" : "year-card" }, [
+        el("span", {}, [text(year)]),
+        el("strong", {}, [text(formatNumber(count))]),
+      ])
+    ))) : el("span"),
+    chart,
+    monthPanel,
+    el("div", { className: "table-filters" }, [
+      el("label", {}, [text("Year"), yearSelect]),
+      el("label", {}, [text("From"), fromSelect]),
+      el("label", {}, [text("To"), toSelect]),
+    ]),
+    tableWrap,
+    el("h3", { className: "section-title" }, [text("Incident types")]),
+    categoryList,
+    categoryToggle,
+    el("h3", { className: "section-title" }, [text(`Rail · ${formatNumber(venue.rail_stations_nearby.count)} ${venue.rail_stations_nearby.count === 1 ? "station" : "stations"}`)]),
+    rail.length ? el("ul", { className: "place-list" }, rail) : el("p", { className: "muted" }, [text("None in the buffer.")]),
+    el("h3", { className: "section-title" }, [
+      text(`Bus · ${formatNumber(venue.bus_stops_nearby.count)} stops · ${venue.bus_stops_nearby.lines.length} lines`),
+    ]),
+    el("div", { className: "pills" }, buses.length ? buses : [el("span", { className: "muted" }, [text("None in the buffer.")])]),
+    el("h3", { className: "section-title" }, [text("Nearest response and care")]),
+    el("div", { className: "station-grid" }, [
+      stationCard("Fire", venue.nearest_fire_station),
+      stationCard("Police", venue.nearest_police_station),
+      stationCard("Hospital", venue.nearest_hospital),
+    ]),
+    el("p", { className: "footnote" }, [text(state.meta.jurisdiction_method)]),
+  ]));
+  if (peak) selectMonth(peak.key);
 }
 
 function stat(label, value, note) {
@@ -505,7 +1171,17 @@ function stat(label, value, note) {
   ]);
 }
 
-async function selectVenue(venueId) {
+async function selectVenue(venueId, options = {}) {
+  const expand = Boolean(options.expand);
+  if (state.detail?.venue_id === venueId) {
+    state.selectedId = venueId;
+    renderOverview();
+    renderRoster();
+    renderChatContext();
+    if (expand) openVenuePage({ history: options.history !== false });
+    return;
+  }
+  if (!expand) closeVenuePage({ history: false });
   const token = ++requestToken;
   const card = state.venues.find((venue) => venue.venue_id === venueId);
   if (card && state.zone !== "all" && card.olympic_zone !== state.zone) {
@@ -517,31 +1193,111 @@ async function selectVenue(venueId) {
   renderRoster();
   renderMap();
   renderChatContext();
-  detail.hidden = false;
-  mapHint.hidden = true;
-  detail.replaceChildren(el("p", { className: "empty-detail" }, [text("Loading briefing…")]));
-  if (window.innerWidth <= 980) detail.scrollIntoView({ block: "start" });
+  renderOverview();
   try {
     const venue = await fetchJson(`/api/venues/${encodeURIComponent(venueId)}`);
     if (token !== requestToken) return;
     state.detail = venue;
-    renderDetail();
+    renderOverview();
+    if (expand || !detail.hidden) openVenuePage({ history: options.history !== false });
   } catch (error) {
     if (token !== requestToken) return;
-    detail.replaceChildren(el("p", { className: "empty-detail" }, [text(error.message)]));
+    overview.replaceChildren(
+      el("div", { className: "detail-head" }, [
+        el("h2", { className: "detail-title", id: "overview-heading" }, [text("Briefing")]),
+        el("button", { className: "close-briefing", type: "button", "data-close-briefing": "true" }, [text("Close")]),
+      ]),
+      el("p", { className: "empty-detail" }, [text(error.message)]),
+    );
+  }
+}
+
+let crimeRequest = 0;
+
+function bindFacilityViews() {
+  for (const name of Object.keys(state.layerViews)) {
+    const select = document.querySelector(`#${name}-view`);
+    if (!select) continue;
+    select.addEventListener("change", () => {
+      state.layerViews[name] = select.value;
+      if (state.layers[name]) syncOverlay();
+    });
+  }
+}
+
+function bindCrimeView() {
+  const select = document.querySelector("#crime-view");
+  if (!select) return;
+  select.addEventListener("change", () => {
+    state.crimeView = select.value;
+    loadCrimeHeat(select.value);
+  });
+}
+
+async function loadCrimeHeat(view = state.crimeView || "all") {
+  const crimeToggle = document.querySelector('#layer-toggles input[data-layer="crime"]');
+  const token = ++crimeRequest;
+  state.crimeView = view;
+  const cached = state.crimeCache[view];
+  if (cached) {
+    state.crimePoints = cached.points;
+    state.crimeHot = Boolean(cached.hot);
+    fillCrimeView(cached.options);
+    if (state.layers.crime) refreshCrimeLayer();
+    return;
+  }
+  try {
+    const crimeHeat = await fetchJson(`/api/map/crime?view=${encodeURIComponent(view)}`);
+    if (token !== crimeRequest) return;
+    state.crimeCache[view] = crimeHeat;
+    state.crimePoints = crimeHeat.points;
+    state.crimeHot = Boolean(crimeHeat.hot);
+    fillCrimeView(crimeHeat.options);
+    if (state.layers.crime) refreshCrimeLayer();
+  } catch (error) {
+    if (token !== crimeRequest) return;
+    if (view !== "all") {
+      if (!mapHint.hidden) mapHint.textContent = `Could not load that crime view: ${error.message}`;
+      return;
+    }
+    state.layers.crime = false;
+    state.crimePoints = null;
+    if (crimeToggle) {
+      crimeToggle.checked = false;
+      crimeToggle.disabled = true;
+    }
+    const select = document.querySelector("#crime-view");
+    if (select) select.disabled = true;
+    if (!mapHint.hidden) mapHint.textContent = `Could not load city crime: ${error.message}`;
+    refreshCrimeLayer();
   }
 }
 
 async function init() {
+  bindLayerToggles();
+  bindCrimeView();
+  bindFacilityViews();
   try {
-    const [metaData, list, mapData] = await Promise.all([
+    const [metaData, list, mapData, facilities] = await Promise.all([
       fetchJson("/api/meta"),
       fetchJson("/api/venues"),
       fetchJson("/api/map"),
+      fetchJson("/api/map/layers").catch(() => null),
     ]);
     state.meta = metaData;
     state.venues = list.venues;
     state.map = mapData;
+    state.facilities = facilities;
+    if (facilities) {
+      for (const name of Object.keys(state.layerViews)) {
+        fillLayerView(name, facilities[name]?.options);
+      }
+    }
+    if (!facilities) {
+      document.querySelectorAll("#layer-toggles input[data-layer]").forEach((input) => {
+        if (input.dataset.layer !== "venues" && input.dataset.layer !== "crime") input.disabled = true;
+      });
+    }
     renderMeta();
     renderZoneOptions();
     renderRoster();
@@ -553,11 +1309,22 @@ async function init() {
       mapHint.textContent = error.message;
       mapHint.style.pointerEvents = "auto";
     }
+    loadCrimeHeat();
   } catch (error) {
-    metaStrip.textContent = error.message;
-    detail.hidden = false;
-    detail.replaceChildren(el("p", { className: "empty-detail" }, [text(error.message)]));
+    if (metaStrip) metaStrip.textContent = error.message;
+    if (mapHint) {
+      mapHint.hidden = false;
+      mapHint.textContent = error.message;
+    }
   }
+  const routed = venueIdFromLocation();
+  if (routed) selectVenue(routed, { expand: true, history: false });
 }
+
+window.addEventListener("popstate", () => {
+  const routed = venueIdFromLocation();
+  if (routed) selectVenue(routed, { expand: true, history: false });
+  else closeVenuePage({ history: false });
+});
 
 init();

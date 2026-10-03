@@ -80,8 +80,10 @@ Default buffer is 800 m. Pass `--radius-m` to change it. The API reloads the JSO
 
 Click a marker or a venue in the list to zoom in and open its briefing under the map. The selected venue's crime heatmap and analysis radius appear on the map. Close returns to the full venue view. Configure a referrer-restricted Google Maps JavaScript API key before starting the server:
 
+Put the key in a repo-root `.env` file (`GOOGLE_MAPS_API_KEY=...`). The server reads that file on startup. Restart the server after adding or changing the key.
+
 ```bash
-GOOGLE_MAPS_API_KEY=your_key_here python -m uvicorn backend.main:app --reload
+python -m uvicorn backend.main:app --reload
 ```
 
 Useful endpoints: `/api/health`, `/api/meta`, `/api/map`, `/api/venues`, `/api/venues/{venue_id}`, `/api/venues/{venue_id}/crime-points`.

@@ -214,7 +214,10 @@ def load_rail_stations(path: Path) -> tuple[pd.DataFrame, LoadReport]:
     report = LoadReport(name="rail_stations", rows_in=len(raw), rows_out=0)
     cleaned, dropped = _drop_invalid_coordinates(raw, "latitude", "longitude")
     report.dropped_invalid_coords = dropped
-    out = cleaned[["station_id", "station_name", "lines", "latitude", "longitude"]].copy()
+    columns = ["station_id", "station_name", "lines", "latitude", "longitude"]
+    if "rail_mode" in cleaned.columns:
+        columns.insert(3, "rail_mode")
+    out = cleaned[columns].copy()
     out["lines"] = out["lines"].fillna("").astype(str)
     report.rows_out = len(out)
     return out.reset_index(drop=True), report
@@ -225,7 +228,11 @@ def load_bus_stops(path: Path) -> tuple[pd.DataFrame, LoadReport]:
     report = LoadReport(name="bus_stops", rows_in=len(raw), rows_out=0)
     cleaned, dropped = _drop_invalid_coordinates(raw, "latitude", "longitude")
     report.dropped_invalid_coords = dropped
-    out = cleaned[["stop_id", "bus_line", "latitude", "longitude"]].copy()
+    columns = ["stop_id", "bus_line", "latitude", "longitude"]
+    for extra in ("station_name", "service_type", "rapid_service"):
+        if extra in cleaned.columns:
+            columns.insert(1 if extra == "station_name" else len(columns) - 2, extra)
+    out = cleaned[columns].copy()
     out["bus_line"] = out["bus_line"].fillna("").astype(str)
     report.rows_out = len(out)
     return out.reset_index(drop=True), report
@@ -242,7 +249,11 @@ def load_fire_stations(path: Path) -> tuple[pd.DataFrame, LoadReport]:
         raw = raw.loc[is_fire].copy()
     cleaned, dropped = _drop_invalid_coordinates(raw, "latitude", "longitude")
     report.dropped_invalid_coords = dropped
-    out = cleaned[["station_id", "station_name", "latitude", "longitude"]].copy()
+    columns = ["station_id", "station_name", "latitude", "longitude"]
+    for extra in ("address", "zip_code"):
+        if extra in cleaned.columns:
+            columns.insert(2, extra)
+    out = cleaned[columns].copy()
     report.rows_out = len(out)
     return out.reset_index(drop=True), report
 
@@ -309,9 +320,11 @@ def load_police_stations(path: Path) -> tuple[pd.DataFrame, LoadReport]:
         raw = raw.loc[local].copy()
     cleaned, dropped = _drop_invalid_coordinates(raw, "latitude", "longitude")
     report.dropped_invalid_coords = dropped
-    out = cleaned[
-        ["station_id", "station_name", "agency", "station_type", "latitude", "longitude"]
-    ].copy()
+    columns = ["station_id", "station_name", "agency", "station_type", "latitude", "longitude"]
+    for extra in ("address", "city", "zip_code"):
+        if extra in cleaned.columns:
+            columns.insert(4, extra)
+    out = cleaned[columns].copy()
     out["agency"] = out["agency"].fillna("").astype(str).str.strip()
     report.rows_out = len(out)
     return out.reset_index(drop=True), report
