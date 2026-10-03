@@ -39,6 +39,7 @@ const state = {
     bus: false,
   },
   layerInfo: null,
+  tipKey: "",
   venues: [],
   selectedId: null,
   detail: null,
@@ -493,6 +494,43 @@ function facilityPopup(point) {
   return `<div class="venue-popup">${lines.join("")}</div>`;
 }
 
+function facilityPoint(info) {
+  const point = info?.object;
+  if (!point || !String(info.layer?.id || "").startsWith("facility-")) return null;
+  return point;
+}
+
+function hideFacilityTip() {
+  const tip = document.querySelector("#facility-tip");
+  if (!tip) return;
+  tip.hidden = true;
+  state.tipKey = "";
+}
+
+function showFacilityTip(info) {
+  const tip = document.querySelector("#facility-tip");
+  const point = facilityPoint(info);
+  if (!tip || !point || info.x == null || info.y == null) {
+    hideFacilityTip();
+    return;
+  }
+  const key = `${point.name}|${point.location || ""}|${point.detail || ""}`;
+  if (state.tipKey !== key) {
+    tip.innerHTML = facilityPopup(point);
+    state.tipKey = key;
+  }
+  tip.hidden = false;
+  const frame = tip.parentElement;
+  const margin = 8;
+  const offset = 14;
+  let left = info.x + offset;
+  let top = info.y + offset;
+  if (left + tip.offsetWidth > frame.clientWidth - margin) left = info.x - tip.offsetWidth - offset;
+  if (top + tip.offsetHeight > frame.clientHeight - margin) top = info.y - tip.offsetHeight - offset;
+  tip.style.left = `${Math.max(margin, left)}px`;
+  tip.style.top = `${Math.max(margin, top)}px`;
+}
+
 function syncOverlay() {
   if (!state.heatOverlay) return;
   overlayZoom = Math.round(mapZoom() * 2) / 2;
@@ -503,9 +541,10 @@ function syncOverlay() {
   state.heatOverlay.setProps({
     layers,
     getCursor: ({ object }) => (object ? "pointer" : "grab"),
+    onHover: (info) => showFacilityTip(info),
     onClick: (info) => {
-      const point = info.object;
-      if (!point || !String(info.layer?.id || "").startsWith("facility-")) return;
+      const point = facilityPoint(info);
+      if (!point) return;
       if (!state.layerInfo) state.layerInfo = new google.maps.InfoWindow();
       state.layerInfo.setContent(facilityPopup(point));
       state.layerInfo.open({
@@ -522,6 +561,7 @@ function refreshCrimeLayer() {
 }
 
 function bindLayerToggles() {
+  document.querySelector("#map-viewport")?.addEventListener("mouseleave", hideFacilityTip);
   document.querySelectorAll("#layer-toggles input[data-layer]").forEach((input) => {
     input.addEventListener("change", () => {
       const name = input.dataset.layer;
@@ -534,6 +574,7 @@ function bindLayerToggles() {
       } else {
         const select = document.querySelector(`#${name}-view`);
         if (select) select.disabled = !input.checked;
+        hideFacilityTip();
         syncOverlay();
       }
     });
