@@ -53,7 +53,8 @@ const rosterList = document.querySelector("#roster-list");
 const zoneFilter = document.querySelector("#zone-filter");
 const sortMode = document.querySelector("#sort-mode");
 const metaStrip = document.querySelector("#meta-strip");
-const detail = document.querySelector("#detail");
+const overview = document.querySelector("#detail");
+const detail = document.querySelector("#venue-page");
 const mapFrame = document.querySelector("#map-frame");
 const mapPanel = document.querySelector(".map-panel");
 const mapHint = document.querySelector("#map-hint");
@@ -91,6 +92,12 @@ function syncHeaderHeight() {
   if (header) document.documentElement.style.setProperty("--header-h", `${header.offsetHeight}px`);
 }
 
+function resizeMap() {
+  const map = state.googleMap;
+  if (!map || !window.google?.maps?.event) return;
+  google.maps.event.trigger(map, "resize");
+}
+
 function setRosterCollapsed(collapsed) {
   appShell.classList.toggle("roster-collapsed", collapsed);
   roster.setAttribute("aria-hidden", collapsed ? "true" : "false");
@@ -98,7 +105,7 @@ function setRosterCollapsed(collapsed) {
   else roster.removeAttribute("inert");
   rosterToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
   rosterToggleLabel.textContent = collapsed ? "Show venues" : "Hide venues";
-  window.setTimeout(() => state.googleMap?.trigger("resize"), 220);
+  window.setTimeout(resizeMap, 220);
 }
 
 rosterToggle.addEventListener("click", () => {
@@ -130,8 +137,13 @@ rosterList.addEventListener("click", (event) => {
   selectVenue(card.dataset.venueId);
 });
 
-detail.addEventListener("click", (event) => {
+overview.addEventListener("click", (event) => {
   if (event.target.closest("[data-close-briefing]")) clearSelection();
+  if (event.target.closest("[data-expand-briefing]")) openVenuePage();
+});
+
+detail.addEventListener("click", (event) => {
+  if (event.target.closest("[data-close-briefing]")) closeVenuePage();
 });
 
 zoneFilter.addEventListener("change", () => {
@@ -329,13 +341,7 @@ function renderMap() {
       opacity: visible ? 1 : 0.35,
       zIndex: selected ? 10 : 1,
     });
-    const infoWindow = new google.maps.InfoWindow({
-      content: `<div class="venue-popup"><strong>${escapeHtml(marker.venue_name)}</strong><small>${formatNumber(marker.crime_per_km2)} incidents / km²</small></div>`,
-    });
-    pin.addListener("click", () => {
-      infoWindow.open({ map: state.googleMap, anchor: pin });
-      selectVenue(marker.venue_id);
-    });
+    pin.addListener("click", () => selectVenue(marker.venue_id));
     state.venueMarkers.push(pin);
     bounds.push([marker.latitude, marker.longitude]);
   }
@@ -354,7 +360,7 @@ function renderMap() {
   }
   syncBuffer();
   refreshCrimeLayer();
-  setTimeout(() => state.googleMap?.trigger("resize"), 50);
+  setTimeout(resizeMap, 50);
 }
 
 function setVenueLayerVisible(visible) {
@@ -628,7 +634,7 @@ window.addEventListener("resize", () => {
     rosterNarrow = narrow;
     setRosterCollapsed(narrow);
   }
-  state.googleMap?.trigger("resize");
+  resizeMap();
 });
 
 function renderChatContext() {
@@ -642,11 +648,48 @@ function renderChatContext() {
   chatContext.textContent = `Briefing open: ${venue.venue_name}. Questions can be about that venue or about the city as a whole.`;
 }
 
-function clearSelection() {
+function venueIdFromLocation() {
+  const match = location.hash.match(/^#\/venue\/([A-Za-z0-9_-]+)$/);
+  return match ? match[1] : null;
+}
+
+function rememberVenue(venueId) {
+  const next = `#/venue/${venueId}`;
+  if (location.hash === next) return;
+  history.pushState({ venue: venueId }, "", next);
+}
+
+function forgetVenue() {
+  if (!location.hash.startsWith("#/venue/")) return;
+  history.pushState({}, "", `${location.pathname}${location.search}`);
+}
+
+function closeVenuePage(options = {}) {
+  if (options.history !== false) forgetVenue();
+  detail.hidden = true;
+  resizeMap();
+}
+
+function openVenuePage(options = {}) {
+  const venueId = state.detail?.venue_id || state.selectedId;
+  if (!venueId) return;
+  if (options.history !== false) rememberVenue(venueId);
+  if (!state.detail) {
+    detail.hidden = false;
+    detail.replaceChildren(el("div", { className: "venue-sheet" }, [
+      el("p", { className: "empty-detail" }, [text("Loading briefing…")]),
+    ]));
+    return;
+  }
+  renderDetail();
+}
+
+function clearSelection(options = {}) {
   requestToken += 1;
+  closeVenuePage(options);
   state.selectedId = null;
   state.detail = null;
-  detail.hidden = true;
+  overview.hidden = true;
   mapHint.hidden = false;
   renderRoster();
   renderMap();
@@ -673,7 +716,73 @@ function filledMonths(byMonth) {
   return entries;
 }
 
-function monthChart(byMonth) {
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function monthLabel(key) {
+  const [year, month] = key.split("-");
+  return `${MONTH_NAMES[Number(month) - 1]} ${year}`;
+}
+
+function monthChart(entries, peakKey, onFocus) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "chart");
+  svg.setAttribute("viewBox", "0 0 960 200");
+  svg.setAttribute("role", "img");
+  if (!entries.length) {
+    svg.setAttribute("aria-label", "No dated incidents in this buffer");
+    return svg;
+  }
+  const max = Math.max(...entries.map((entry) => entry.count), 1);
+  const peak = entries.find((entry) => entry.key === peakKey) || entries[0];
+  svg.setAttribute(
+    "aria-label",
+    `Monthly incidents from ${monthLabel(entries[0].key)} to ${monthLabel(entries[entries.length - 1].key)}. Peak ${monthLabel(peak.key)} with ${formatNumber(peak.count)}.`,
+  );
+  const width = 960 / entries.length;
+  entries.forEach((entry, index) => {
+    const height = Math.max((entry.count / max) * 168, entry.count ? 2 : 0);
+    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    rect.setAttribute("x", String(index * width + 0.6));
+    rect.setAttribute("y", String(176 - height));
+    rect.setAttribute("width", String(Math.max(width - 1.2, 0.6)));
+    rect.setAttribute("height", String(height));
+    rect.setAttribute("fill", entry.key === peakKey ? "#DF0024" : "#0085C7");
+    rect.dataset.month = entry.key;
+    rect.addEventListener("pointerenter", () => onFocus(entry.key));
+    svg.append(rect);
+    if (entry.key.endsWith("-01")) {
+      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      label.setAttribute("x", String(index * width));
+      label.setAttribute("y", "194");
+      label.setAttribute("fill", "#4e5963");
+      label.setAttribute("font-size", "11");
+      label.textContent = entry.key.slice(0, 4);
+      svg.append(label);
+    }
+  });
+  return svg;
+}
+
+function categoryRows(byCategory, total, options = {}) {
+  let entries = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+  if (options.limit) entries = entries.slice(0, options.limit);
+  const max = entries.length ? entries[0][1] : 1;
+  return entries.map(([category, count]) => {
+    const share = total ? Math.round((count / total) * 100) : 0;
+    const countLabel = options.share === false ? formatNumber(count) : `${formatNumber(count)} · ${share}%`;
+    return el("div", { className: "bar-row" }, [
+      el("div", {}, [
+        el("div", { className: "bar-label", title: category }, [text(category)]),
+        el("div", { className: "bar-track" }, [
+          el("div", { className: "bar-fill", style: `width: ${(count / max) * 100}%` }),
+        ]),
+      ]),
+      el("div", { className: "bar-count" }, [text(countLabel)]),
+    ]);
+  });
+}
+
+function overviewChart(byMonth) {
   const entries = filledMonths(byMonth);
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("class", "chart");
@@ -703,22 +812,6 @@ function monthChart(byMonth) {
   return svg;
 }
 
-function categoryRows(byCategory) {
-  const entries = Object.entries(byCategory)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6);
-  const max = entries.length ? entries[0][1] : 1;
-  return entries.map(([category, count]) => el("div", { className: "bar-row" }, [
-    el("div", {}, [
-      el("div", { className: "bar-label", title: category }, [text(category)]),
-      el("div", { className: "bar-track" }, [
-        el("div", { className: "bar-fill", style: `width: ${(count / max) * 100}%` }),
-      ]),
-    ]),
-    el("div", { className: "bar-count" }, [text(formatNumber(count))]),
-  ]));
-}
-
 function stationCard(label, station) {
   if (!station) {
     return el("article", { className: "station" }, [
@@ -734,13 +827,58 @@ function stationCard(label, station) {
   if (station.agency) {
     lines.push(el("p", { className: "muted" }, [text(station.agency)]));
   }
+  if (station.emergency_room) {
+    const room = String(station.emergency_room).toLowerCase() === "yes"
+      ? "Emergency room"
+      : `Emergency room: ${station.emergency_room}`;
+    lines.push(el("p", { className: "muted" }, [text(room)]));
+  }
+  const beds = Number(station.bed_capacity);
+  if (Number.isFinite(beds) && beds > 0) {
+    lines.push(el("p", { className: "muted" }, [text(`${formatNumber(beds)} beds`)]));
+  }
   return el("article", { className: "station" }, lines);
 }
 
-function renderDetail() {
+function yearTotals(entries) {
+  const totals = new Map();
+  for (const entry of entries) {
+    const year = entry.key.slice(0, 4);
+    totals.set(year, (totals.get(year) || 0) + entry.count);
+  }
+  return [...totals.entries()];
+}
+
+function monthTable(entries, peakKey) {
+  const byYear = new Map();
+  for (const entry of entries) {
+    const [year, month] = entry.key.split("-");
+    if (!byYear.has(year)) byYear.set(year, Array(12).fill(null));
+    byYear.get(year)[Number(month) - 1] = entry;
+  }
+  const head = el("tr", {}, [
+    el("th", {}, [text("Year")]),
+    ...MONTH_NAMES.map((name) => el("th", {}, [text(name)])),
+  ]);
+  const rows = [...byYear.entries()].map(([year, months]) => el("tr", {}, [
+    el("th", {}, [text(year)]),
+    ...months.map((entry) => el("td", {
+      className: entry && entry.key === peakKey ? "is-peak" : "",
+      "data-month": entry ? entry.key : "",
+    }, [text(entry ? formatNumber(entry.count) : "")])),
+  ]));
+  return el("table", { className: "month-table" }, [
+    el("thead", {}, [head]),
+    el("tbody", {}, rows),
+  ]);
+}
+
+function renderOverview() {
   const venue = state.detail;
+  overview.hidden = false;
+  mapHint.hidden = true;
   if (!venue) {
-    detail.replaceChildren(el("p", { className: "empty-detail" }, [text("Select a venue to open its briefing.")]));
+    overview.replaceChildren(el("p", { className: "empty-detail" }, [text("Loading briefing…")]));
     return;
   }
   const months = filledMonths(venue.crime_by_month);
@@ -748,7 +886,7 @@ function renderDetail() {
     (best, entry) => (entry.count > best.count ? entry : best),
     months[0],
   );
-  const categories = categoryRows(venue.crime_by_category);
+  const categories = categoryRows(venue.crime_by_category, venue.crime_count_nearby, { limit: 6, share: false });
   const flags = venue.data_quality_flags.map((flag) => (
     el("span", { className: "flag" }, [text(FLAG_LABELS[flag] || flag)])
   ));
@@ -760,16 +898,16 @@ function renderDetail() {
   const buses = venue.bus_stops_nearby.lines.map((line) => (
     el("span", { className: "pill" }, [text(line)])
   ));
-
-  detail.hidden = false;
-  mapHint.hidden = true;
-  detail.replaceChildren(
+  overview.replaceChildren(
     el("div", { className: "detail-head" }, [
       el("div", {}, [
         el("p", { className: "zone" }, [text(`${venue.olympic_zone} · ${formatSports(venue.sports)}`)]),
-        el("h2", { className: "detail-title", id: "detail-heading" }, [text(venue.venue_name)]),
+        el("h2", { className: "detail-title", id: "overview-heading" }, [text(venue.venue_name)]),
       ]),
-      el("button", { className: "close-briefing", type: "button", "data-close-briefing": "true" }, [text("Close")]),
+      el("div", { className: "detail-actions" }, [
+        el("button", { className: "expand-briefing", type: "button", "data-expand-briefing": "true" }, [text("Expand")]),
+        el("button", { className: "close-briefing", type: "button", "data-close-briefing": "true" }, [text("Close")]),
+      ]),
     ]),
     el("p", { className: "address" }, [text(`${venue.address}, ${venue.city}`)]),
     el("div", { className: "stats" }, [
@@ -784,7 +922,7 @@ function renderDetail() {
       ? categories
       : [el("p", { className: "muted" }, [text("No incidents in this buffer.")])]),
     el("h3", { className: "section-title" }, [text("Incidents by month")]),
-    monthChart(venue.crime_by_month),
+    overviewChart(venue.crime_by_month),
     el("p", { className: "chart-caption muted" }, [
       text(peak ? `Peak ${peak.key}: ${formatNumber(peak.count)} incidents.` : "No dated incidents."),
     ]),
@@ -800,8 +938,105 @@ function renderDetail() {
       stationCard("Police", venue.nearest_police_station),
       stationCard("Hospital", venue.nearest_hospital),
     ]),
-    el("p", { className: "footnote" }, [text(state.meta.jurisdiction_method)]),
+    el("p", { className: "footnote" }, [text(state.meta?.jurisdiction_method || "")]),
   );
+}
+
+function renderDetail() {
+  const venue = state.detail;
+  if (!venue) {
+    detail.replaceChildren(el("p", { className: "empty-detail" }, [text("Select a venue to open its briefing.")]));
+    return;
+  }
+  const months = filledMonths(venue.crime_by_month);
+  const peak = months.reduce(
+    (best, entry) => (entry.count > best.count ? entry : best),
+    months[0],
+  );
+  const years = yearTotals(months);
+  const peakYear = years.reduce((best, entry) => (entry[1] > best[1] ? entry : best), years[0] || ["", 0]);
+  const total = venue.crime_count_nearby;
+  const categories = categoryRows(venue.crime_by_category, total);
+  const flags = venue.data_quality_flags.map((flag) => (
+    el("span", { className: "flag" }, [text(FLAG_LABELS[flag] || flag)])
+  ));
+  const rail = venue.rail_stations_nearby.stations.map((station) => (
+    el("li", {}, [
+      el("strong", {}, [text(station.station_name)]),
+      text(` · ${station.lines} · ${formatDistance(station.distance_m)}`),
+    ])
+  ));
+  const buses = venue.bus_stops_nearby.lines.map((line) => (
+    el("span", { className: "pill" }, [text(line)])
+  ));
+  const readout = el("p", { className: "month-readout" }, [
+    text(peak ? `${monthLabel(peak.key)} · ${formatNumber(peak.count)} incidents` : "No dated incidents."),
+  ]);
+
+  function focusMonth(key) {
+    const entry = months.find((item) => item.key === key);
+    if (!entry) return;
+    readout.textContent = `${monthLabel(key)} · ${formatNumber(entry.count)} incidents`;
+    detail.querySelectorAll("[data-month]").forEach((node) => {
+      const active = node.dataset.month === key;
+      node.classList.toggle("is-active", active);
+      if (node.tagName === "rect") {
+        node.setAttribute("fill", node.dataset.month === peak?.key ? "#DF0024" : (active ? "#1a1a1a" : "#0085C7"));
+      }
+    });
+  }
+
+  const chart = monthChart(months, peak?.key, focusMonth);
+  const table = monthTable(months, peak?.key);
+  table.addEventListener("pointerover", (event) => {
+    const cell = event.target.closest("[data-month]");
+    if (cell?.dataset.month) focusMonth(cell.dataset.month);
+  });
+
+  detail.hidden = false;
+  detail.scrollTop = 0;
+  detail.replaceChildren(el("div", { className: "venue-sheet" }, [
+    el("button", { className: "venue-back", type: "button", "data-close-briefing": "true" }, [text("Back to map")]),
+    el("p", { className: "zone" }, [text(`${venue.olympic_zone} · ${formatSports(venue.sports)}`)]),
+    el("h2", { className: "detail-title", id: "detail-heading" }, [text(venue.venue_name)]),
+    el("p", { className: "address" }, [text(`${venue.address}, ${venue.city}`)]),
+    el("div", { className: "stats" }, [
+      stat("Incidents", formatNumber(total), "inside the buffer, 2020–2024"),
+      stat("Density", formatNumber(venue.crime_per_km2), "per km²"),
+      stat("Busiest month", peak ? monthLabel(peak.key) : "None", peak ? `${formatNumber(peak.count)} incidents` : "No dated incidents"),
+      stat("Buffer", `${Math.round(venue.buffer_radius_m)} m`, jurisdictionLabel(venue.lapd_jurisdiction)),
+    ]),
+    flags.length ? el("div", { className: "flags" }, flags) : el("span"),
+    el("h3", { className: "section-title" }, [text("Incidents by month")]),
+    el("p", { className: "muted" }, [text("LAPD reports inside the buffer. Red is the busiest month. Move across a bar or a cell to read that month.")]),
+    readout,
+    years.length ? el("div", { className: "year-row" }, years.map(([year, count]) => (
+      el("article", { className: year === peakYear[0] ? "year-card is-peak" : "year-card" }, [
+        el("span", {}, [text(year)]),
+        el("strong", {}, [text(formatNumber(count))]),
+      ])
+    ))) : el("span"),
+    chart,
+    el("div", { className: "month-table-wrap" }, [table]),
+    el("h3", { className: "section-title" }, [text(`Incident types · ${formatNumber(categories.length)}`)]),
+    el("div", { className: "category-list" }, categories.length
+      ? categories
+      : [el("p", { className: "muted" }, [text("No incidents in this buffer.")])]),
+    el("h3", { className: "section-title" }, [text(`Rail · ${formatNumber(venue.rail_stations_nearby.count)} ${venue.rail_stations_nearby.count === 1 ? "station" : "stations"}`)]),
+    rail.length ? el("ul", { className: "place-list" }, rail) : el("p", { className: "muted" }, [text("None in the buffer.")]),
+    el("h3", { className: "section-title" }, [
+      text(`Bus · ${formatNumber(venue.bus_stops_nearby.count)} stops · ${venue.bus_stops_nearby.lines.length} lines`),
+    ]),
+    el("div", { className: "pills" }, buses.length ? buses : [el("span", { className: "muted" }, [text("None in the buffer.")])]),
+    el("h3", { className: "section-title" }, [text("Nearest response and care")]),
+    el("div", { className: "station-grid" }, [
+      stationCard("Fire", venue.nearest_fire_station),
+      stationCard("Police", venue.nearest_police_station),
+      stationCard("Hospital", venue.nearest_hospital),
+    ]),
+    el("p", { className: "footnote" }, [text(state.meta.jurisdiction_method)]),
+  ]));
+  if (peak) focusMonth(peak.key);
 }
 
 function stat(label, value, note) {
@@ -812,7 +1047,17 @@ function stat(label, value, note) {
   ]);
 }
 
-async function selectVenue(venueId) {
+async function selectVenue(venueId, options = {}) {
+  const expand = Boolean(options.expand);
+  if (state.detail?.venue_id === venueId) {
+    state.selectedId = venueId;
+    renderOverview();
+    renderRoster();
+    renderChatContext();
+    if (expand) openVenuePage({ history: options.history !== false });
+    return;
+  }
+  if (!expand) closeVenuePage({ history: false });
   const token = ++requestToken;
   const card = state.venues.find((venue) => venue.venue_id === venueId);
   if (card && state.zone !== "all" && card.olympic_zone !== state.zone) {
@@ -824,18 +1069,22 @@ async function selectVenue(venueId) {
   renderRoster();
   renderMap();
   renderChatContext();
-  detail.hidden = false;
-  mapHint.hidden = true;
-  detail.replaceChildren(el("p", { className: "empty-detail" }, [text("Loading briefing…")]));
-  if (window.innerWidth <= 980) detail.scrollIntoView({ block: "start" });
+  renderOverview();
   try {
     const venue = await fetchJson(`/api/venues/${encodeURIComponent(venueId)}`);
     if (token !== requestToken) return;
     state.detail = venue;
-    renderDetail();
+    renderOverview();
+    if (expand || !detail.hidden) openVenuePage({ history: options.history !== false });
   } catch (error) {
     if (token !== requestToken) return;
-    detail.replaceChildren(el("p", { className: "empty-detail" }, [text(error.message)]));
+    overview.replaceChildren(
+      el("div", { className: "detail-head" }, [
+        el("h2", { className: "detail-title", id: "overview-heading" }, [text("Briefing")]),
+        el("button", { className: "close-briefing", type: "button", "data-close-briefing": "true" }, [text("Close")]),
+      ]),
+      el("p", { className: "empty-detail" }, [text(error.message)]),
+    );
   }
 }
 
@@ -939,9 +1188,19 @@ async function init() {
     loadCrimeHeat();
   } catch (error) {
     if (metaStrip) metaStrip.textContent = error.message;
-    detail.hidden = false;
-    detail.replaceChildren(el("p", { className: "empty-detail" }, [text(error.message)]));
+    if (mapHint) {
+      mapHint.hidden = false;
+      mapHint.textContent = error.message;
+    }
   }
+  const routed = venueIdFromLocation();
+  if (routed) selectVenue(routed, { expand: true, history: false });
 }
+
+window.addEventListener("popstate", () => {
+  const routed = venueIdFromLocation();
+  if (routed) selectVenue(routed, { expand: true, history: false });
+  else closeVenuePage({ history: false });
+});
 
 init();

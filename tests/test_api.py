@@ -22,6 +22,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(home.status_code, 200)
         self.assertIn("Safe Games LA", home.text)
         self.assertIn("Los Angeles venue safety intelligence", home.text)
+        self.assertIn('id="venue-page"', home.text)
 
     def test_venue_list_and_detail(self):
         listing = self.client.get("/api/venues")
