@@ -62,6 +62,16 @@
       <section class="map-panel" aria-labelledby="map-heading">
         <div class="panel-label">
           <h2 id="map-heading">Los Angeles</h2>
+          <fieldset class="layer-toggles" id="layer-toggles">
+            <legend>Map layers</legend>
+            <label><input type="checkbox" data-layer="venues" checked> Venues</label>
+            <label title="Incidents inside the selected venue's 800 m buffer"><input type="checkbox" data-layer="crime" checked> Crime</label>
+            <label><input type="checkbox" data-layer="fire"> <i class="swatch swatch-fire"></i> Fire</label>
+            <label><input type="checkbox" data-layer="hospitals"> <i class="swatch swatch-hospital"></i> Hospitals</label>
+            <label><input type="checkbox" data-layer="police"> <i class="swatch swatch-police"></i> Police</label>
+            <label><input type="checkbox" data-layer="rail"> <i class="swatch swatch-rail"></i> Rail</label>
+            <label title="About 12,000 stops. Off until you turn it on."><input type="checkbox" data-layer="bus"> <i class="swatch swatch-bus"></i> Bus</label>
+          </fieldset>
         </div>
         <div class="map-frame" id="map-frame">
           <div class="map-viewport" id="map-viewport">

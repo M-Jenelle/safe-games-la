@@ -298,6 +298,61 @@ select { width: 132px; }
   overflow: hidden;
 }
 
+.map-panel .panel-label {
+  align-items: center;
+}
+
+.map-panel .panel-label h2 { padding-bottom: 0; }
+
+.layer-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.layer-toggles legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.layer-toggles label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.layer-toggles input {
+  margin: 0;
+  accent-color: var(--navy);
+}
+
+.swatch {
+  width: 8px;
+  height: 8px;
+  display: inline-block;
+}
+
+.swatch-fire { background: #DF0024; }
+.swatch-hospital { background: #0085C7; }
+.swatch-police { background: #1a1a1a; }
+.swatch-rail { background: #009F3D; }
+.swatch-bus { background: #C89600; }
+
 .map-frame {
   position: relative;
   flex: 1 1 auto;

@@ -5,6 +5,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from pipeline.loaders import (
+    load_bus_stops,
+    load_fire_stations,
+    load_hospitals,
+    load_police_stations,
+    load_rail_stations,
+)
+from pipeline.run import resolve_data_dir
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SUMMARY_PATH = REPO_ROOT / "data" / "processed" / "venue_summary.json"
 POINTS_PATH = REPO_ROOT / "data" / "processed" / "crime_points_by_venue.json"
@@ -13,6 +22,8 @@ _summary: dict | None = None
 _summary_mtime: float | None = None
 _points: dict | None = None
 _points_mtime: float | None = None
+_layers: dict | None = None
+_layers_stamp: tuple[float, ...] | None = None
 
 
 class DatasetNotFound(FileNotFoundError):
@@ -134,6 +145,86 @@ def map_payload() -> dict:
         "labels": MAP_LABELS,
         "markers": markers,
     }
+
+
+def _layer_sources() -> dict[str, Path]:
+    data_dir = resolve_data_dir(REPO_ROOT)
+    return {
+        "fire": data_dir / "lafd_fire_stations.csv",
+        "hospitals": data_dir / "hospitals_in_LA.csv",
+        "police": data_dir / "la_county_police_stations.csv",
+        "rail": data_dir / "la_metro_rail_stations.csv",
+        "bus": data_dir / "la_metro_bus_stops.csv",
+    }
+
+
+def _point(row_id: str, name: str, latitude: float, longitude: float, detail: str = "") -> dict:
+    point = {
+        "id": row_id,
+        "name": name,
+        "latitude": round(float(latitude), 6),
+        "longitude": round(float(longitude), 6),
+    }
+    if detail:
+        point["detail"] = detail
+    return point
+
+
+def map_layers() -> dict:
+    """Citywide facility points for map toggles. Crime stays on the venue route."""
+    global _layers, _layers_stamp
+    sources = _layer_sources()
+    missing = [path.name for path in sources.values() if not path.exists()]
+    if missing:
+        names = ", ".join(missing)
+        raise DatasetNotFound(f"Missing map layer file(s): {names}")
+    stamp = tuple(path.stat().st_mtime for path in sources.values())
+    if _layers is not None and stamp == _layers_stamp:
+        return _layers
+
+    fire, _report = load_fire_stations(sources["fire"])
+    hospitals, _report = load_hospitals(sources["hospitals"])
+    police, _report = load_police_stations(sources["police"])
+    rail, _report = load_rail_stations(sources["rail"])
+    bus, _report = load_bus_stops(sources["bus"])
+    bus_stops = (
+        bus.groupby("stop_id", as_index=False)
+        .agg(
+            latitude=("latitude", "first"),
+            longitude=("longitude", "first"),
+            lines=("bus_line", lambda values: ", ".join(sorted({str(value) for value in values if str(value)}))),
+        )
+    )
+
+    def rows(frame, id_field: str, name_field: str, detail_field: str | None = None) -> list[dict]:
+        points = []
+        for row in frame.itertuples(index=False):
+            detail = ""
+            if detail_field is not None:
+                detail = str(getattr(row, detail_field) or "")
+            points.append(
+                _point(
+                    str(getattr(row, id_field)),
+                    str(getattr(row, name_field) or "Unnamed"),
+                    row.latitude,
+                    row.longitude,
+                    detail,
+                )
+            )
+        return points
+
+    _layers = {
+        "fire": rows(fire, "station_id", "station_name"),
+        "hospitals": rows(hospitals, "station_id", "station_name"),
+        "police": rows(police, "station_id", "station_name", "agency"),
+        "rail": rows(rail, "station_id", "station_name", "lines"),
+        "bus": [
+            _point(str(row.stop_id), "Bus stop", row.latitude, row.longitude, str(row.lines or ""))
+            for row in bus_stops.itertuples(index=False)
+        ],
+    }
+    _layers_stamp = stamp
+    return _layers
 
 
 def meta() -> dict:

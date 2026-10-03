@@ -20,11 +20,29 @@ from backend.store import (
     get_crime_points,
     get_venue,
     list_venues,
+    map_layers,
     map_payload,
     meta,
 )
 
-FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
+ROOT_DIR = Path(__file__).resolve().parents[1]
+FRONTEND_DIR = ROOT_DIR / "frontend"
+
+
+def _load_env_file() -> None:
+    """Read repo-root .env. A variable already set in the process wins."""
+    path = ROOT_DIR / ".env"
+    if not path.is_file():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+_load_env_file()
 
 app = FastAPI(
     title="Safe Games LA",
@@ -72,11 +90,21 @@ def read_meta() -> dict:
 
 @app.get("/api/map")
 def read_map() -> dict:
-    """Citywide venue markers. The heatmap layer is intentionally absent."""
+    """Citywide venue markers. Crime heat is loaded per selected venue."""
     try:
         return map_payload()
     except DatasetNotFound as exc:
         raise _missing(exc) from exc
+
+
+@app.get("/api/map/layers")
+def read_map_layers() -> dict:
+    """Fire, hospital, police, rail, and bus points for map toggles."""
+    try:
+        layers = map_layers()
+    except DatasetNotFound as exc:
+        raise _missing(exc) from exc
+    return {name: {"count": len(points), "points": points} for name, points in layers.items()}
 
 
 @app.get("/api/venues")

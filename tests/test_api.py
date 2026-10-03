@@ -77,6 +77,18 @@ class ApiTests(unittest.TestCase):
             self.assertGreaterEqual(marker["longitude"], bounds["west"])
             self.assertLessEqual(marker["longitude"], bounds["east"])
 
+    def test_map_layers(self):
+        response = self.client.get("/api/map/layers")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        for name in ("fire", "hospitals", "police", "rail", "bus"):
+            self.assertIn(name, body)
+            self.assertGreater(body[name]["count"], 0)
+            point = body[name]["points"][0]
+            self.assertIn("latitude", point)
+            self.assertIn("longitude", point)
+            self.assertIn("name", point)
+
     def test_meta_highlights(self):
         response = self.client.get("/api/meta")
         self.assertEqual(response.status_code, 200)
