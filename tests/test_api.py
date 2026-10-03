@@ -77,6 +77,40 @@ class ApiTests(unittest.TestCase):
             self.assertGreaterEqual(marker["longitude"], bounds["west"])
             self.assertLessEqual(marker["longitude"], bounds["east"])
 
+    def test_crime_heat_covers_the_city(self):
+        response = self.client.get("/api/map/crime")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["view"], "all")
+        self.assertGreater(body["incident_count"], 500_000)
+        self.assertGreater(body["location_count"], 20_000)
+        option_ids = {option["id"] for option in body["options"]}
+        self.assertIn("high", option_ids)
+        self.assertIn("venues", option_ids)
+        self.assertIn("type:theft", option_ids)
+        latitudes = [point["latitude"] for point in body["points"]]
+        longitudes = [point["longitude"] for point in body["points"]]
+        self.assertGreater(max(latitudes) - min(latitudes), 0.5)
+        self.assertGreater(max(longitudes) - min(longitudes), 0.5)
+
+    def test_crime_heat_views(self):
+        city = self.client.get("/api/map/crime?view=all").json()
+        high = self.client.get("/api/map/crime?view=high")
+        venues = self.client.get("/api/map/crime?view=venues")
+        theft = self.client.get("/api/map/crime?view=type:theft")
+        missing = self.client.get("/api/map/crime?view=type:not-a-type")
+        self.assertEqual(high.status_code, 200)
+        self.assertEqual(venues.status_code, 200)
+        self.assertEqual(theft.status_code, 200)
+        self.assertEqual(missing.status_code, 400)
+        high_body = high.json()
+        self.assertTrue(high_body["hot"])
+        self.assertLess(high_body["location_count"], city["location_count"])
+        self.assertGreater(min(point["weight"] for point in high_body["points"]), 1)
+        self.assertGreater(venues.json()["incident_count"], 1000)
+        self.assertLess(venues.json()["incident_count"], city["incident_count"])
+        self.assertGreater(theft.json()["incident_count"], 1000)
+
     def test_map_layers(self):
         response = self.client.get("/api/map/layers")
         self.assertEqual(response.status_code, 200)

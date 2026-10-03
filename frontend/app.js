@@ -19,7 +19,9 @@ const state = {
   bufferCircle: null,
   facilities: null,
   crimePoints: null,
-  crimeVenueId: null,
+  crimeView: "all",
+  crimeHot: false,
+  crimeCache: {},
   layers: {
     venues: true,
     crime: true,
@@ -189,29 +191,6 @@ function formatWhen(iso) {
   });
 }
 
-function densityT(value) {
-  const rates = state.venues.map((venue) => venue.crime_per_km2);
-  const min = Math.log(Math.min(...rates) + 1);
-  const max = Math.log(Math.max(...rates) + 1);
-  if (max === min) return 0.5;
-  return (Math.log(value + 1) - min) / (max - min);
-}
-
-function densityColor(value) {
-  const t = densityT(value);
-  const low = [0, 159, 61];
-  const mid = [244, 195, 0];
-  const high = [223, 0, 36];
-  const mix = t < 0.5
-    ? lerp(low, mid, t / 0.5)
-    : lerp(mid, high, (t - 0.5) / 0.5);
-  return `rgb(${mix.map((channel) => Math.round(channel)).join(", ")})`;
-}
-
-function lerp(a, b, t) {
-  return a.map((channel, index) => channel + (b[index] - channel) * t);
-}
-
 function visibleVenues() {
   const filtered = state.venues.filter((venue) => (
     state.zone === "all" || venue.olympic_zone === state.zone
@@ -290,12 +269,41 @@ function project(latitude, longitude) {
 }
 
 const FACILITY_STYLE = {
-  fire: { color: [223, 0, 36], radius: 6 },
-  hospitals: { color: [0, 133, 199], radius: 6 },
-  police: { color: [26, 26, 26], radius: 6 },
-  rail: { color: [0, 159, 61], radius: 6 },
-  bus: { color: [200, 150, 0], radius: 3 },
+  fire: { color: [223, 0, 36], scale: 0.9 },
+  hospitals: { color: [0, 133, 199], scale: 0.9 },
+  police: { color: [26, 26, 26], scale: 0.9 },
+  rail: { color: [0, 159, 61], scale: 0.85 },
+  bus: { color: [200, 150, 0], scale: 0.5 },
 };
+
+function mapZoom() {
+  const zoom = state.googleMap?.getZoom?.();
+  return Number.isFinite(zoom) ? zoom : 10;
+}
+
+function pointPixelRadius(zoom) {
+  const px = 22 - (zoom - 10) * 2.6;
+  return Math.max(6, Math.min(32, px));
+}
+
+const VENUE_PIN_PATH = "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z";
+
+function venuePinIcon(selected) {
+  return {
+    path: VENUE_PIN_PATH,
+    fillColor: "#0085C7",
+    fillOpacity: 1,
+    strokeColor: "#ffffff",
+    strokeWeight: selected ? 2 : 1.25,
+    scale: selected ? 1.55 : 1.25,
+    anchor: new google.maps.Point(12, 22),
+  };
+}
+
+function crimeRadiusPixels(zoom) {
+  const px = 30 - (zoom - 10) * 1.5;
+  return Math.max(16, Math.min(34, px));
+}
 
 function renderMap() {
   if (!state.map || !state.googleMap) return;
@@ -305,25 +313,22 @@ function renderMap() {
   for (const marker of state.map.markers) {
     const selected = marker.venue_id === state.selectedId;
     const visible = state.zone === "all" || marker.olympic_zone === state.zone;
-    const circle = new google.maps.Circle({
+    const pin = new google.maps.Marker({
       map: state.layers.venues ? state.googleMap : null,
-      center: { lat: marker.latitude, lng: marker.longitude },
-      radius: 55 + densityT(marker.crime_per_km2) * 65,
-      strokeColor: "#ffffff",
-      strokeWeight: selected ? 4 : 2,
-      fillColor: densityColor(marker.crime_per_km2),
-      fillOpacity: visible ? 0.92 : 0.22,
-      strokeOpacity: visible ? 1 : 0.35,
+      position: { lat: marker.latitude, lng: marker.longitude },
+      title: marker.venue_name,
+      icon: venuePinIcon(selected),
+      opacity: visible ? 1 : 0.35,
       zIndex: selected ? 10 : 1,
     });
     const infoWindow = new google.maps.InfoWindow({
       content: `<div class="venue-popup"><strong>${escapeHtml(marker.venue_name)}</strong><small>${formatNumber(marker.crime_per_km2)} incidents / km²</small></div>`,
     });
-    circle.addListener("click", () => {
-      infoWindow.open({ map: state.googleMap, position: { lat: marker.latitude, lng: marker.longitude } });
+    pin.addListener("click", () => {
+      infoWindow.open({ map: state.googleMap, anchor: pin });
       selectVenue(marker.venue_id);
     });
-    state.venueMarkers.push(circle);
+    state.venueMarkers.push(pin);
     bounds.push([marker.latitude, marker.longitude]);
   }
   mapPanel.classList.toggle("has-briefing", Boolean(state.selectedId));
@@ -348,6 +353,19 @@ function setVenueLayerVisible(visible) {
   state.venueMarkers.forEach((marker) => marker.setMap(visible ? state.googleMap : null));
 }
 
+function facilityLayerEnabled() {
+  return Object.keys(FACILITY_STYLE).some((name) => state.layers[name]);
+}
+
+let overlayZoom = null;
+
+function onMapIdle() {
+  if (!state.layers.crime && !facilityLayerEnabled()) return;
+  const zoomKey = Math.round(mapZoom() * 2) / 2;
+  if (zoomKey === overlayZoom) return;
+  syncOverlay();
+}
+
 function syncBuffer() {
   if (state.bufferCircle) {
     state.bufferCircle.setMap(null);
@@ -370,6 +388,8 @@ function syncBuffer() {
 
 function facilityLayers() {
   if (!state.facilities || typeof deck === "undefined") return [];
+  const zoom = mapZoom();
+  const radius = pointPixelRadius(zoom);
   const layers = [];
   for (const [name, style] of Object.entries(FACILITY_STYLE)) {
     if (!state.layers[name]) continue;
@@ -379,33 +399,81 @@ function facilityLayers() {
       id: `facility-${name}`,
       data: block.points,
       pickable: true,
+      stroked: true,
       radiusUnits: "pixels",
+      lineWidthUnits: "pixels",
       getPosition: (point) => [point.longitude, point.latitude],
       getFillColor: style.color,
-      getRadius: style.radius,
+      getRadius: radius * style.scale,
       getLineColor: [255, 255, 255],
-      getLineWidth: 1,
-      lineWidthUnits: "pixels",
+      getLineWidth: zoom < 13 ? 2 : 1,
+      updateTriggers: { getRadius: zoom, getLineWidth: zoom < 13 },
     }));
   }
   return layers;
 }
 
+function crimeHeatmapLayer() {
+  if (!state.layers.crime || !state.crimePoints?.length || typeof deck === "undefined") return null;
+  const zoom = mapZoom();
+  const radiusPixels = crimeRadiusPixels(zoom);
+  state.heatmapLayer = new deck.HeatmapLayer({
+    id: "crime-heatmap",
+    data: state.crimePoints,
+    getPosition: (point) => [point.longitude, point.latitude],
+    getWeight: (point) => Math.log(point.weight + 1),
+    radiusPixels,
+    intensity: 1,
+    threshold: zoom < 12 ? 0.02 : 0,
+    colorRange: state.crimeHot
+      ? [[244, 195, 0], [232, 96, 28], [223, 0, 36], [140, 0, 20]]
+      : [[0, 159, 61], [120, 186, 48], [244, 195, 0], [232, 96, 28], [223, 0, 36]],
+  });
+  return state.heatmapLayer;
+}
+
+function syncCrimeLegend() {
+  const legend = document.querySelector("#crime-legend");
+  if (!legend) return;
+  legend.classList.toggle("is-hidden", !state.layers.crime);
+  const labels = legend.querySelectorAll("span");
+  if (labels.length >= 2) {
+    labels[0].textContent = state.crimeHot ? "High" : "Less";
+    labels[1].textContent = state.crimeHot ? "Highest" : "More";
+  }
+}
+
+function fillCrimeView(options) {
+  const select = document.querySelector("#crime-view");
+  if (!select || !options?.length) return;
+  const current = state.crimeView;
+  select.replaceChildren();
+  const groups = new Map();
+  for (const option of options) {
+    const node = el("option", { value: option.id }, [text(option.label)]);
+    if (!option.group) {
+      select.append(node);
+      continue;
+    }
+    let group = groups.get(option.group);
+    if (!group) {
+      group = el("optgroup", { label: option.group });
+      groups.set(option.group, group);
+      select.append(group);
+    }
+    group.append(node);
+  }
+  if ([...select.options].some((option) => option.value === current)) select.value = current;
+  select.disabled = !state.layers.crime;
+}
+
 function syncOverlay() {
   if (!state.heatOverlay) return;
+  overlayZoom = Math.round(mapZoom() * 2) / 2;
+  syncCrimeLegend();
   const layers = facilityLayers();
-  if (state.layers.crime && state.selectedId && state.crimePoints && typeof deck !== "undefined") {
-    layers.push(new deck.HeatmapLayer({
-      id: `crime-heatmap-${state.crimeVenueId}`,
-      data: state.crimePoints,
-      getPosition: (point) => [point.longitude, point.latitude],
-      getWeight: () => 1,
-      radiusPixels: 30,
-      intensity: 1,
-      threshold: 0.03,
-      colorRange: [[0, 159, 61], [244, 195, 0], [223, 0, 36]],
-    }));
-  }
+  const heatmap = crimeHeatmapLayer();
+  if (heatmap) layers.push(heatmap);
   state.heatOverlay.setProps({
     layers,
     onClick: (info) => {
@@ -422,29 +490,8 @@ function syncOverlay() {
   });
 }
 
-async function refreshCrimeLayer() {
+function refreshCrimeLayer() {
   if (!state.googleMap || !state.heatOverlay) return;
-  if (!state.layers.crime || !state.selectedId || !state.map) {
-    syncOverlay();
-    return;
-  }
-  const marker = state.map.markers.find((item) => item.venue_id === state.selectedId);
-  if (!marker) {
-    syncOverlay();
-    return;
-  }
-  if (state.crimeVenueId !== marker.venue_id) {
-    const token = requestToken;
-    try {
-      const payload = await fetchJson(`/api/venues/${encodeURIComponent(marker.venue_id)}/crime-points`);
-      if (token !== requestToken || !state.layers.crime) return;
-      state.crimePoints = payload.points;
-      state.crimeVenueId = marker.venue_id;
-    } catch (error) {
-      if (token === requestToken) mapHint.textContent = `Could not load crime points: ${error.message}`;
-      return;
-    }
-  }
   syncOverlay();
 }
 
@@ -454,7 +501,11 @@ function bindLayerToggles() {
       const name = input.dataset.layer;
       state.layers[name] = input.checked;
       if (name === "venues") setVenueLayerVisible(input.checked);
-      else if (name === "crime") refreshCrimeLayer();
+      else if (name === "crime") {
+        const select = document.querySelector("#crime-view");
+        if (select) select.disabled = !input.checked;
+        refreshCrimeLayer();
+      }
       else syncOverlay();
     });
   });
@@ -477,6 +528,7 @@ async function ensureGoogleMap() {
   });
   state.heatOverlay = new deck.GoogleMapsOverlay({ layers: [] });
   state.heatOverlay.setMap(state.googleMap);
+  state.googleMap.addListener("idle", onMapIdle);
 }
 
 function loadGoogleMaps(apiKey) {
@@ -717,8 +769,59 @@ async function selectVenue(venueId) {
   }
 }
 
+let crimeRequest = 0;
+
+function bindCrimeView() {
+  const select = document.querySelector("#crime-view");
+  if (!select) return;
+  select.addEventListener("change", () => {
+    state.crimeView = select.value;
+    loadCrimeHeat(select.value);
+  });
+}
+
+async function loadCrimeHeat(view = state.crimeView || "all") {
+  const crimeToggle = document.querySelector('#layer-toggles input[data-layer="crime"]');
+  const token = ++crimeRequest;
+  state.crimeView = view;
+  const cached = state.crimeCache[view];
+  if (cached) {
+    state.crimePoints = cached.points;
+    state.crimeHot = Boolean(cached.hot);
+    fillCrimeView(cached.options);
+    if (state.layers.crime) refreshCrimeLayer();
+    return;
+  }
+  try {
+    const crimeHeat = await fetchJson(`/api/map/crime?view=${encodeURIComponent(view)}`);
+    if (token !== crimeRequest) return;
+    state.crimeCache[view] = crimeHeat;
+    state.crimePoints = crimeHeat.points;
+    state.crimeHot = Boolean(crimeHeat.hot);
+    fillCrimeView(crimeHeat.options);
+    if (state.layers.crime) refreshCrimeLayer();
+  } catch (error) {
+    if (token !== crimeRequest) return;
+    if (view !== "all") {
+      if (!mapHint.hidden) mapHint.textContent = `Could not load that crime view: ${error.message}`;
+      return;
+    }
+    state.layers.crime = false;
+    state.crimePoints = null;
+    if (crimeToggle) {
+      crimeToggle.checked = false;
+      crimeToggle.disabled = true;
+    }
+    const select = document.querySelector("#crime-view");
+    if (select) select.disabled = true;
+    if (!mapHint.hidden) mapHint.textContent = `Could not load city crime: ${error.message}`;
+    refreshCrimeLayer();
+  }
+}
+
 async function init() {
   bindLayerToggles();
+  bindCrimeView();
   try {
     const [metaData, list, mapData, facilities] = await Promise.all([
       fetchJson("/api/meta"),
@@ -746,6 +849,7 @@ async function init() {
       mapHint.textContent = error.message;
       mapHint.style.pointerEvents = "auto";
     }
+    loadCrimeHeat();
   } catch (error) {
     if (metaStrip) metaStrip.textContent = error.message;
     detail.hidden = false;

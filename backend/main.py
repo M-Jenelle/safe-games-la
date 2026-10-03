@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.store import (
     DatasetNotFound,
+    crime_heat_points,
     get_crime_points,
     get_venue,
     list_venues,
@@ -95,6 +96,17 @@ def read_map() -> dict:
         return map_payload()
     except DatasetNotFound as exc:
         raise _missing(exc) from exc
+
+
+@app.get("/api/map/crime")
+def read_crime_heat(view: str = Query(default="all", max_length=40)) -> dict:
+    """One crime heatmap: all, high-amount, around venues, or one type."""
+    try:
+        return crime_heat_points(view)
+    except DatasetNotFound as exc:
+        raise _missing(exc) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/map/layers")

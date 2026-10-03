@@ -65,7 +65,14 @@
           <fieldset class="layer-toggles" id="layer-toggles">
             <legend>Map layers</legend>
             <label><input type="checkbox" data-layer="venues" checked> Venues</label>
-            <label title="Incidents inside the selected venue's 800 m buffer"><input type="checkbox" data-layer="crime" checked> Crime</label>
+            <span class="crime-control">
+              <label title="LAPD incidents, 2020–2024, across the city. Green is fewer, red is more."><input type="checkbox" data-layer="crime" checked> Crime</label>
+              <select id="crime-view" aria-label="Crime view">
+                <option value="all">All crime</option>
+                <option value="high">High amount (red)</option>
+                <option value="venues">Around venues</option>
+              </select>
+            </span>
             <label><input type="checkbox" data-layer="fire"> <i class="swatch swatch-fire"></i> Fire</label>
             <label><input type="checkbox" data-layer="hospitals"> <i class="swatch swatch-hospital"></i> Hospitals</label>
             <label><input type="checkbox" data-layer="police"> <i class="swatch swatch-police"></i> Police</label>
@@ -77,8 +84,8 @@
           <div class="map-viewport" id="map-viewport">
             <div id="google-map" aria-label="Interactive Olympic venue crime map"></div>
           </div>
-          <p class="map-hint" id="map-hint">Color and size show crime density by venue. Select a venue to show its incident heatmap.</p>
-          <div class="map-legend"><span>Low</span><i></i><span>High</span></div>
+          <p class="map-hint" id="map-hint">Pins mark venues. Crime is LAPD reports from 2020 to 2024 across the city, green where fewer and red where they concentrate.</p>
+          <div class="map-legend" id="crime-legend"><span>Less</span><i></i><span>More</span></div>
         </div>
         <section class="detail" id="detail" hidden aria-live="polite" aria-labelledby="detail-heading">
           <h2 id="detail-heading" class="visually-hidden">Venue briefing</h2>
