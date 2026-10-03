@@ -56,6 +56,7 @@ def load_crime_points() -> dict:
 def venue_card(venue: dict) -> dict:
     """Roster fields. The full briefing stays on the detail route."""
     police = venue.get("nearest_police_station") or {}
+    hospital = venue.get("nearest_hospital") or {}
     return {
         "venue_id": venue["venue_id"],
         "venue_name": venue["venue_name"],
@@ -72,6 +73,8 @@ def venue_card(venue: dict) -> dict:
         "nearest_police_agency": police.get("agency"),
         "nearest_police_name": police.get("station_name"),
         "nearest_police_distance_m": police.get("distance_m"),
+        "nearest_hospital_name": hospital.get("station_name"),
+        "nearest_hospital_distance_m": hospital.get("distance_m"),
     }
 
 
@@ -109,7 +112,7 @@ MAP_LABELS = [
 
 
 def map_payload() -> dict:
-    """Every venue on one Los Angeles frame, for the map placeholder and a future basemap."""
+    """Every venue on one Los Angeles frame for the interactive map."""
     markers = []
     for venue in list_venues():
         markers.append(
@@ -125,11 +128,8 @@ def map_payload() -> dict:
             }
         )
     return {
-        "placeholder": True,
-        "note": (
-            "Basemap and crime heatmap are not wired. Markers are the LA28 venues "
-            "placed on a fixed Los Angeles frame."
-        ),
+        "placeholder": False,
+        "note": "Venue marker color and size represent crime density per square kilometer.",
         "bounds": MAP_BOUNDS,
         "labels": MAP_LABELS,
         "markers": markers,

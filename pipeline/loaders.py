@@ -247,6 +247,51 @@ def load_fire_stations(path: Path) -> tuple[pd.DataFrame, LoadReport]:
     return out.reset_index(drop=True), report
 
 
+def load_hospitals(path: Path) -> tuple[pd.DataFrame, LoadReport]:
+    """Load LA County hospitals and normalize them to venue join fields."""
+    raw = _read_table(path)
+    report = LoadReport(name="hospitals", rows_in=len(raw), rows_out=0)
+    if "COUNTY_NAME" in raw.columns:
+        in_county = raw["COUNTY_NAME"].astype(str).str.strip().str.upper().eq("LOS ANGELES")
+        excluded = int((~in_county).sum())
+        if excluded:
+            report.notes.append(f"excluded {excluded} hospitals outside Los Angeles County")
+        raw = raw.loc[in_county].copy()
+    cleaned, dropped = _drop_invalid_coordinates(raw, "LATITUDE", "LONGITUDE")
+    report.dropped_invalid_coords = dropped
+    out = cleaned.rename(
+        columns={
+            "FACID": "station_id",
+            "FACNAME": "station_name",
+            "ADDRESS": "address",
+            "City": "city",
+            "ZIP Code": "zip_code",
+            "Emergency Room?": "emergency_room",
+            "FAC_TYPE_CODE": "hospital_type",
+            "CAPACITY": "bed_capacity",
+            "LICENSE_STATUS_DESCRIPTION": "license_status",
+            "LATITUDE": "latitude",
+            "LONGITUDE": "longitude",
+        }
+    )
+    keep_cols = [
+        "station_id",
+        "station_name",
+        "address",
+        "city",
+        "zip_code",
+        "latitude",
+        "longitude",
+        "emergency_room",
+        "hospital_type",
+        "bed_capacity",
+        "license_status",
+    ]
+    out = out[[column for column in keep_cols if column in out.columns]].copy()
+    report.rows_out = len(out)
+    return out.reset_index(drop=True), report
+
+
 def load_police_stations(path: Path) -> tuple[pd.DataFrame, LoadReport]:
     """Local municipal and sheriff stations used for the jurisdiction flag.
 

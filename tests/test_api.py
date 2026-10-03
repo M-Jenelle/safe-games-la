@@ -38,6 +38,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn("crime_by_category", body)
         self.assertIn("crime_by_month", body)
         self.assertIn("nearest_police_station", body)
+        self.assertIn("nearest_hospital", body)
         self.assertEqual(
             sum(body["crime_by_category"].values()),
             body["crime_count_nearby"],
@@ -67,7 +68,7 @@ class ApiTests(unittest.TestCase):
         response = self.client.get("/api/map")
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertTrue(body["placeholder"])
+        self.assertFalse(body["placeholder"])
         bounds = body["bounds"]
         self.assertGreaterEqual(len(body["markers"]), 14)
         for marker in body["markers"]:

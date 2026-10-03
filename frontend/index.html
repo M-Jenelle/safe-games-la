@@ -49,9 +49,9 @@
         </div>
         <div class="map-frame" id="map-frame">
           <div class="map-viewport" id="map-viewport">
-            <div class="map-canvas" id="map-canvas"></div>
+            <div id="google-map" aria-label="Interactive Olympic venue crime map"></div>
           </div>
-          <p class="map-hint" id="map-hint">Click a venue on the map or in the list. The crime heatmap is not wired yet.</p>
+          <p class="map-hint" id="map-hint">Color and size show crime density by venue. Select a venue to show its incident heatmap.</p>
           <div class="map-legend"><span>Low</span><i></i><span>High</span></div>
         </div>
         <section class="detail" id="detail" hidden aria-live="polite" aria-labelledby="detail-heading">
@@ -82,6 +82,8 @@
       <p class="chat-context" id="chat-context">No briefing open. General questions are in scope.</p>
     </aside>
   </div>
+  <script src="https://unpkg.com/deck.gl@9.2.0/dist.min.js"></script>
+  <script src="https://unpkg.com/@deck.gl/google-maps@9.2.0/dist.min.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>
