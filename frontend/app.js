@@ -37,6 +37,69 @@ const mapHint = document.querySelector("#map-hint");
 const ZOOM = 7;
 const chatContext = document.querySelector("#chat-context");
 const analysisLead = document.querySelector("#analysis-lead");
+const chatPanel = document.querySelector("#chat-panel");
+const chatLauncher = document.querySelector("#chat-launcher");
+const chatClose = document.querySelector("#chat-close");
+
+function setChatOpen(open) {
+  chatPanel.hidden = !open;
+  chatLauncher.hidden = open;
+  chatLauncher.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) chatClose.focus();
+  else chatLauncher.focus();
+}
+
+chatLauncher.addEventListener("click", () => setChatOpen(true));
+chatClose.addEventListener("click", () => setChatOpen(false));
+const appShell = document.querySelector(".app");
+const roster = document.querySelector("#roster");
+const rosterToggle = document.querySelector("#roster-toggle");
+const rosterToggleLabel = rosterToggle.querySelector(".visually-hidden");
+const rosterBackdrop = document.querySelector("#roster-backdrop");
+const NARROW_ROSTER = 980;
+let rosterNarrow = window.innerWidth <= NARROW_ROSTER;
+
+function rosterIsNarrow() {
+  return window.innerWidth <= NARROW_ROSTER;
+}
+
+function syncHeaderHeight() {
+  const header = document.querySelector(".topbar");
+  if (header) document.documentElement.style.setProperty("--header-h", `${header.offsetHeight}px`);
+}
+
+function setRosterCollapsed(collapsed) {
+  appShell.classList.toggle("roster-collapsed", collapsed);
+  roster.setAttribute("aria-hidden", collapsed ? "true" : "false");
+  if (collapsed) roster.setAttribute("inert", "");
+  else roster.removeAttribute("inert");
+  rosterToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  rosterToggleLabel.textContent = collapsed ? "Show venues" : "Hide venues";
+  window.setTimeout(() => state.googleMap?.trigger("resize"), 220);
+}
+
+rosterToggle.addEventListener("click", () => {
+  setRosterCollapsed(!appShell.classList.contains("roster-collapsed"));
+});
+rosterBackdrop.addEventListener("click", () => {
+  setRosterCollapsed(true);
+  rosterToggle.focus();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  if (!chatPanel.hidden) {
+    setChatOpen(false);
+    return;
+  }
+  if (rosterIsNarrow() && !appShell.classList.contains("roster-collapsed")) {
+    setRosterCollapsed(true);
+    rosterToggle.focus();
+  }
+});
+
+syncHeaderHeight();
+setRosterCollapsed(rosterIsNarrow());
 
 rosterList.addEventListener("click", (event) => {
   const card = event.target.closest("[data-venue-id]");
@@ -123,9 +186,9 @@ function densityT(value) {
 
 function densityColor(value) {
   const t = densityT(value);
-  const low = [42, 107, 79];
-  const mid = [184, 122, 46];
-  const high = [141, 47, 31];
+  const low = [0, 159, 61];
+  const mid = [244, 195, 0];
+  const high = [223, 0, 36];
   const mix = t < 0.5
     ? lerp(low, mid, t / 0.5)
     : lerp(mid, high, (t - 0.5) / 0.5);
@@ -156,6 +219,7 @@ function jurisdictionLabel(value) {
 }
 
 function renderMeta() {
+  if (!metaStrip || !state.meta) return;
   const metaData = state.meta;
   metaStrip.replaceChildren(
     el("p", { className: "meta-line" }, [
@@ -302,7 +366,7 @@ async function loadCrimeHeatmap(marker) {
     map: state.googleMap,
     center: { lat: marker.latitude, lng: marker.longitude },
     radius: state.meta.buffer_radius_m,
-    strokeColor: "#123f4d",
+    strokeColor: "#0085C7",
     strokeWeight: 2,
     strokeOpacity: 0.8,
     fillOpacity: 0,
@@ -319,7 +383,7 @@ async function loadCrimeHeatmap(marker) {
       radiusPixels: 30,
       intensity: 1,
       threshold: 0.03,
-      colorRange: [[42, 107, 79], [184, 122, 46], [196, 71, 41], [141, 47, 31]],
+      colorRange: [[0, 159, 61], [244, 195, 0], [223, 0, 36]],
     });
     state.heatOverlay.setProps({ layers: [heatmap] });
   } catch (error) {
@@ -333,7 +397,15 @@ function escapeHtml(value) {
   }[character]));
 }
 
-window.addEventListener("resize", () => state.googleMap?.trigger("resize"));
+window.addEventListener("resize", () => {
+  syncHeaderHeight();
+  const narrow = rosterIsNarrow();
+  if (narrow !== rosterNarrow) {
+    rosterNarrow = narrow;
+    setRosterCollapsed(narrow);
+  }
+  state.googleMap?.trigger("resize");
+});
 
 function renderChatContext() {
   const venue = state.venues.find((item) => item.venue_id === state.selectedId);
@@ -401,7 +473,7 @@ function monthChart(byMonth) {
     rect.setAttribute("y", String(120 - height));
     rect.setAttribute("width", String(Math.max(width - 0.8, 0.4)));
     rect.setAttribute("height", String(height));
-    rect.setAttribute("fill", entry.key === peak.key ? "#8d4b2b" : "#1c3144");
+    rect.setAttribute("fill", entry.key === peak.key ? "#DF0024" : "#0085C7");
     svg.append(rect);
   });
   return svg;
@@ -565,7 +637,7 @@ async function init() {
       mapHint.style.pointerEvents = "auto";
     }
   } catch (error) {
-    metaStrip.textContent = error.message;
+    if (metaStrip) metaStrip.textContent = error.message;
     detail.hidden = false;
     detail.replaceChildren(el("p", { className: "empty-detail" }, [text(error.message)]));
   }
