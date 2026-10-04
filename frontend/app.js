@@ -198,6 +198,10 @@ function formatSports(value) {
     .split(";")
     .map((part) => part.trim())
     .filter(Boolean)
+    .map((part) => part.replace(
+      /(^|[^A-Za-z0-9])([a-z])/g,
+      (_, boundary, letter) => boundary + letter.toUpperCase(),
+    ))
     .join(" · ");
 }
 
