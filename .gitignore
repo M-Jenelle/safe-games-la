@@ -1,4 +1,6 @@
 data/Crime_Data_from_2020_to_2024.csv
+data/raw/nibrs/*.csv
+data/raw/nibrs/*.csv.partial
 
 .env.local
 .env*

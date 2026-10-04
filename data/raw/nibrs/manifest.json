@@ -1,0 +1,21 @@
+{
+  "datasets": {
+    "y8y3-fqfu": {
+      "label": "LAPD NIBRS Offenses Dataset 2024 to 2025",
+      "filename": "nibrs_2024_2025.csv",
+      "status": "unavailable",
+      "error": "HTTP Error 403: Forbidden",
+      "rows_updated_at": null
+    },
+    "k7nn-b2ep": {
+      "label": "LAPD NIBRS Offenses Dataset",
+      "filename": "nibrs_current.csv",
+      "status": "unchanged",
+      "rows_updated_at": 1790709516,
+      "rows_updated_at_iso": "2026-09-29T19:18:36+00:00",
+      "downloaded_at": "2026-10-04T17:54:41+00:00",
+      "rows": 489955
+    }
+  },
+  "checked_at": "2026-10-04T17:55:03+00:00"
+}

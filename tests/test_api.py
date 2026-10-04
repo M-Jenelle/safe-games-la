@@ -48,6 +48,12 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(set(by_month), set(body["crime_by_month"]))
         for month, count in body["crime_by_month"].items():
             self.assertEqual(sum(by_month[month].values()), count)
+        self.assertGreater(peacock["nibrs_count"], 0)
+        self.assertEqual(body["nibrs"]["count"], peacock["nibrs_count"])
+        self.assertEqual(body["crime_count_nearby"], peacock["crime_count_nearby"])
+        self.assertIn("2020-01", body["merged_by_month"])
+        self.assertIn("2024-03", body["nibrs"]["by_month"])
+        self.assertNotIn("2024-02", body["nibrs"]["by_month"])
 
     def test_unknown_venue(self):
         response = self.client.get("/api/venues/V99")
@@ -93,6 +99,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn("high", option_ids)
         self.assertIn("venues", option_ids)
         self.assertIn("type:theft", option_ids)
+        self.assertIn("nibrs", option_ids)
         latitudes = [point["latitude"] for point in body["points"]]
         longitudes = [point["longitude"] for point in body["points"]]
         self.assertGreater(max(latitudes) - min(latitudes), 0.5)
@@ -115,6 +122,11 @@ class ApiTests(unittest.TestCase):
         self.assertGreater(venues.json()["incident_count"], 1000)
         self.assertLess(venues.json()["incident_count"], city["incident_count"])
         self.assertGreater(theft.json()["incident_count"], 1000)
+        nibrs = self.client.get("/api/map/crime?view=nibrs")
+        self.assertEqual(nibrs.status_code, 200)
+        nibrs_body = nibrs.json()
+        self.assertGreater(nibrs_body["incident_count"], 100_000)
+        self.assertFalse(nibrs_body["hot"])
 
     def test_map_layers(self):
         response = self.client.get("/api/map/layers")
