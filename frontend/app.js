@@ -969,7 +969,6 @@ function renderDetail() {
   const years = yearTotals(months);
   const peakYear = years.reduce((best, entry) => (entry[1] > best[1] ? entry : best), years[0] || ["", 0]);
   const total = venue.crime_count_nearby;
-  const typeCount = Object.keys(venue.crime_by_category || {}).length;
   const flags = venue.data_quality_flags.map((flag) => (
     el("span", { className: "flag" }, [text(FLAG_LABELS[flag] || flag)])
   ));
@@ -985,22 +984,12 @@ function renderDetail() {
   let tableYear = "all";
   let fromMonth = 1;
   let toMonth = 12;
-  let selectedKey = peak?.key || "";
+  let selectedKey = "";
   let categoriesExpanded = false;
-  let monthExpanded = false;
 
+  const categoryNote = el("p", { className: "muted", "aria-live": "polite" });
   const categoryList = el("div", { className: "category-list" });
   const categoryToggle = el("button", { className: "show-more", type: "button" }, [text("Show more")]);
-  const monthTitle = el("h3", { className: "section-title" });
-  const monthCount = el("p", { className: "month-readout" });
-  const monthList = el("div", { className: "category-list" });
-  const monthToggle = el("button", { className: "show-more", type: "button" }, [text("Show more")]);
-  const monthPanel = el("section", { className: "month-detail", "aria-live": "polite" }, [
-    monthTitle,
-    monthCount,
-    monthList,
-    monthToggle,
-  ]);
   const tableWrap = el("div", { className: "month-table-wrap" });
   const yearSelect = el("select", { "aria-label": "Year" }, [
     el("option", { value: "all" }, [text("All years")]),
@@ -1014,38 +1003,67 @@ function renderDetail() {
   )));
   toSelect.value = "12";
 
-  function paintCategories() {
-    const rows = categoryRows(venue.crime_by_category, total, {
-      limit: categoriesExpanded ? undefined : 5,
-    });
-    categoryList.replaceChildren(...(rows.length
-      ? rows
-      : [el("p", { className: "muted" }, [text("No incidents in this buffer.")])]));
-    categoryToggle.hidden = typeCount <= 5;
-    categoryToggle.textContent = categoriesExpanded ? "Show less" : "Show more";
+  function rangeKeys() {
+    return months.filter((entry) => {
+      const [year, month] = entry.key.split("-");
+      const monthNumber = Number(month);
+      if (tableYear !== "all" && year !== tableYear) return false;
+      return monthNumber >= fromMonth && monthNumber <= toMonth;
+    }).map((entry) => entry.key);
   }
 
-  function paintMonth() {
-    const entry = months.find((item) => item.key === selectedKey);
-    if (!entry) {
-      monthTitle.textContent = "Month";
-      monthCount.textContent = "Select a month.";
-      monthList.replaceChildren();
-      monthToggle.hidden = true;
-      return;
+  function isFullRange() {
+    return tableYear === "all" && fromMonth === 1 && toMonth === 12;
+  }
+
+  function rangeCaption() {
+    const fromName = MONTH_NAMES[fromMonth - 1];
+    const toName = MONTH_NAMES[toMonth - 1];
+    const span = fromMonth === toMonth ? fromName : `${fromName}–${toName}`;
+    if (tableYear === "all") return span;
+    if (fromMonth === 1 && toMonth === 12) return tableYear;
+    return `${span} ${tableYear}`;
+  }
+
+  function summedCategories(keys) {
+    const totals = {};
+    for (const key of keys) {
+      const bucket = (venue.crime_categories_by_month || {})[key] || {};
+      for (const [category, count] of Object.entries(bucket)) {
+        totals[category] = (totals[category] || 0) + count;
+      }
     }
-    const byCategory = (venue.crime_categories_by_month || {})[entry.key] || {};
-    const monthTypes = Object.keys(byCategory).length;
-    const rows = categoryRows(byCategory, entry.count, {
-      limit: monthExpanded ? undefined : 5,
+    return totals;
+  }
+
+  function activeCategories() {
+    if (selectedKey) {
+      const entry = months.find((item) => item.key === selectedKey);
+      const byCategory = (venue.crime_categories_by_month || {})[selectedKey] || {};
+      const count = entry ? entry.count : Object.values(byCategory).reduce((sum, value) => sum + value, 0);
+      return { label: monthLabel(selectedKey), total: count, byCategory };
+    }
+    if (isFullRange()) {
+      return { label: "All incidents", total, byCategory: venue.crime_by_category };
+    }
+    const keys = rangeKeys();
+    const byCategory = summedCategories(keys);
+    const count = Object.values(byCategory).reduce((sum, value) => sum + value, 0);
+    return { label: rangeCaption(), total: count, byCategory };
+  }
+
+  function paintCategories() {
+    const view = activeCategories();
+    const viewCount = Object.keys(view.byCategory || {}).length;
+    const rows = categoryRows(view.byCategory, view.total, {
+      limit: categoriesExpanded ? undefined : 5,
     });
-    monthTitle.textContent = monthLabel(entry.key);
-    monthCount.textContent = `${formatNumber(entry.count)} incidents`;
-    monthList.replaceChildren(...(rows.length
+    categoryNote.textContent = `${view.label} · ${formatNumber(view.total)} incidents`;
+    categoryList.replaceChildren(...(rows.length
       ? rows
-      : [el("p", { className: "muted" }, [text("No typed incidents in this month.")])]));
-    monthToggle.hidden = monthTypes <= 5;
-    monthToggle.textContent = monthExpanded ? "Show less" : "Show more";
+      : [el("p", { className: "muted" }, [text("No incidents in this range.")])]));
+    categoryToggle.hidden = viewCount <= 5;
+    categoryToggle.textContent = categoriesExpanded ? "Show less" : "Show more";
   }
 
   function markMonth(key) {
@@ -1078,10 +1096,10 @@ function renderDetail() {
   }
 
   function selectMonth(key) {
-    if (key !== selectedKey) monthExpanded = false;
-    selectedKey = key;
-    markMonth(key);
-    paintMonth();
+    selectedKey = selectedKey === key ? "" : key;
+    categoriesExpanded = false;
+    markMonth(selectedKey);
+    paintCategories();
   }
 
   function readRange(changed) {
@@ -1096,17 +1114,16 @@ function renderDetail() {
     tableYear = yearSelect.value;
     fromMonth = nextFrom;
     toMonth = nextTo;
+    selectedKey = "";
+    categoriesExpanded = false;
     paintTable();
     markMonth(selectedKey);
+    paintCategories();
   }
 
   categoryToggle.addEventListener("click", () => {
     categoriesExpanded = !categoriesExpanded;
     paintCategories();
-  });
-  monthToggle.addEventListener("click", () => {
-    monthExpanded = !monthExpanded;
-    paintMonth();
   });
   yearSelect.addEventListener("change", () => readRange("year"));
   fromSelect.addEventListener("change", () => readRange("from"));
@@ -1131,7 +1148,7 @@ function renderDetail() {
     ]),
     flags.length ? el("div", { className: "flags" }, flags) : el("span"),
     el("h3", { className: "section-title" }, [text("Incidents by month")]),
-    el("p", { className: "muted" }, [text("Click a bar or a table cell to see that month. Red is the busiest month.")]),
+    el("p", { className: "muted" }, [text("Click a bar or a table cell to filter incident types to that month. Click it again to clear. Red is the busiest month.")]),
     years.length ? el("div", { className: "year-row" }, years.map(([year, count]) => (
       el("article", { className: year === peakYear[0] ? "year-card is-peak" : "year-card" }, [
         el("span", {}, [text(year)]),
@@ -1139,7 +1156,6 @@ function renderDetail() {
       ])
     ))) : el("span"),
     chart,
-    monthPanel,
     el("div", { className: "table-filters" }, [
       el("label", {}, [text("Year"), yearSelect]),
       el("label", {}, [text("From"), fromSelect]),
@@ -1147,6 +1163,7 @@ function renderDetail() {
     ]),
     tableWrap,
     el("h3", { className: "section-title" }, [text("Incident types")]),
+    categoryNote,
     categoryList,
     categoryToggle,
     el("h3", { className: "section-title" }, [text(`Rail · ${formatNumber(venue.rail_stations_nearby.count)} ${venue.rail_stations_nearby.count === 1 ? "station" : "stations"}`)]),
@@ -1163,7 +1180,6 @@ function renderDetail() {
     ]),
     el("p", { className: "footnote" }, [text(state.meta.jurisdiction_method)]),
   ]));
-  if (peak) selectMonth(peak.key);
 }
 
 function stat(label, value, note) {
