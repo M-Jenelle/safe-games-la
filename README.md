@@ -75,6 +75,14 @@ python -m pipeline.run
 
 Default buffer is 800 m. Pass `--radius-m` to change it. The API reloads the JSON when those files change on disk.
 
+NIBRS offenses are a separate LAPD extract, starting March 7, 2024. The 2024–2025 view (`y8y3-fqfu`) stopped updating on August 18, 2026 and was merged into the current dataset (`k7nn-b2ep`), which still changes and includes 2025 through the present. Download or refresh both views with:
+
+```bash
+python -m pipeline.nibrs
+```
+
+The command reads each view's Socrata `rowsUpdatedAt` and downloads only when that time changes. `python -m pipeline.nibrs --install-schedule` registers a daily 6:15am check that does the same thing. NIBRS keeps one row per offense, so those files stay in `data/raw/nibrs/` and are not added to the 2020–2024 incident totals. `python -m pipeline.merge_crime` writes a separate `data/processed/crime_merged.json`: reports dated before March 7, 2024, then NIBRS offenses. It does not change the other data files.
+
 Click a marker or a venue in the list to zoom in and open its briefing under the map. The selected venue's crime heatmap and analysis radius appear on the map. Close returns to the full venue view. Configure a referrer-restricted Google Maps JavaScript API key before starting the server:
 
 Put the key in a repo-root `.env` file (`GOOGLE_MAPS_API_KEY=...`). The server reads that file on startup. Restart the server after adding or changing the key.

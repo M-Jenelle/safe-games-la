@@ -27,6 +27,7 @@ from pipeline.run import find_crime_csv, resolve_data_dir
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SUMMARY_PATH = REPO_ROOT / "data" / "processed" / "venue_summary.json"
 POINTS_PATH = REPO_ROOT / "data" / "processed" / "crime_points_by_venue.json"
+MERGED_PATH = REPO_ROOT / "data" / "processed" / "crime_merged.json"
 
 _summary: dict | None = None
 _summary_mtime: float | None = None
@@ -36,6 +37,8 @@ _month_categories: dict[str, dict[str, dict[str, int]]] = {}
 _month_categories_mtime: float | None = None
 _crime_views: dict | None = None
 _crime_heat_mtime: float | None = None
+_merged: dict | None = None
+_merged_mtime: float | None = None
 
 # First matching rule wins. Descriptions are the LAPD "Crm Cd Desc" text.
 CRIME_TYPES = (
@@ -116,8 +119,36 @@ def venue_card(venue: dict) -> dict:
     }
 
 
+def load_merged() -> dict | None:
+    """Joined crime series, when ``crime_merged.json`` has been built."""
+    global _merged, _merged_mtime
+    if not MERGED_PATH.exists():
+        _merged = None
+        _merged_mtime = None
+        return None
+    mtime = MERGED_PATH.stat().st_mtime
+    if _merged is None or mtime != _merged_mtime:
+        _merged = json.loads(MERGED_PATH.read_text(encoding="utf-8"))
+        _merged_mtime = mtime
+    return _merged
+
+
+def _merged_venue(venue_id: str) -> dict | None:
+    merged = load_merged()
+    if not merged:
+        return None
+    return (merged.get("venues") or {}).get(venue_id)
+
+
 def list_venues() -> list[dict]:
-    return [venue_card(venue) for venue in load_summary()["venues"]]
+    cards = []
+    for venue in load_summary()["venues"]:
+        card = venue_card(venue)
+        block = _merged_venue(venue["venue_id"])
+        if block is not None:
+            card["nibrs_count"] = block.get("nibrs_count") or 0
+        cards.append(card)
+    return cards
 
 
 def crime_categories_by_month(venue_id: str) -> dict[str, dict[str, int]]:
@@ -152,6 +183,18 @@ def get_venue(venue_id: str) -> dict | None:
         if venue["venue_id"] == venue_id:
             enriched = dict(venue)
             enriched["crime_categories_by_month"] = crime_categories_by_month(venue_id)
+            block = _merged_venue(venue_id)
+            if block is not None:
+                enriched["nibrs"] = {
+                    "count": block.get("nibrs_count") or 0,
+                    "by_month": block.get("nibrs_by_month") or {},
+                    "by_category": block.get("nibrs_by_category") or {},
+                    "categories_by_month": block.get("nibrs_categories_by_month") or {},
+                }
+                enriched["merged_by_month"] = block.get("merged_by_month") or {}
+                groups = (load_merged() or {}).get("meta", {}).get("groups") or {}
+                if groups:
+                    enriched["crime_groups"] = groups
             return enriched
     return None
 
@@ -311,6 +354,35 @@ def _build_crime_views() -> dict[str, dict]:
     return views
 
 
+def _nibrs_heat_view() -> dict | None:
+    heat = (load_merged() or {}).get("nibrs_heat")
+    if not heat:
+        return None
+    return {
+        "label": "NIBRS offenses (Mar 2024–present)",
+        "group": None,
+        "hot": False,
+        "incident_count": heat.get("incident_count") or 0,
+        "points": heat.get("points") or [],
+    }
+
+
+def _views_with_nibrs(views: dict) -> dict:
+    nibrs = _nibrs_heat_view()
+    if not nibrs:
+        return views
+    ordered: dict = {}
+    inserted = False
+    for view_id, payload in views.items():
+        ordered[view_id] = payload
+        if view_id == "venues":
+            ordered["nibrs"] = nibrs
+            inserted = True
+    if not inserted:
+        ordered["nibrs"] = nibrs
+    return ordered
+
+
 def crime_heat_points(view: str = "all") -> dict:
     """One heatmap view of the 2020–2024 LAPD extract.
 
@@ -327,13 +399,14 @@ def crime_heat_points(view: str = "all") -> dict:
     if _crime_views is None or mtime != _crime_heat_mtime:
         _crime_views = _build_crime_views()
         _crime_heat_mtime = mtime
-    if view not in _crime_views:
-        known = ", ".join(_crime_views)
+    views = _views_with_nibrs(_crime_views)
+    if view not in views:
+        known = ", ".join(views)
         raise ValueError(f"Unknown crime view '{view}'. Known views: {known}")
-    selected = _crime_views[view]
+    selected = views[view]
     options = [
         {"id": view_id, "label": payload["label"], "group": payload["group"]}
-        for view_id, payload in _crime_views.items()
+        for view_id, payload in views.items()
     ]
     return {
         "view": view,

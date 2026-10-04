@@ -58,6 +58,8 @@ const detail = document.querySelector("#venue-page");
 const mapFrame = document.querySelector("#map-frame");
 const mapPanel = document.querySelector(".map-panel");
 const mapHint = document.querySelector("#map-hint");
+const DEFAULT_CRIME_HINT = "Pins mark venues. Crime is LAPD reports from 2020 to 2024 across the city, green where fewer and red where they concentrate.";
+const NIBRS_CRIME_HINT = "Pins mark venues. This heatmap is NIBRS offenses from March 2024 through the latest extract. A case can contribute more than one point. Green is fewer and red is where they concentrate.";
 const ZOOM = 7;
 const chatContext = document.querySelector("#chat-context");
 const analysisLead = document.querySelector("#analysis-lead");
@@ -196,6 +198,10 @@ function formatSports(value) {
     .split(";")
     .map((part) => part.trim())
     .filter(Boolean)
+    .map((part) => part.replace(
+      /(^|[^A-Za-z0-9])([a-z])/g,
+      (_, boundary, letter) => boundary + letter.toUpperCase(),
+    ))
     .join(" · ");
 }
 
@@ -275,6 +281,9 @@ function renderRoster() {
       el("div", { className: "sports" }, [text(formatSports(venue.sports))]),
       el("div", { className: "card-foot" }, [
         text(`${formatNumber(venue.crime_count_nearby)} incidents · ${jurisdictionLabel(venue.lapd_jurisdiction)}`),
+      ]),
+      venue.nibrs_count == null ? el("span") : el("div", { className: "card-foot" }, [
+        text(`NIBRS · ${formatNumber(venue.nibrs_count)} offenses`),
       ]),
     ]);
   }));
@@ -694,6 +703,7 @@ function clearSelection(options = {}) {
   state.detail = null;
   overview.hidden = true;
   mapHint.hidden = false;
+  syncCrimeHint();
   renderRoster();
   renderMap();
   renderChatContext();
@@ -929,6 +939,9 @@ function renderOverview() {
       stat("Jurisdiction", jurisdictionLabel(venue.lapd_jurisdiction), "nearest local station"),
       stat("Buffer", `${Math.round(venue.buffer_radius_m)} m`, "radius"),
     ]),
+    venue.nibrs ? el("p", { className: "muted" }, [
+      text(`NIBRS offenses since Mar 2024: ${formatNumber(venue.nibrs.count)}. A case can include more than one offense.`),
+    ]) : el("span"),
     flags.length ? el("div", { className: "flags" }, flags) : el("p", { className: "muted" }, [text("No data-quality flags.")]),
     el("h3", { className: "section-title" }, [text("Top categories")]),
     ...(categories.length
@@ -961,15 +974,12 @@ function renderDetail() {
     detail.replaceChildren(el("p", { className: "empty-detail" }, [text("Select a venue to open its briefing.")]));
     return;
   }
-  const months = filledMonths(venue.crime_by_month);
-  const peak = months.reduce(
+  const reportMonths = filledMonths(venue.crime_by_month);
+  const peak = reportMonths.reduce(
     (best, entry) => (entry.count > best.count ? entry : best),
-    months[0],
+    reportMonths[0],
   );
-  const years = yearTotals(months);
-  const peakYear = years.reduce((best, entry) => (entry[1] > best[1] ? entry : best), years[0] || ["", 0]);
   const total = venue.crime_count_nearby;
-  const typeCount = Object.keys(venue.crime_by_category || {}).length;
   const flags = venue.data_quality_flags.map((flag) => (
     el("span", { className: "flag" }, [text(FLAG_LABELS[flag] || flag)])
   ));
@@ -985,26 +995,15 @@ function renderDetail() {
   let tableYear = "all";
   let fromMonth = 1;
   let toMonth = 12;
-  let selectedKey = peak?.key || "";
+  let selectedKey = "";
   let categoriesExpanded = false;
-  let monthExpanded = false;
 
+  const categoryNote = el("p", { className: "muted", "aria-live": "polite" });
   const categoryList = el("div", { className: "category-list" });
   const categoryToggle = el("button", { className: "show-more", type: "button" }, [text("Show more")]);
-  const monthTitle = el("h3", { className: "section-title" });
-  const monthCount = el("p", { className: "month-readout" });
-  const monthList = el("div", { className: "category-list" });
-  const monthToggle = el("button", { className: "show-more", type: "button" }, [text("Show more")]);
-  const monthPanel = el("section", { className: "month-detail", "aria-live": "polite" }, [
-    monthTitle,
-    monthCount,
-    monthList,
-    monthToggle,
-  ]);
   const tableWrap = el("div", { className: "month-table-wrap" });
   const yearSelect = el("select", { "aria-label": "Year" }, [
     el("option", { value: "all" }, [text("All years")]),
-    ...years.map(([year]) => el("option", { value: year }, [text(year)])),
   ]);
   const fromSelect = el("select", { "aria-label": "From month" }, MONTH_NAMES.map((name, index) => (
     el("option", { value: String(index + 1) }, [text(name)])
@@ -1013,63 +1012,180 @@ function renderDetail() {
     el("option", { value: String(index + 1) }, [text(name)])
   )));
   toSelect.value = "12";
+  let seriesId = "reports";
+  const chartHost = el("div", { className: "chart-host" });
+  const yearHost = el("div", { className: "year-row" });
+  const seriesHint = el("p", { className: "muted" });
+  const seriesSelect = el("select", { "aria-label": "Crime series" }, [
+    el("option", { value: "reports" }, [text("2020–2024 reports")]),
+  ]);
+  if (venue.nibrs) {
+    seriesSelect.append(el("option", { value: "nibrs" }, [text("NIBRS offenses, Mar 2024–present")]));
+  }
+  if (venue.merged_by_month) {
+    seriesSelect.append(el("option", { value: "merged" }, [text("Merged groups, 2020–present")]));
+  }
+  const hasSeries = Boolean(venue.nibrs || venue.merged_by_month);
+
+  function seriesData() {
+    if (seriesId === "nibrs" && venue.nibrs) {
+      return {
+        byMonth: venue.nibrs.by_month || {},
+        byCategory: venue.nibrs.by_category || {},
+        categoriesByMonth: venue.nibrs.categories_by_month || {},
+        total: venue.nibrs.count || 0,
+        word: "offenses",
+        allLabel: "All offenses",
+        empty: "No offenses in this range.",
+      };
+    }
+    if (seriesId === "merged" && venue.merged_by_month) {
+      const labels = venue.crime_groups || {};
+      const byMonth = {};
+      const byCategory = {};
+      const categoriesByMonth = {};
+      for (const [month, groups] of Object.entries(venue.merged_by_month)) {
+        let monthTotal = 0;
+        const named = {};
+        for (const [group, count] of Object.entries(groups)) {
+          const label = labels[group] || group;
+          named[label] = (named[label] || 0) + count;
+          byCategory[label] = (byCategory[label] || 0) + count;
+          monthTotal += count;
+        }
+        byMonth[month] = monthTotal;
+        categoriesByMonth[month] = named;
+      }
+      const totalCount = Object.values(byMonth).reduce((sum, value) => sum + value, 0);
+      return {
+        byMonth,
+        byCategory,
+        categoriesByMonth,
+        total: totalCount,
+        word: "records",
+        allLabel: "All records",
+        empty: "No records in this range.",
+      };
+    }
+    return {
+      byMonth: venue.crime_by_month,
+      byCategory: venue.crime_by_category,
+      categoriesByMonth: venue.crime_categories_by_month || {},
+      total,
+      word: "incidents",
+      allLabel: "All incidents",
+      empty: "No incidents in this range.",
+    };
+  }
+
+  function seriesMonths() {
+    return filledMonths(seriesData().byMonth);
+  }
+
+  function seriesPeak() {
+    const entries = seriesMonths();
+    if (!entries.length) return null;
+    return entries.reduce((best, entry) => (entry.count > best.count ? entry : best), entries[0]);
+  }
+
+  function rangeKeys() {
+    return seriesMonths().filter((entry) => {
+      const [year, month] = entry.key.split("-");
+      const monthNumber = Number(month);
+      if (tableYear !== "all" && year !== tableYear) return false;
+      return monthNumber >= fromMonth && monthNumber <= toMonth;
+    }).map((entry) => entry.key);
+  }
+
+  function isFullRange() {
+    return tableYear === "all" && fromMonth === 1 && toMonth === 12;
+  }
+
+  function rangeCaption() {
+    const fromName = MONTH_NAMES[fromMonth - 1];
+    const toName = MONTH_NAMES[toMonth - 1];
+    const span = fromMonth === toMonth ? fromName : `${fromName}–${toName}`;
+    if (tableYear === "all") return span;
+    if (fromMonth === 1 && toMonth === 12) return tableYear;
+    return `${span} ${tableYear}`;
+  }
+
+  function summedCategories(keys) {
+    const totals = {};
+    const byMonth = seriesData().categoriesByMonth;
+    for (const key of keys) {
+      const bucket = byMonth[key] || {};
+      for (const [category, count] of Object.entries(bucket)) {
+        totals[category] = (totals[category] || 0) + count;
+      }
+    }
+    return totals;
+  }
+
+  function activeCategories() {
+    const bundle = seriesData();
+    const entries = seriesMonths();
+    if (selectedKey) {
+      const entry = entries.find((item) => item.key === selectedKey);
+      const byCategory = bundle.categoriesByMonth[selectedKey] || {};
+      const count = entry ? entry.count : Object.values(byCategory).reduce((sum, value) => sum + value, 0);
+      return { label: monthLabel(selectedKey), total: count, byCategory, word: bundle.word, empty: bundle.empty };
+    }
+    if (isFullRange()) {
+      return {
+        label: bundle.allLabel,
+        total: bundle.total,
+        byCategory: bundle.byCategory,
+        word: bundle.word,
+        empty: bundle.empty,
+      };
+    }
+    const keys = rangeKeys();
+    const byCategory = summedCategories(keys);
+    const count = Object.values(byCategory).reduce((sum, value) => sum + value, 0);
+    return { label: rangeCaption(), total: count, byCategory, word: bundle.word, empty: bundle.empty };
+  }
 
   function paintCategories() {
-    const rows = categoryRows(venue.crime_by_category, total, {
+    const view = activeCategories();
+    const viewCount = Object.keys(view.byCategory || {}).length;
+    const rows = categoryRows(view.byCategory, view.total, {
       limit: categoriesExpanded ? undefined : 5,
     });
+    categoryNote.textContent = `${view.label} · ${formatNumber(view.total)} ${view.word}`;
     categoryList.replaceChildren(...(rows.length
       ? rows
-      : [el("p", { className: "muted" }, [text("No incidents in this buffer.")])]));
-    categoryToggle.hidden = typeCount <= 5;
+      : [el("p", { className: "muted" }, [text(view.empty)])]));
+    categoryToggle.hidden = viewCount <= 5;
     categoryToggle.textContent = categoriesExpanded ? "Show less" : "Show more";
   }
 
-  function paintMonth() {
-    const entry = months.find((item) => item.key === selectedKey);
-    if (!entry) {
-      monthTitle.textContent = "Month";
-      monthCount.textContent = "Select a month.";
-      monthList.replaceChildren();
-      monthToggle.hidden = true;
-      return;
-    }
-    const byCategory = (venue.crime_categories_by_month || {})[entry.key] || {};
-    const monthTypes = Object.keys(byCategory).length;
-    const rows = categoryRows(byCategory, entry.count, {
-      limit: monthExpanded ? undefined : 5,
-    });
-    monthTitle.textContent = monthLabel(entry.key);
-    monthCount.textContent = `${formatNumber(entry.count)} incidents`;
-    monthList.replaceChildren(...(rows.length
-      ? rows
-      : [el("p", { className: "muted" }, [text("No typed incidents in this month.")])]));
-    monthToggle.hidden = monthTypes <= 5;
-    monthToggle.textContent = monthExpanded ? "Show less" : "Show more";
-  }
-
   function markMonth(key) {
+    const peakKey = seriesPeak()?.key;
     detail.querySelectorAll("[data-month]").forEach((node) => {
       const active = node.dataset.month === key;
       node.classList.toggle("is-active", active);
       if (node.tagName === "rect") {
-        node.setAttribute("fill", node.dataset.month === peak?.key ? "#DF0024" : (active ? "#1a1a1a" : "#0085C7"));
+        node.setAttribute("fill", node.dataset.month === peakKey ? "#DF0024" : (active ? "#1a1a1a" : "#0085C7"));
       }
     });
   }
 
   function paintTable() {
-    const filtered = months.filter((entry) => {
+    const bundle = seriesData();
+    const entries = seriesMonths();
+    const peakKey = seriesPeak()?.key;
+    const filtered = entries.filter((entry) => {
       const [year, month] = entry.key.split("-");
       const monthNumber = Number(month);
       if (tableYear !== "all" && year !== tableYear) return false;
       return monthNumber >= fromMonth && monthNumber <= toMonth;
     });
     if (!filtered.length) {
-      tableWrap.replaceChildren(el("p", { className: "muted" }, [text("No incidents in this range.")]));
+      tableWrap.replaceChildren(el("p", { className: "muted" }, [text(bundle.empty)]));
       return;
     }
-    const table = monthTable(filtered, peak?.key, selectedKey, fromMonth, toMonth);
+    const table = monthTable(filtered, peakKey, selectedKey, fromMonth, toMonth);
     table.addEventListener("click", (event) => {
       const cell = event.target.closest("td[data-month]");
       if (cell?.dataset.month) selectMonth(cell.dataset.month);
@@ -1078,10 +1194,10 @@ function renderDetail() {
   }
 
   function selectMonth(key) {
-    if (key !== selectedKey) monthExpanded = false;
-    selectedKey = key;
-    markMonth(key);
-    paintMonth();
+    selectedKey = selectedKey === key ? "" : key;
+    categoriesExpanded = false;
+    markMonth(selectedKey);
+    paintCategories();
   }
 
   function readRange(changed) {
@@ -1096,25 +1212,68 @@ function renderDetail() {
     tableYear = yearSelect.value;
     fromMonth = nextFrom;
     toMonth = nextTo;
+    selectedKey = "";
+    categoriesExpanded = false;
     paintTable();
     markMonth(selectedKey);
+    paintCategories();
+  }
+
+  function seriesNote() {
+    if (seriesId === "nibrs") {
+      return "Each row is one NIBRS offense, so one case can count more than once. Click a bar or a table cell to filter types to that month. Click it again to clear. Red is the busiest month.";
+    }
+    if (seriesId === "merged") {
+      return "Reports before March 7, 2024, then NIBRS offenses. Types are shared groups. Click a bar or a table cell to filter. Click it again to clear. Red is the busiest month.";
+    }
+    return "Click a bar or a table cell to filter incident types to that month. Click it again to clear. Red is the busiest month.";
+  }
+
+  function applySeries() {
+    const entries = seriesMonths();
+    const yearsNow = yearTotals(entries);
+    const peakNow = seriesPeak();
+    const peakYearNow = yearsNow.reduce(
+      (best, entry) => (entry[1] > best[1] ? entry : best),
+      yearsNow[0] || ["", 0],
+    );
+    yearSelect.replaceChildren(
+      el("option", { value: "all" }, [text("All years")]),
+      ...yearsNow.map(([year]) => el("option", { value: year }, [text(year)])),
+    );
+    yearSelect.value = tableYear;
+    yearHost.replaceChildren(...yearsNow.map(([year, count]) => (
+      el("article", { className: year === peakYearNow[0] ? "year-card is-peak" : "year-card" }, [
+        el("span", {}, [text(year)]),
+        el("strong", {}, [text(formatNumber(count))]),
+      ])
+    )));
+    chartHost.replaceChildren(monthChart(entries, peakNow?.key, selectMonth));
+    seriesHint.textContent = seriesNote();
+    paintTable();
+    markMonth(selectedKey);
+    paintCategories();
   }
 
   categoryToggle.addEventListener("click", () => {
     categoriesExpanded = !categoriesExpanded;
     paintCategories();
   });
-  monthToggle.addEventListener("click", () => {
-    monthExpanded = !monthExpanded;
-    paintMonth();
-  });
   yearSelect.addEventListener("change", () => readRange("year"));
   fromSelect.addEventListener("change", () => readRange("from"));
   toSelect.addEventListener("change", () => readRange("to"));
-
-  const chart = monthChart(months, peak?.key, selectMonth);
-  paintCategories();
-  paintTable();
+  seriesSelect.addEventListener("change", () => {
+    seriesId = seriesSelect.value;
+    selectedKey = "";
+    categoriesExpanded = false;
+    tableYear = "all";
+    fromMonth = 1;
+    toMonth = 12;
+    fromSelect.value = "1";
+    toSelect.value = "12";
+    applySeries();
+  });
+  applySeries();
 
   detail.hidden = false;
   detail.scrollTop = 0;
@@ -1129,17 +1288,17 @@ function renderDetail() {
       stat("Busiest month", peak ? monthLabel(peak.key) : "None", peak ? `${formatNumber(peak.count)} incidents` : "No dated incidents"),
       stat("Buffer", `${Math.round(venue.buffer_radius_m)} m`, jurisdictionLabel(venue.lapd_jurisdiction)),
     ]),
+    venue.nibrs ? el("p", { className: "muted" }, [
+      text(`NIBRS offenses since Mar 2024: ${formatNumber(venue.nibrs.count)}. A case can include more than one offense.`),
+    ]) : el("span"),
     flags.length ? el("div", { className: "flags" }, flags) : el("span"),
     el("h3", { className: "section-title" }, [text("Incidents by month")]),
-    el("p", { className: "muted" }, [text("Click a bar or a table cell to see that month. Red is the busiest month.")]),
-    years.length ? el("div", { className: "year-row" }, years.map(([year, count]) => (
-      el("article", { className: year === peakYear[0] ? "year-card is-peak" : "year-card" }, [
-        el("span", {}, [text(year)]),
-        el("strong", {}, [text(formatNumber(count))]),
-      ])
-    ))) : el("span"),
-    chart,
-    monthPanel,
+    hasSeries ? el("div", { className: "table-filters" }, [
+      el("label", {}, [text("Series"), seriesSelect]),
+    ]) : el("span"),
+    seriesHint,
+    yearHost,
+    chartHost,
     el("div", { className: "table-filters" }, [
       el("label", {}, [text("Year"), yearSelect]),
       el("label", {}, [text("From"), fromSelect]),
@@ -1147,6 +1306,7 @@ function renderDetail() {
     ]),
     tableWrap,
     el("h3", { className: "section-title" }, [text("Incident types")]),
+    categoryNote,
     categoryList,
     categoryToggle,
     el("h3", { className: "section-title" }, [text(`Rail · ${formatNumber(venue.rail_stations_nearby.count)} ${venue.rail_stations_nearby.count === 1 ? "station" : "stations"}`)]),
@@ -1163,7 +1323,6 @@ function renderDetail() {
     ]),
     el("p", { className: "footnote" }, [text(state.meta.jurisdiction_method)]),
   ]));
-  if (peak) selectMonth(peak.key);
 }
 
 function stat(label, value, note) {
@@ -1237,6 +1396,11 @@ function bindCrimeView() {
   });
 }
 
+function syncCrimeHint() {
+  if (!mapHint || mapHint.hidden) return;
+  mapHint.textContent = state.crimeView === "nibrs" ? NIBRS_CRIME_HINT : DEFAULT_CRIME_HINT;
+}
+
 async function loadCrimeHeat(view = state.crimeView || "all") {
   const crimeToggle = document.querySelector('#layer-toggles input[data-layer="crime"]');
   const token = ++crimeRequest;
@@ -1246,6 +1410,7 @@ async function loadCrimeHeat(view = state.crimeView || "all") {
     state.crimePoints = cached.points;
     state.crimeHot = Boolean(cached.hot);
     fillCrimeView(cached.options);
+    syncCrimeHint();
     if (state.layers.crime) refreshCrimeLayer();
     return;
   }
@@ -1256,6 +1421,7 @@ async function loadCrimeHeat(view = state.crimeView || "all") {
     state.crimePoints = crimeHeat.points;
     state.crimeHot = Boolean(crimeHeat.hot);
     fillCrimeView(crimeHeat.options);
+    syncCrimeHint();
     if (state.layers.crime) refreshCrimeLayer();
   } catch (error) {
     if (token !== crimeRequest) return;
