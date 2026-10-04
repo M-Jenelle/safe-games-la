@@ -298,11 +298,11 @@ function project(latitude, longitude) {
 }
 
 const FACILITY_STYLE = {
-  fire: { color: [223, 0, 36], scale: 0.9 },
-  hospitals: { color: [0, 133, 199], scale: 0.9 },
-  police: { color: [26, 26, 26], scale: 0.9 },
-  rail: { color: [0, 159, 61], scale: 0.85 },
-  bus: { color: [200, 150, 0], scale: 0.5 },
+  fire: { color: [128, 0, 0], scale: 1 },
+  hospitals: { color: [0, 133, 199], scale: 1 },
+  police: { color: [26, 26, 26], scale: 1 },
+  rail: { color: [0, 159, 61], scale: 1 },
+  bus: { color: [200, 150, 0], scale: 1 },
 };
 
 function mapZoom() {
@@ -310,9 +310,12 @@ function mapZoom() {
   return Number.isFinite(zoom) ? zoom : 10;
 }
 
-function pointPixelRadius(zoom) {
-  const px = 11 - (zoom - 10) * 1.3;
-  return Math.max(4, Math.min(14, px));
+const VENUE_PIN_SCALE = 1.25;
+const VENUE_PIN_HEIGHT_UNITS = 20;
+
+function pointPixelRadius() {
+  const venueHeight = VENUE_PIN_HEIGHT_UNITS * VENUE_PIN_SCALE;
+  return (venueHeight * 0.5) / 2;
 }
 
 const VENUE_PIN_PATH = "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z";
@@ -320,11 +323,11 @@ const VENUE_PIN_PATH = "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3
 function venuePinIcon(selected) {
   return {
     path: VENUE_PIN_PATH,
-    fillColor: "#FF4F9A",
+    fillColor: "#7B2CBF",
     fillOpacity: 1,
     strokeColor: "#ffffff",
     strokeWeight: selected ? 2 : 1.25,
-    scale: selected ? 1.55 : 1.25,
+    scale: selected ? 1.55 : VENUE_PIN_SCALE,
     anchor: new google.maps.Point(12, 22),
   };
 }
@@ -411,8 +414,7 @@ function syncBuffer() {
 
 function facilityLayers() {
   if (!state.facilities || typeof deck === "undefined") return [];
-  const zoom = mapZoom();
-  const radius = pointPixelRadius(zoom);
+  const radius = pointPixelRadius();
   const layers = [];
   for (const [name, style] of Object.entries(FACILITY_STYLE)) {
     if (!state.layers[name]) continue;
@@ -434,7 +436,7 @@ function facilityLayers() {
       getRadius: radius * style.scale,
       getLineColor: [255, 255, 255],
       getLineWidth: 1,
-      updateTriggers: { getRadius: zoom },
+      updateTriggers: { getRadius: radius },
     }));
   }
   return layers;
