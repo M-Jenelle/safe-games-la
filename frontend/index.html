@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Safe Games LA</title>
+  <link rel="icon" type="image/jpeg" href="/static/chat-icon.jpg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,650&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -132,42 +133,40 @@
     <div class="chat-dock">
     <aside class="chat-panel" id="chat-panel" hidden aria-labelledby="chat-heading">
       <div class="panel-label">
-        <h2 id="chat-heading">Analysis</h2>
-        <button type="button" class="chat-close" id="chat-close" aria-label="Close analysis">
+        <h2 id="chat-heading"><span class="chat-heading-icon bot-avatar" aria-hidden="true"><img src="/static/chat-icon.jpg" alt=""></span>Crime chatbot</h2>
+        <button type="button" class="chat-close" id="chat-close" aria-label="Close chatbot">
           <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
             <path d="M3.2 3.2 12.8 12.8M12.8 3.2 3.2 12.8" fill="none" stroke="currentColor" stroke-width="1.4"/>
           </svg>
         </button>
       </div>
-      <div class="chat-log" id="chat-log">
+      <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-relevant="additions" aria-label="Chat messages">
         <div class="chat-body">
-          <p class="analysis-lead" id="analysis-lead">Select a venue to explore its safety context.</p>
-          <p>Ask a question about Safe Games LA, or about a venue briefing you have open.</p>
-          <p class="chat-status">The assistant is not connected yet.</p>
-          <p class="examples-label">Suggested questions</p>
-          <ul>
-            <li>Which venues have the highest nearby crime density?</li>
-            <li>How is the LAPD flag decided?</li>
-            <li>Which sites have rail inside the buffer?</li>
-          </ul>
+          <p class="analysis-lead" id="analysis-lead">Name a venue or select one on the map to ask about “this venue.”</p>
+          <p>Ask for an incident total, the most common category, or a comparison of two venue counts.</p>
+          <p class="chat-source">LAPD crime reports · 2020–2024 · 800 m radius</p>
+          <p class="chat-engine" id="chat-engine">LAPD data mode</p>
+          <p class="examples-label">Try a question</p>
+          <div class="chat-suggestions" id="chat-suggestions"></div>
         </div>
       </div>
+      <p class="chat-status" id="chat-status" role="status"></p>
       <form class="chat-form" id="chat-form">
         <label class="visually-hidden" for="chat-input">Message the assistant</label>
-        <input id="chat-input" type="text" placeholder="Ask anything" disabled>
-        <button type="submit" disabled>Send</button>
+        <input id="chat-input" type="text" placeholder="Ask about crime near a venue" required maxlength="2000" autocomplete="off">
+        <button type="submit">Send</button>
       </form>
-      <p class="chat-context" id="chat-context">No briefing open. General questions are in scope.</p>
+      <p class="chat-context" id="chat-context">No venue selected. Include a venue name in your question.</p>
     </aside>
-    <button type="button" class="chat-launcher" id="chat-launcher" aria-expanded="false" aria-controls="chat-panel" aria-label="Open analysis">
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path d="M5 6.5h14v9H8.2L5 18.2V6.5Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
-      </svg>
+    <button type="button" class="chat-launcher" id="chat-launcher" aria-expanded="false" aria-controls="chat-panel" aria-label="Open crime chatbot">
+      <span class="chat-launcher-icon bot-avatar" aria-hidden="true"><img src="/static/chat-icon.jpg" alt=""></span>
+      <span>Ask crime data</span>
     </button>
     </div>
   </div>
   <script src="https://unpkg.com/deck.gl@9.2.0/dist.min.js"></script>
   <script src="https://unpkg.com/@deck.gl/google-maps@9.2.0/dist.min.js"></script>
   <script src="/static/app.js"></script>
+  <script src="/static/chat.js"></script>
 </body>
 </html>

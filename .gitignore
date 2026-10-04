@@ -2,3 +2,6 @@ data/Crime_Data_from_2020_to_2024.csv
 
 .env.local
 .env*
+!.env.example
+.venv/
+__pycache__/

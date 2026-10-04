@@ -69,7 +69,7 @@ function setChatOpen(open) {
   chatPanel.hidden = !open;
   chatLauncher.hidden = open;
   chatLauncher.setAttribute("aria-expanded", open ? "true" : "false");
-  if (open) chatClose.focus();
+  if (open) document.querySelector("#chat-input").focus();
   else chatLauncher.focus();
 }
 
@@ -641,13 +641,14 @@ window.addEventListener("resize", () => {
 
 function renderChatContext() {
   const venue = state.venues.find((item) => item.venue_id === state.selectedId);
+  window.dispatchEvent(new CustomEvent("venue-context", { detail: venue || null }));
   if (!venue) {
-    chatContext.textContent = "No briefing open. General questions are in scope.";
+    chatContext.textContent = "No venue selected. Include a venue name in your question.";
     analysisLead.hidden = false;
     return;
   }
   analysisLead.hidden = true;
-  chatContext.textContent = `Briefing open: ${venue.venue_name}. Questions can be about that venue or about the city as a whole.`;
+  chatContext.textContent = `“This venue” refers to ${venue.venue_name}.`;
 }
 
 function venueIdFromLocation() {

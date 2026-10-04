@@ -12,8 +12,12 @@ import os
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+
+from backend.chat import answer_question, suggested_questions
+from backend.claude import settings as claude_settings
 
 from backend.store import (
     DatasetNotFound,
@@ -40,6 +44,9 @@ def _load_env_file() -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
+        if key.strip() in {"ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"}:
+            # Claude reads these settings on demand, allowing local key changes.
+            continue
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
@@ -53,7 +60,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -87,6 +94,31 @@ def read_meta() -> dict:
         return meta()
     except DatasetNotFound as exc:
         raise _missing(exc) from exc
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    venue_id: str | None = Field(default=None, min_length=1, max_length=80)
+
+
+@app.get("/api/chat/suggestions")
+def chat_suggestions() -> dict:
+    try:
+        return suggested_questions()
+    except DatasetNotFound as exc:
+        raise _missing(exc) from exc
+
+
+@app.get("/api/chat/config")
+def chat_config() -> dict:
+    """Public status only. The Anthropic API key never leaves the server."""
+    return claude_settings()
+
+
+@app.post("/api/chat")
+def chat(request: ChatRequest):
+    response = answer_question(request.message, request.venue_id)
+    return JSONResponse(response, status_code=503 if response["status"] == "unavailable" else 200)
 
 
 @app.get("/api/map")
