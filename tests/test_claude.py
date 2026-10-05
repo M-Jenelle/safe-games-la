@@ -129,6 +129,9 @@ class ClaudeTests(unittest.TestCase):
         for question in (
             "How many incidents near Dodger Stadium in 2028?",
             "How many incidents near Dodger Stadium today?",
+            "How many NIBRS offenses near Dodger Stadium?",
+            "How many Ticketmaster events near Dodger Stadium?",
+            "How many LADBS permits near Dodger Stadium?",
             "How many incidents near Dodger Stadium in 2021?",
             "How many incidents within 500m of Dodger Stadium?",
             "How many incidents near Dodger Stadium at night?",
@@ -163,6 +166,66 @@ class ClaudeTests(unittest.TestCase):
         self.assertEqual(body["engine"], "fallback")
         self.assertEqual(body["question_type"], "total")
         self.assertEqual(body["results"][0]["count"], 914)
+
+    def test_supporting_intents_read_data_without_sending_facts_to_claude(self):
+        venue = self.venues[0]
+        for intent, question in (
+            ("rail", "Could you check the rail options around Dodger Stadium?"),
+            ("bus", "Could you check the bus options around Dodger Stadium?"),
+            ("transit", "Could you check the public transport around Dodger Stadium?"),
+            ("fire", "Could you check the closest fire station to Dodger Stadium?"),
+            ("police", "Could you check the closest police station to Dodger Stadium?"),
+            ("hospital", "Could you check the closest hospital to Dodger Stadium?"),
+            ("services", "Could you check the emergency facilities around Dodger Stadium?"),
+            ("sports", "Could you check the sports listed for Dodger Stadium?"),
+        ):
+            with self.subTest(intent=intent), self.api({"intent": intent, "scope_supported": True}) as requests:
+                body = self.post(question)
+                self.assertEqual(body["status"], "answered")
+                self.assertEqual(body["engine"], "claude")
+                self.assertEqual(body["question_type"], intent)
+                self.assertTrue(all(row["venue_id"] == venue["venue_id"] for row in body["results"]))
+                payload = json.loads(requests[0].content)
+                self.assertNotIn("BARLOW", json.dumps(payload))
+                self.assertNotIn("nearest_hospital", json.dumps(payload))
+                self.assertIsNone(body["source"]["period"])
+                if intent in {"rail", "transit"}:
+                    self.assertEqual(body["results"][0]["count"], 0)
+                if intent == "bus":
+                    self.assertEqual(body["results"][0]["count"], 2)
+                if intent == "hospital":
+                    self.assertEqual(body["results"][0]["facility"], venue["nearest_hospital"])
+
+    def test_code_blocks_unsupported_context_even_when_model_would_allow_it(self):
+        for question in (
+            "What is the nearest hospital with an emergency room to Dodger Stadium?",
+            "Find the nearest hospital that has an ER to Dodger Stadium",
+            "What is the most common bus route near Dodger Stadium?",
+            "What is the fire response time near Dodger Stadium?",
+            "What transit is near Dodger Stadium during 2020–2024?",
+            "What police jurisdiction covers Dodger Stadium?",
+            "List bus stops near Dodger Stadium",
+            "Compare transit near Dodger Stadium and LA Zoo",
+        ):
+            with self.subTest(question=question), self.api({"intent": "hospital", "scope_supported": True}) as requests:
+                body = self.post(question)
+                self.assertEqual(body["status"], "unsupported")
+                self.assertEqual(body["results"], [])
+                self.assertEqual(requests, [])
+
+    def test_claude_cannot_change_a_known_supporting_intent(self):
+        with self.api({"intent": "total", "scope_supported": True}):
+            body = self.post("What is the nearest hospital to Dodger Stadium?")
+        self.assertEqual(body["engine"], "fallback")
+        self.assertEqual(body["question_type"], "hospital")
+        self.assertEqual(body["results"][0]["facility"], self.venues[0]["nearest_hospital"])
+
+    def test_api_failure_keeps_supporting_data_fallback(self):
+        with self.api(status=500):
+            body = self.post("How many bus stops are near Dodger Stadium?")
+        self.assertEqual(body["engine"], "fallback")
+        self.assertEqual(body["results"][0]["count"], 2)
+        self.assertEqual(body["source"]["file"], "la_metro_bus_stops.csv")
 
     def test_model_numbers_invalid_fields_and_invalid_json_are_never_used(self):
         for raw in (

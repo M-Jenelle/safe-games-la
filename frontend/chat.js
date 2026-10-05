@@ -30,7 +30,7 @@
     article.className = `chat-message chat-message-${role}`;
     const author = document.createElement("strong");
     author.className = "chat-author";
-    author.textContent = role === "user" ? "You" : engine === "claude" ? "Claude · LAPD data" : "Data assistant";
+    author.textContent = role === "user" ? "You" : engine === "claude" ? "Claude · venue data" : "Data assistant";
     const byline = document.createElement("div");
     byline.className = "chat-byline";
     if (role === "assistant") {
@@ -69,7 +69,7 @@
       button.disabled = value;
     });
     status.textContent = value
-      ? claudeConfigured ? "Claude is interpreting your question…" : "Reading the processed LAPD data…"
+      ? claudeConfigured ? "Claude is interpreting your question…" : "Reading the processed venue data…"
       : "";
   }
 
@@ -93,9 +93,9 @@
       if (!body.answer) throw new Error("The server could not process this question. Try again.");
       const article = messageNode("assistant", body.answer, body.engine);
       engineLabel.textContent = body.engine === "claude"
-        ? "Claude · answers calculated from LAPD data"
-        : body.engine === "fallback" ? "Claude fallback · LAPD data mode"
-        : claudeConfigured ? "Claude enabled · answers calculated from LAPD data" : "LAPD data mode";
+        ? "Claude · answers calculated from venue data"
+        : body.engine === "fallback" ? "Claude fallback · venue data mode"
+        : claudeConfigured ? "Claude enabled · answers calculated from venue data" : "Venue data mode";
       if (body.engine_note) {
         const note = document.createElement("p");
         note.className = "chat-engine";
@@ -121,7 +121,7 @@
       const reason = error.name === "AbortError"
         ? "The request timed out. Please try again."
         : "The chatbot could not be reached. Please retry after checking the server.";
-      messageNode("assistant", `${reason}\n\nSource: LAPD crime reports via the LA Open Data Portal. Period: 2020–2024. Analysis: 800 m radius around each venue. No count was calculated.`);
+      messageNode("assistant", `${reason}\n\nNo answer was calculated. Crime context only: LAPD crime reports via the LA Open Data Portal, 2020–2024, 800 m radius around each venue. Supporting datasets use separate sources and scopes.`);
       input.value = message;
     } finally {
       window.clearTimeout(timeout);
@@ -155,10 +155,10 @@
     .then((config) => {
       claudeConfigured = Boolean(config?.claude_configured);
       engineLabel.textContent = claudeConfigured
-        ? "Claude enabled · answers calculated from LAPD data"
-        : "LAPD data mode · Claude not configured";
+        ? "Claude enabled · answers calculated from venue data"
+        : "Venue data mode · Claude not configured";
     })
-    .catch(() => { engineLabel.textContent = "LAPD data mode"; });
+    .catch(() => { engineLabel.textContent = "Venue data mode"; });
   if (new URLSearchParams(window.location.search).get("chat") === "1") {
     setChatOpen(true);
   }

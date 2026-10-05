@@ -1,6 +1,6 @@
 """Optional Claude question interpretation; credentials stay on the server.
 
-Claude returns only an intent and scope flag, never crime counts or prose.
+Claude returns only an intent and scope flag, never figures or answer prose.
 The existing venue resolver and processed-data calculations provide answers.
 """
 
@@ -25,7 +25,7 @@ class ClaudeUnavailable(Exception):
 
 class Interpretation(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    intent: Literal["total", "top_category", "compare", "unsupported"]
+    intent: Literal["total", "top_category", "compare", "rail", "bus", "transit", "fire", "police", "hospital", "services", "sports", "unsupported"]
     scope_supported: bool
 
 
@@ -62,7 +62,7 @@ def interpret_question(message: str, venues: list[dict], venue_id: str | None) -
     schema = {
         "type": "object",
         "properties": {
-            "intent": {"type": "string", "enum": ["total", "top_category", "compare", "unsupported"]},
+            "intent": {"type": "string", "enum": ["total", "top_category", "compare", "rail", "bus", "transit", "fire", "police", "hospital", "services", "sports", "unsupported"]},
             "scope_supported": {"type": "boolean"},
         },
         "required": ["intent", "scope_supported"],
@@ -77,10 +77,21 @@ def interpret_question(message: str, venues: list[dict], venue_id: str | None) -
             "Supported calculations: total = full-period reported incident count for one venue; "
             "top_category = the most common LAPD crime category for one venue; "
             "compare = full-period incident totals for exactly two venues. "
-            "The only supported scope is LAPD reports from 2020–2024 within an 800 m radius. "
+            "Crime scope is LAPD reports from 2020–2024 within an 800 m radius. "
+            "Supporting static-snapshot questions: rail = recorded rail stations/lines within 800 m; "
+            "bus = recorded bus-stop count and serving routes within 800 m; transit = both. "
+            "There is no nearest rail/bus search, route planning, or list of individual bus stops. "
+            "fire/police/hospital = nearest recorded facility of that type and straight-line distance, "
+            "not restricted to 800 m; hospital includes its recorded emergency-room flag. "
+            "services = nearest fire/police/hospital overview; sports = listed venue sports. "
+            "Supporting layers have no recorded coverage date; never treat them as 2020–2024 data. "
             "No crime causes, safety judgments, predictions, live/current conditions, citywide "
             "totals, demographic filters, specific-category counts, date/time subsets, alternate "
-            "radii, rates, density, or transit/emergency-service answers are supported. "
+            "radii, rates, density, traffic, schedules, fares, facility capacity, availability, "
+            "travel/response times, jurisdiction, nearest emergency-room hospital, individual "
+            "bus-stop names, NIBRS offenses, event/permit datasets, or supporting-layer comparisons are supported. "
+            "Multiple topics are unsupported except rail+bus (transit) or fire+police+hospital "
+            "(services); services always gives all three types. Do not drop requested topics. "
             "If ANY requested metric or filter is unsupported, set intent=unsupported and "
             "scope_supported=false; do not discard qualifiers. A question need not explicitly "
             "mention years or radius to use the default full-period scope. "

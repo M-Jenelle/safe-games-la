@@ -24,7 +24,7 @@ A public-safety readiness tool for LA agencies ahead of the 2028 Olympics. It ha
 - **Two processed outputs ready for the frontend**, in `data/processed/`:
   - `venue_summary.json` — one row per venue: coordinates, `crime_count_nearby`, `crime_per_km2`, `crime_by_category`, `crime_by_month`, nearby rail stations, bus stop count + unique lines, nearest fire station, nearest police station, `lapd_jurisdiction` flag
   - `crime_points_by_venue.json` (16.7 MB) — individual incidents per venue (lat/long, category, date, incident id) for the heatmap point layer
-- **FastAPI backend and crime chatbot** — the existing app serves the map, venue briefings, and `POST /api/chat`. The chatbot calculates full-period incident totals, most common categories, and two-venue count comparisons directly from the processed summary. Click **Ask crime data** or open `/?chat=1` for the demo.
+- **FastAPI backend and venue chatbot** — the existing app serves the map, venue briefings, and `POST /api/chat`. The chatbot calculates crime totals/categories/comparisons, nearby transit, nearest facilities, and listed sports directly from the processed summary. Click **Ask venue data** or open `/?chat=1` for the demo.
 
 ### ⚠️ Known issues to be aware of
 - **`lapd_jurisdiction` flag is a nearest-station estimate, not an official boundary check.** It currently flags LA Zoo, Griffith Observatory, Riviera Country Club, and both Venice Beach venues as "non-LAPD," but this is very likely wrong for the Zoo, Griffith Observatory, and Venice (all are LAPD territory in reality — nearest station distance isn't the same as jurisdiction). Needs a boundary-map cross-check before we present this flag anywhere. Don't hide venues from the map based on this flag yet.
@@ -113,7 +113,7 @@ Ticketmaster calls are throttled to a conservative 0.6 seconds between requests 
 
 Ticketmaster Discovery is not a guaranteed historical archive, so completed events from earlier years may not be returned even when the 2020 start date is requested.
 
-## Crime chatbot demo
+## Venue chatbot demo
 
 Start the same app from the repo root. It works in data mode without an API key; Claude interpretation is optional:
 
@@ -123,20 +123,29 @@ Start the same app from the repo root. It works in data mode without an API key;
 
 On a fresh checkout, use Python 3.10+ to create an environment (`python3 -m venv .venv`), then install the requirements with `.venv/bin/python -m pip install -r requirements.txt`.
 
-Open [http://127.0.0.1:8000/?chat=1](http://127.0.0.1:8000/?chat=1). The chatbot works without a Google Maps key. It has three clickable suggested questions drawn from the actual venue roster. You can also try:
+Open [http://127.0.0.1:8000/?chat=1](http://127.0.0.1:8000/?chat=1). The chatbot works without a Google Maps key. It has six clickable suggested questions drawn from the actual venue roster. You can also try:
 
 - “What is the most common crime category near Dodger Stadium?” → **BATTERY - SIMPLE ASSAULT: 154 reports**.
 - “How many incidents were reported near Dodger Stadium?” → **All categories: 914 reported incidents**.
 - “Compare the crime counts near Dodger Stadium and Crypto.com Arena.” → separate venue totals and their absolute difference, with an overlap note.
 - “How many incidents near Venice?” → asks you to choose **Venice Beach** or **Venice Beach Boardwalk**. Clicking a choice continues the question.
+- “What transit is nearby Dodger Stadium?” → **0 rail stations; 2 bus stops**, with the recorded bus routes.
+- “What rail stations are near LA Convention Center?” → station names, lines, counts, and straight-line distances within **800 m**.
+- “What is the nearest fire station to Dodger Stadium?” → **Fire Station 1, 2,003.1 m**, which is outside the crime/transit buffer.
+- “Does the nearest hospital to Dodger Stadium have an emergency room?” → **BARLOW RESPIRATORY HOSPITAL, 779.4 m; recorded ER flag: No**. This is the nearest hospital overall, not a nearest-ER search.
+- “Which sports are listed at Dodger Stadium?” → **Baseball** from the project venue roster.
+
+Supporting answers cite their own CSV source(s), mark the coverage/as-of date as unrecorded in the processed summary, and separately label the processing timestamp. The **2020–2024** label applies only to crime. Rail/bus counts use the **800 m** buffer. Nearest fire/police/hospital records search the loaded dataset without that radius restriction, and distances are straight-line rather than travel or response times. The hospital ER flag is a recorded attribute, not confirmation of current availability. The nearest police station does not establish jurisdiction; listed sports do not confirm an event schedule.
 
 Select a venue in the existing roster to ask about “this venue.” Without a map selection, the last single venue answered in chat provides context. Explicit names override context; ambiguous names always require clarification. After a two-venue comparison, name a venue or select one before using “this venue.”
 
-`POST /api/chat` accepts `{"message": "How many incidents near this venue?", "venue_id": "V01"}`. `venue_id` is optional. Responses include `status`, `answer`, `question_type`, `results` (actual venue/category/count rows), `choices` (clarification questions), `source`, and `engine` (`data`, `claude`, or `fallback`). `GET /api/chat/suggestions` provides the demo questions; `/api/chat/config` reports whether Claude is configured and the selected model, without exposing its key. A missing or mismatched dataset returns HTTP 503 with a sourced explanation; invalid request sizes return HTTP 422.
+`POST /api/chat` accepts `{"message": "How many incidents near this venue?", "venue_id": "V01"}`. `venue_id` is optional. Responses include `status`, `answer`, `question_type`, `results` (venue/category/count rows for crime; venue/topic rows with recorded context fields for other questions), `choices` (clarification questions), `source` (primary source), `sources` (all sources used), and `engine` (`data`, `claude`, or `fallback`). Supporting sources include `scope`, `coverage_date: null`, and `processed_at`. `GET /api/chat/suggestions` provides the demo questions; `/api/chat/config` reports whether Claude is configured and the selected model, without exposing its key. A missing or mismatched dataset returns HTTP 503 with a sourced explanation; invalid request sizes return HTTP 422.
 
 Every answer labels **LAPD crime reports via the LA Open Data Portal**, the processed source file, **2020–2024**, and the **800 m radius**. The chatbot reads `venue_summary.json` through the existing reload-on-change store. Tests independently check totals and top categories against `crime_points_by_venue.json` for all 14 venues. Venue buffers overlap, so comparisons never sum their counts into a unique citywide total.
 
-This small demo supports full-period incident totals, the most common category (including ties), and comparisons of exactly two venue totals. It explicitly declines category-specific counts, date/time filters, other radii, transit/service questions, causes, live conditions, safety judgments, and 2028 predictions. Venue matching and every number come from code and processed data. Keep the pipeline at `--radius-m 800` for this demo.
+This small demo supports full-period incident totals, the most common category (including ties), comparisons of exactly two venue totals, and the supporting questions above. “What emergency services are near this venue?” gives the nearest recorded fire station, police/sheriff station, and hospital. It explicitly declines category-specific counts, date/time filters, other radii, nearest-ER searches, route planning, schedules/fares, travel/response times, causes, live conditions, safety judgments, and 2028 predictions. Traffic and official jurisdiction boundaries need validated ingestion/joining before they can be added. Venue matching and every number come from code and processed data. Keep the pipeline at `--radius-m 800` for this demo.
+
+The map's separate NIBRS offense series and the Ticketmaster/LADBS event and permit files are not connected to this chatbot. Questions explicitly requesting those sources are declined; they are never folded into the 2020–2024 incident totals.
 
 ### Enable Claude
 
@@ -156,9 +165,9 @@ The chatbot uses the supplied robot image in the launcher, header, messages, and
 Run the checks from the repo root:
 
 ```bash
-.venv/bin/python -m unittest tests.test_pipeline tests.test_api tests.test_chat tests.test_claude
+.venv/bin/python -m unittest tests.test_pipeline tests.test_nibrs tests.test_merge tests.test_api tests.test_chat tests.test_context_chat tests.test_claude
 node --check frontend/app.js
 node --check frontend/chat.js
 ```
 
-The two citywide heatmap tests in `tests.test_api` also need the raw, gitignored `data/Crime_Data_from_2020_to_2024.csv`. If it is absent, those routes return HTTP 503 and those tests fail. The chatbot and per-venue endpoints use the processed JSON. Run chatbot checks alone with `.venv/bin/python -m unittest tests.test_chat tests.test_claude`. Claude tests use a mock HTTP transport and make no external or paid API calls.
+The two citywide heatmap tests in `tests.test_api` also need the raw, gitignored `data/Crime_Data_from_2020_to_2024.csv`. If it is absent, those routes return HTTP 503 and those tests fail. The chatbot and per-venue endpoints use the processed JSON. Run chatbot checks alone with `.venv/bin/python -m unittest tests.test_chat tests.test_context_chat tests.test_claude`. Claude tests use a mock HTTP transport and make no external or paid API calls.

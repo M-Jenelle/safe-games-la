@@ -134,7 +134,7 @@
     <div class="chat-dock">
     <aside class="chat-panel" id="chat-panel" hidden aria-labelledby="chat-heading">
       <div class="panel-label">
-        <h2 id="chat-heading"><span class="chat-heading-icon bot-avatar" aria-hidden="true"><img src="/static/chat-icon.jpg" alt=""></span>Crime chatbot</h2>
+        <h2 id="chat-heading"><span class="chat-heading-icon bot-avatar" aria-hidden="true"><img src="/static/chat-icon.jpg" alt=""></span>Venue chatbot</h2>
         <button type="button" class="chat-close" id="chat-close" aria-label="Close chatbot">
           <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
             <path d="M3.2 3.2 12.8 12.8M12.8 3.2 3.2 12.8" fill="none" stroke="currentColor" stroke-width="1.4"/>
@@ -144,9 +144,9 @@
       <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-relevant="additions" aria-label="Chat messages">
         <div class="chat-body">
           <p class="analysis-lead" id="analysis-lead">Name a venue or select one on the map to ask about “this venue.”</p>
-          <p>Ask for an incident total, the most common category, or a comparison of two venue counts.</p>
-          <p class="chat-source">LAPD crime reports · 2020–2024 · 800 m radius</p>
-          <p class="chat-engine" id="chat-engine">LAPD data mode</p>
+          <p>Ask about crime counts, nearby transit, nearest fire/police stations or hospitals, and listed sports.</p>
+          <p class="chat-source">Crime: LAPD · 2020–2024 · 800 m radius. Other datasets have their own source and scope in each answer.</p>
+          <p class="chat-engine" id="chat-engine">Venue data mode</p>
           <p class="examples-label">Try a question</p>
           <div class="chat-suggestions" id="chat-suggestions"></div>
         </div>
@@ -154,14 +154,14 @@
       <p class="chat-status" id="chat-status" role="status"></p>
       <form class="chat-form" id="chat-form">
         <label class="visually-hidden" for="chat-input">Message the assistant</label>
-        <input id="chat-input" type="text" placeholder="Ask about crime near a venue" required maxlength="2000" autocomplete="off">
+        <input id="chat-input" type="text" placeholder="Ask about a venue" required maxlength="2000" autocomplete="off">
         <button type="submit">Send</button>
       </form>
       <p class="chat-context" id="chat-context">No venue selected. Include a venue name in your question.</p>
     </aside>
-    <button type="button" class="chat-launcher" id="chat-launcher" aria-expanded="false" aria-controls="chat-panel" aria-label="Open crime chatbot">
+    <button type="button" class="chat-launcher" id="chat-launcher" aria-expanded="false" aria-controls="chat-panel" aria-label="Open venue chatbot">
       <span class="chat-launcher-icon bot-avatar" aria-hidden="true"><img src="/static/chat-icon.jpg" alt=""></span>
-      <span>Ask crime data</span>
+      <span>Ask venue data</span>
     </button>
     </div>
   </div>

@@ -1,7 +1,7 @@
 """Small data-backed analyst, optionally interpreted by Claude.
 
-Only full-period totals, the most common category, and two-venue total
-comparisons are supported. Unknown filters are rejected rather than ignored.
+Crime calculations and supporting venue context come from processed data.
+Unknown filters are rejected rather than ignored.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ import re
 import unicodedata
 
 from backend.claude import ClaudeUnavailable, interpret_question, settings
+from backend.context import CONTEXT_INTENTS, ContextUnavailable, context_answer, source_text
 from backend.store import DatasetNotFound, load_summary
 
 PERIOD = "2020–2024"
@@ -28,22 +29,29 @@ PROVENANCE = (
 HELP = (
     "I can answer full-period incident totals, the most common crime category, "
     "and crime-count comparisons between two named venues. "
-    "This demo cannot answer other categories or filters, crime causes, live "
+    "I can also show nearby rail/bus transit, nearest recorded fire/police stations "
+    "and hospitals (with the recorded emergency-room flag), and listed venue sports. "
+    "This demo cannot answer other categories or filters, traffic, schedules, fares, "
+    "nearest emergency-room hospitals, travel/response times, crime causes, live "
     "conditions, safety assessments, or 2028 predictions."
 )
 
 
 def _normalize(value: str) -> str:
     value = unicodedata.normalize("NFKD", value).casefold()
-    value = re.sub(r"\bwhat['’]s\b", "what is", value)
+    value = re.sub(r"\b(what|where)['’]s\b", r"\1 is", value)
     return " ".join(re.findall(r"[a-z0-9]+", value))
 
 
-def _reply(status: str, answer: str, *, results=None, choices=None, intent=None) -> dict:
+def _reply(status: str, answer: str, *, results=None, choices=None, intent=None, sources=None) -> dict:
+    provenance = ("Crime context only — " if intent in CONTEXT_INTENTS else "") + PROVENANCE
+    if sources:
+        provenance = source_text(sources) + "\n\nCrime context only — " + PROVENANCE
     return {
         "status": status,
-        "answer": f"{answer}\n\n{PROVENANCE}",
-        "source": dict(SOURCE),
+        "answer": f"{answer}\n\n{provenance}",
+        "source": sources[0] if sources else dict(SOURCE),
+        "sources": sources or [dict(SOURCE)],
         "question_type": intent,
         "results": results or [],
         "choices": choices or [],
@@ -107,6 +115,7 @@ def _question_text(message: str, mentions: list) -> str:
 def _outside_scope(message: str, mentions: list) -> bool:
     """Code rejects explicit unsupported qualifiers even if Claude drops them."""
     residual = _question_text(message, mentions)
+    context = _context_intent(residual)
     forbidden = (
         r"\d|\b(why|cause|causes|caused|reason|reasons|predict|prediction|predictions|"
         r"forecast|forecasts|will|expect|expected|probability|chance|projection|projections|"
@@ -119,11 +128,21 @@ def _outside_scope(message: str, mentions: list) -> bool:
         r"violent|property|robbery|robberies|burglary|burglaries|theft|thefts|"
         r"assault|assaults|battery|batteries|homicide|homicides|vandalism|"
         r"shooting|shootings|weapon|weapons|sexual|rape|rapes|shoplifting|stolen|fraud|arson|"
-        r"transit|traffic|rail|bus|hospital|hospitals|fire|police|"
+        r"traffic|schedule|schedules|timetable|timetables|departure|departures|arrival|arrivals|"
+        r"frequency|frequencies|fare|fares|ticket|tickets|cost|costs|price|prices|"
+        r"walking|driving|walk|drive|travel|response|minutes|hours|open|closed|available|"
+        r"availability|capacity|beds|phone|telephone|hotline|jurisdiction|boundary|boundaries|"
+        r"fastest|cheapest|directions|accessible|accessibility|wheelchair|trauma|pediatric|icu|"
+        r"nibrs|ticketmaster|permit|permits|event|events|"
         r"invent|ignore|pretend|fabricate)\b"
     )
     return bool(
         re.search(forbidden, residual)
+        or context == "unsupported"
+        # Crime years cannot be silently applied to static supporting data.
+        or (context and re.search(r"\b2020 (?:(?:to|through) )?2024\b", message))
+        or (context in {"fire", "police", "hospital", "services", "sports"}
+            and re.search(r"\b800 ?(?:m|meters|metres)\b", message))
         or re.search(r"\b(all|every) (venues|venue|sites|site)\b", residual)
         or re.search(r"\b(how many|number of|count of) (?:crime )?(venues|sites|category|categories|type|types)\b", residual)
         or (
@@ -133,6 +152,48 @@ def _outside_scope(message: str, mentions: list) -> bool:
     )
 
 
+def _context_intent(residual: str) -> str | None:
+    """Find layer requests and reject metrics the summary cannot supply."""
+    topics = set()
+    for topic, pattern in {
+        "rail": r"\b(rail|train|trains|subway)\b",
+        "bus": r"\b(bus|buses)\b",
+        "transit": r"\b(transit|transport|transportation)\b",
+        "fire": r"\bfire\b", "police": r"\b(police|sheriff)\b",
+        "hospital": r"\b(hospital|hospitals|er)\b|\bemergency room\b",
+        "sports": r"\b(sport|sports|sporting)\b",
+        "services": r"\bemergency (services|facilities)\b",
+    }.items():
+        if re.search(pattern, residual):
+            topics.add(topic)
+    if "bus" not in topics and re.search(r"\bmetro\b", residual):
+        topics.add("rail")
+    if not topics:
+        return None
+    if re.search(r"\b(crime|crimes|incident|incidents|offence|offense|compare|comparison|versus|vs|difference|more|fewer|higher|lower|best|better|most|top|highest|largest|common|frequent|busiest)\b", residual):
+        return "unsupported"
+    if topics <= {"rail", "bus", "transit"}:
+        if re.search(r"\b(nearest|closest|directions|route to|routes to|route from|routes from)\b", residual):
+            return "unsupported"
+        if "bus" in topics and re.search(r"\b(names|addresses|locations|individual)\b|\b(list|which|where) (?:the )?bus stops\b", residual):
+            return "unsupported"
+        return "transit" if "transit" in topics or len(topics) > 1 else next(iter(topics))
+    if topics <= {"fire", "police", "hospital", "services"}:
+        # Only the nearest hospital overall is stored, not a nearest-ER search.
+        if re.search(r"\b(nearest|closest) (?:\w+ )?(emergency room|er)\b", residual):
+            return "unsupported"
+        if re.search(r"\b(?:with|without) (?:an? )?(emergency room|er)\b|\bemergency hospital\b|\b(?:that|which) (?:has|provides|offers)\b", residual):
+            return "unsupported"
+        if re.search(r"\b(emergency room|er)\b", residual) and not re.search(r"\b(nearest|closest) hospital\b", residual):
+            return "unsupported"
+        if re.search(r"\b(how many|count|counts|list all|all hospitals|all stations)\b", residual):
+            return "unsupported"
+        if "services" in topics or len(topics) > 1:
+            return "services"
+        return next(iter(topics))
+    return "sports" if topics == {"sports"} else "unsupported"
+
+
 def _intent(message: str, mentions: list) -> str | None:
     # Local fallback rejects unknown words rather than ignoring qualifiers.
     residual = _question_text(message, mentions)
@@ -140,6 +201,7 @@ def _intent(message: str, mentions: list) -> str | None:
         return None
     if re.search(r"\b(how many|number of|count of) (venues|sites)\b", residual):
         return None
+    context = _context_intent(residual)
     allowed = set(
         "a an the what which how many much is are was were has have had do does "
         "did can could you please tell me show give about at near nearby around "
@@ -152,8 +214,19 @@ def _intent(message: str, mentions: list) -> str | None:
         "fewer higher lower largest lapd data full period radius over during "
         "been there".split()
     )
+    if context:
+        allowed.update(
+            "where list nearest closest station stations rail train trains "
+            "metro subway bus buses stop stops route routes line lines transit transport "
+            "transportation options access fire police sheriff hospital hospitals emergency "
+            "room er services facilities service facility distance far away located "
+            "sport sports sporting listed hosted host hosts take place played play held "
+            "happening happen".split()
+        )
     if set(residual.split()) - allowed:
         return None
+    if context:
+        return context if context != "unsupported" else None
     category_query = re.search(r"\b(category|categories|type|types)\b", residual)
     if re.search(r"\b(compare|comparison|versus|vs|difference|more|fewer|higher|lower)\b", residual):
         if category_query or re.search(r"\b(most|top|leading|common|frequent|frequently)\b", residual):
@@ -180,9 +253,12 @@ def suggested_questions() -> dict:
         questions.extend([
             f"What is the most common crime category near {first}?",
             f"How many incidents were reported near {first}?",
+            f"What transit is nearby {first}?",
+            f"What is the nearest hospital to {first}?",
+            f"Which sports are listed at {first}?",
         ])
     if len(venues) >= 2:
-        questions.append(f"Compare the crime counts near {first} and {venues[1]['venue_name']}.")
+        questions.insert(2, f"Compare the crime counts near {first} and {venues[1]['venue_name']}.")
     return {"questions": questions}
 
 
@@ -197,7 +273,7 @@ def _answer_question(message: str, venue_id: str | None, engine: dict) -> dict:
     try:
         summary = load_summary()
     except DatasetNotFound:
-        return _reply("unavailable", "The processed crime data is missing. Run `python -m pipeline.run` first.")
+        return _reply("unavailable", "The processed venue data is missing. Run `python -m pipeline.run` first.")
 
     venues = summary["venues"]
     if (
@@ -273,6 +349,12 @@ def _answer_question(message: str, venue_id: str | None, engine: dict) -> dict:
         return _reply("clarification", "Please name one venue for that question, or ask to compare two venue counts.", intent=intent)
 
     selected = list(resolved.values())
+    if intent in CONTEXT_INTENTS:
+        try:
+            answer, results, sources = context_answer(intent, selected[0], summary["meta"])
+        except ContextUnavailable as exc:
+            return _reply("unavailable", f"{exc} I cannot calculate a reliable answer until the data is rebuilt.", intent=intent)
+        return _reply("answered", answer, results=results, intent=intent, sources=sources)
     if any(sum(venue["crime_by_category"].values()) != venue["crime_count_nearby"] for venue in selected):
         return _reply(
             "unavailable",
