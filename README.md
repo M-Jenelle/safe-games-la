@@ -93,6 +93,26 @@ python -m uvicorn backend.main:app --reload
 
 Useful endpoints: `/api/health`, `/api/meta`, `/api/map`, `/api/venues`, `/api/venues/{venue_id}`, `/api/venues/{venue_id}/crime-points`.
 
+### Prediction data collectors
+
+Put the Ticketmaster key in the repository-root `.env.local` file:
+
+```bash
+TICKETMASTER_API_KEY=your_ticketmaster_key_here
+```
+
+That file is ignored by Git. Generate venue-scoped prediction data with:
+
+```bash
+python scripts/collect_prediction_data.py
+```
+
+The collector uses only the venues in `data/la28_venues.csv`. It requests Ticketmaster events from January 2020 through 2028, writes full Discovery v2 event objects and analysis-ready CSV rows to `prediction_data/ticketmaster_events.json` and `prediction_data/ticketmaster_events.csv`, and downloads LADBS permits from January 2020 through the current date. LADBS permits are kept only when they fall within 800 meters of an allow-listed venue in `prediction_data/ladbs_tse_permits.json` and `prediction_data/ladbs_tse_permits.csv`.
+
+Ticketmaster calls are throttled to a conservative 0.6 seconds between requests and capped at 100 calls per run by default. Override the cap only when needed with `--max-ticketmaster-calls`; the script stops before exceeding its own cap and does not retry a `429` response automatically.
+
+Ticketmaster Discovery is not a guaranteed historical archive, so completed events from earlier years may not be returned even when the 2020 start date is requested.
+
 ## Crime chatbot demo
 
 Start the same app from the repo root. It works in data mode without an API key; Claude interpretation is optional:
