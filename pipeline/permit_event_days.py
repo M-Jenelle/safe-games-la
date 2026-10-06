@@ -27,6 +27,12 @@ PERIOD_START = date(2020, 1, 1)
 PERIOD_END = date(2024, 12, 31)
 ALPHA = 0.05
 MATERIAL_DAILY_DIFFERENCE = 0.05
+MIN_EVENT_DAYS_FOR_PERCENT = 8
+MONTH_NAMES = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+UI_DISCLAIMER = (
+    "Permit days are a weaker signal than a published game. "
+    "The gap is an association inside the 800 m buffer, not a prediction."
+)
 DISCLAIMER = (
     "LADBS temporary special event permits are a weaker event signal than a "
     "published game schedule. Several permits can belong to one event. Each "
@@ -179,6 +185,229 @@ def association(counts_by_day: dict[str, int], event_days: set[str], date_range:
         "p_value": p_value,
         "significant": significant,
         "percent_useful": abs(difference) >= MATERIAL_DAILY_DIFFERENCE and rounded_lift is not None,
+    }
+
+
+def _as_int(value) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def filter_permit_rows(rows: list[dict], year: str = "all", month: str = "all") -> list[dict]:
+    """Days for one slice. A year keeps only months that had a permit that year."""
+    chosen = list(rows)
+    if month != "all":
+        month_key = str(month).zfill(2)
+        chosen = [row for row in chosen if str(row["date"])[5:7] == month_key]
+        if year != "all":
+            chosen = [row for row in chosen if str(row["date"]).startswith(f"{year}-")]
+        else:
+            years_with_permit = {str(row["date"])[:4] for row in chosen if _as_int(row.get("is_permit_event_day"))}
+            chosen = [row for row in chosen if str(row["date"])[:4] in years_with_permit]
+        return chosen
+    if year != "all":
+        chosen = [row for row in chosen if str(row["date"]).startswith(f"{year}-")]
+        months = {str(row["date"])[5:7] for row in chosen if _as_int(row.get("is_permit_event_day"))}
+        chosen = [row for row in chosen if str(row["date"])[5:7] in months]
+    return chosen
+
+
+def _public_stats(stats: dict) -> dict:
+    shown = bool(
+        stats["event_day_count"] >= MIN_EVENT_DAYS_FOR_PERCENT
+        and stats["significant"]
+        and stats["percent_useful"]
+    )
+    return {
+        "event_day_count": stats["event_day_count"],
+        "other_day_count": stats["other_day_count"],
+        "event_day_mean": stats["event_day_mean"],
+        "other_day_mean": stats["other_day_mean"],
+        "event_day_median": stats["event_day_median"],
+        "other_day_median": stats["other_day_median"],
+        "absolute_difference": stats["absolute_difference"],
+        "lift_pct": stats["lift_pct"] if shown else None,
+        "percent_shown": shown,
+    }
+
+
+def summarize_day_rows(rows: list[dict], *, include_groups: bool = True) -> tuple[dict, list[dict]]:
+    totals = {row["date"]: _as_int(row.get("incident_count")) for row in rows}
+    event_days = {row["date"] for row in rows if _as_int(row.get("is_permit_event_day"))}
+    dates = [row["date"] for row in rows]
+    overall = association(totals, event_days, dates)
+    groups = []
+    if include_groups:
+        for group_id in GROUP_IDS:
+            counts = {row["date"]: _as_int(row.get(group_id)) for row in rows}
+            groups.append({
+                "group": group_id,
+                "label": GROUP_LABELS[group_id],
+                **association(counts, event_days, dates),
+            })
+    return overall, groups
+
+
+def _period_label(year: str, month: str) -> str:
+    if year == "all" and month == "all":
+        return "2020–2024"
+    if month == "all":
+        return year
+    month_name = MONTH_NAMES[int(month) - 1]
+    if year == "all":
+        return month_name
+    return f"{month_name} {year}"
+
+
+def _percent_note(stats: dict | None) -> str | None:
+    if stats is None or stats["event_day_count"] == 0:
+        return "No permit days in this selection."
+    if stats["event_day_count"] < MIN_EVENT_DAYS_FOR_PERCENT:
+        count = stats["event_day_count"]
+        day_word = "day" if count == 1 else "days"
+        return f"{count} permit {day_word} in this selection. A percentage needs at least {MIN_EVENT_DAYS_FOR_PERCENT}."
+    return None
+
+
+def _stats_from_counts(event_counts: list[int], other_counts: list[int]) -> dict:
+    event_days = {f"e{index}" for index in range(len(event_counts))}
+    other_days = [f"o{index}" for index in range(len(other_counts))]
+    counts = {f"e{index}": count for index, count in enumerate(event_counts)}
+    counts.update({f"o{index}": count for index, count in enumerate(other_counts)})
+    return association(counts, event_days, [*event_days, *other_days])
+
+
+def permit_load_rows(rows: list[dict]) -> list[dict]:
+    """One permit on the day, versus several permits, against the other days."""
+    other_counts = [_as_int(row.get("incident_count")) for row in rows if not _as_int(row.get("is_permit_event_day"))]
+    buckets = (
+        ("One permit", lambda count: count <= 1),
+        ("Several permits", lambda count: count >= 2),
+    )
+    event_rows = [row for row in rows if _as_int(row.get("is_permit_event_day"))]
+    loaded = []
+    for label, matches in buckets:
+        counts = [
+            _as_int(row.get("incident_count"))
+            for row in event_rows
+            if matches(_as_int(row.get("permit_count")))
+        ]
+        if len(counts) < 2 or len(other_counts) < 2:
+            loaded.append({
+                "label": label,
+                "day_count": len(counts),
+                "mean": round(mean(counts), 2) if counts else None,
+                "median": median(counts) if counts else None,
+                "absolute_difference": None,
+                "lift_pct": None,
+                "percent_shown": False,
+            })
+            continue
+        public = _public_stats(_stats_from_counts(counts, other_counts))
+        loaded.append({
+            "label": label,
+            "day_count": public["event_day_count"],
+            "mean": public["event_day_mean"],
+            "median": public["event_day_median"],
+            "absolute_difference": public["absolute_difference"],
+            "lift_pct": public["lift_pct"],
+            "percent_shown": public["percent_shown"],
+        })
+    if other_counts:
+        loaded.append({
+            "label": "Other days",
+            "day_count": len(other_counts),
+            "mean": round(mean(other_counts), 2),
+            "median": median(other_counts),
+            "absolute_difference": None,
+            "lift_pct": None,
+            "percent_shown": False,
+        })
+    return loaded
+
+
+def collapse_upcoming(days: list[dict]) -> list[dict]:
+    """Join consecutive dates that list the same events and the same permit count."""
+    collapsed = []
+    for day in days:
+        current = _parse_day(day.get("date"))
+        if current is None:
+            continue
+        names = [str(name) for name in (day.get("event_names") or []) if str(name).strip()]
+        count = _as_int(day.get("permit_count"))
+        if collapsed:
+            previous = collapsed[-1]
+            previous_end = date.fromisoformat(previous["end"])
+            if (
+                previous["event_names"] == names
+                and previous["permit_count"] == count
+                and previous_end + timedelta(days=1) == current
+            ):
+                previous["end"] = current.isoformat()
+                continue
+        collapsed.append({
+            "start": current.isoformat(),
+            "end": current.isoformat(),
+            "permit_count": count,
+            "event_names": names,
+        })
+    return collapsed
+
+
+def comparison_view(rows: list[dict], *, year: str = "all", month: str = "all", venue_id: str, venue_name: str, note: str | None = None) -> dict:
+    """Headline comparison for the selected year and month, plus one pair per year."""
+    year = year or "all"
+    month = month or "all"
+    filtered = filter_permit_rows(rows, year, month)
+    overall, group_stats = summarize_day_rows(filtered) if filtered else (None, [])
+    summary = _public_stats(overall) if overall else {
+        "event_day_count": 0,
+        "other_day_count": 0,
+        "event_day_mean": 0,
+        "other_day_mean": 0,
+        "event_day_median": 0,
+        "other_day_median": 0,
+        "absolute_difference": 0,
+        "lift_pct": None,
+        "percent_shown": False,
+    }
+    groups = []
+    if overall and overall["event_day_count"] >= MIN_EVENT_DAYS_FOR_PERCENT:
+        for group in group_stats:
+            material = (
+                group["significant"]
+                and abs(group["absolute_difference"]) >= MATERIAL_DAILY_DIFFERENCE
+            )
+            if material:
+                public = _public_stats(group)
+                if public["percent_shown"] and group["other_day_mean"] < 0.25:
+                    public = {**public, "percent_shown": False, "lift_pct": None}
+                groups.append({"group": group["group"], "label": group["label"], **public})
+        groups.sort(key=lambda item: abs(item["absolute_difference"]), reverse=True)
+    series = []
+    for item_year in sorted({str(row["date"])[:4] for row in rows}):
+        subset = filter_permit_rows(rows, item_year, month)
+        if not any(_as_int(row.get("is_permit_event_day")) for row in subset):
+            continue
+        item_stats, _unused = summarize_day_rows(subset, include_groups=False)
+        label = item_year if month == "all" else f"{MONTH_NAMES[int(month) - 1]} {item_year}"
+        series.append({"label": label, "year": item_year, **_public_stats(item_stats)})
+    return {
+        "available": True,
+        "venue_id": venue_id,
+        "venue_name": venue_name,
+        "disclaimer": UI_DISCLAIMER,
+        "note": note,
+        "years": sorted({str(row["date"])[:4] for row in rows}),
+        "period_label": _period_label(year, month),
+        "empty": summary["event_day_count"] == 0,
+        "percent_note": _percent_note(overall),
+        "summary": summary,
+        "series": series,
+        "groups": groups,
+        "permit_load": permit_load_rows(filtered),
     }
 
 

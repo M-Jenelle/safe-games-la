@@ -28,6 +28,7 @@ from backend.store import (
     map_layers,
     map_payload,
     meta,
+    permit_comparison,
 )
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -169,6 +170,22 @@ def read_venue(venue_id: str) -> dict:
     if venue is None:
         raise HTTPException(status_code=404, detail=f"Unknown venue_id '{venue_id}'")
     return venue
+
+
+@app.get("/api/venues/{venue_id}/permit-comparison")
+def read_permit_comparison(
+    venue_id: str,
+    year: str = Query(default="all", pattern="^(all|20[0-9]{2})$"),
+    month: str = Query(default="all", pattern="^(all|[1-9]|1[0-2])$"),
+) -> dict:
+    """Permit-day means versus other days in the same months, 2020–2024."""
+    try:
+        body = permit_comparison(venue_id, year=year, month=month)
+    except DatasetNotFound as exc:
+        raise _missing(exc) from exc
+    if body is None:
+        raise HTTPException(status_code=404, detail=f"Unknown venue_id '{venue_id}'")
+    return body
 
 
 @app.get("/api/venues/{venue_id}/crime-points")

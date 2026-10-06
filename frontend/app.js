@@ -732,13 +732,187 @@ function filledMonths(byMonth) {
 }
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTH_FULL = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+const PERMIT_HINTS = {
+  "Permit days vs other days": "A permit day is a day covered by a temporary-event permit. Other days are the rest of the months that had a permit, from 2020 through 2024. Months with no permit are left out.",
+  "Permit days": "Days covered by at least one temporary-event permit. Several permits on the same date still count as one day.",
+  "Other days": "The other days in months that had a permit. These are not every day without an event.",
+  "Permit-day mean": "Average reports on permit days.",
+  "Other-day mean": "Average reports on other days.",
+  "Median": "The middle daily count on permit days, then the middle count on other days.",
+  "Difference": "Permit-day mean minus the other-day mean. A percent is shown when there are at least 8 permit days, the daily gap is at least 0.05, and the gap is unlikely to be chance.",
+  "Overall": "All comparison months from 2020 through 2024, taken together.",
+  "Offense groups": "Crime groups, such as theft or assault, where the daily average on permit days differs from other days by at least 0.05 reports. The bar length is the size of that gap.",
+  "Permits on the same day": "Permit days split by how many permits cover the date. One permit and several permits are each compared with other days.",
+  "One permit": "Days covered by a single permit.",
+  "Several permits": "Days covered by two or more permits. Those dates are still one permit day.",
+  "Days": "How many dates are in this row.",
+  "Reports per day": "Average reports on the dates in this row.",
+  "Difference vs other days": "This row's average minus the average on other days. Other days is the baseline, so that row has no difference.",
+  "Later permit dates": "Permit spans after 2024. The gap quoted here is the past overall pattern, not a forecast for these dates.",
+  "Dates": "Consecutive days with the same events and the same permit count are one row.",
+  "Permits": "How many permits cover this span.",
+  "Events": "The event names on the permit. A permit records that a temporary event was allowed. It does not record attendance or a start time.",
+};
+
+let infoTip = null;
+let infoAnchor = null;
+let infoPinned = false;
+let infoHideTimer = 0;
+let chartTip = null;
 
 function monthLabel(key) {
   const [year, month] = key.split("-");
   return `${MONTH_NAMES[Number(month) - 1]} ${year}`;
 }
 
-function monthChart(entries, peakKey, onFocus) {
+function monthTitle(key) {
+  const [year, month] = key.split("-");
+  return `${MONTH_FULL[Number(month) - 1]} ${year}`;
+}
+
+function ensureInfoTip() {
+  if (infoTip) return infoTip;
+  infoTip = el("div", { className: "info-tip", role: "tooltip", hidden: "hidden" });
+  document.body.append(infoTip);
+  infoTip.addEventListener("mouseenter", () => window.clearTimeout(infoHideTimer));
+  infoTip.addEventListener("mouseleave", () => {
+    if (!infoPinned) scheduleInfoHide();
+  });
+  document.addEventListener("click", (event) => {
+    if (!infoTip || infoTip.hidden) return;
+    if (event.target.closest(".info-mark, .info-tip")) return;
+    hideInfoTip(true);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hideInfoTip(true);
+  });
+  window.addEventListener("scroll", () => {
+    hideInfoTip(true);
+    hideChartTip();
+  }, true);
+  return infoTip;
+}
+
+function placeInfoTip(anchor) {
+  const tip = ensureInfoTip();
+  const rect = anchor.getBoundingClientRect();
+  const margin = 8;
+  tip.hidden = false;
+  const width = tip.offsetWidth;
+  const height = tip.offsetHeight;
+  let left = rect.left + (rect.width / 2) - (width / 2);
+  let top = rect.bottom + margin;
+  if (left + width > window.innerWidth - margin) left = window.innerWidth - width - margin;
+  if (left < margin) left = margin;
+  if (top + height > window.innerHeight - margin) top = Math.max(margin, rect.top - height - margin);
+  tip.style.left = `${Math.round(left)}px`;
+  tip.style.top = `${Math.round(top)}px`;
+}
+
+function showInfoTip(anchor, message, pinned) {
+  window.clearTimeout(infoHideTimer);
+  const tip = ensureInfoTip();
+  if (infoAnchor && infoAnchor !== anchor) infoAnchor.setAttribute("aria-expanded", "false");
+  infoAnchor = anchor;
+  infoPinned = pinned;
+  tip.textContent = message;
+  anchor.setAttribute("aria-expanded", "true");
+  placeInfoTip(anchor);
+}
+
+function hideInfoTip(force) {
+  window.clearTimeout(infoHideTimer);
+  if (!infoTip || infoTip.hidden) return;
+  if (infoPinned && !force) return;
+  infoTip.hidden = true;
+  if (infoAnchor) infoAnchor.setAttribute("aria-expanded", "false");
+  infoAnchor = null;
+  infoPinned = false;
+}
+
+function scheduleInfoHide() {
+  window.clearTimeout(infoHideTimer);
+  infoHideTimer = window.setTimeout(() => hideInfoTip(false), 160);
+}
+
+function infoMark(message) {
+  const button = el("button", {
+    type: "button",
+    className: "info-mark",
+    "aria-label": "What this means",
+    "aria-expanded": "false",
+  }, [text("i")]);
+  button.addEventListener("mouseenter", () => showInfoTip(button, message, infoAnchor === button && infoPinned));
+  button.addEventListener("mouseleave", () => {
+    if (infoAnchor === button && !infoPinned) scheduleInfoHide();
+  });
+  button.addEventListener("focus", () => showInfoTip(button, message, false));
+  button.addEventListener("blur", () => {
+    if (infoAnchor === button && !infoPinned) scheduleInfoHide();
+  });
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (infoAnchor === button && infoPinned) hideInfoTip(true);
+    else showInfoTip(button, message, true);
+  });
+  return button;
+}
+
+function withInfo(label) {
+  const hint = PERMIT_HINTS[label];
+  if (!hint) return text(label);
+  return el("span", { className: "info-label" }, [text(label), infoMark(hint)]);
+}
+
+function ensureChartTip() {
+  if (chartTip) return chartTip;
+  chartTip = el("div", { className: "chart-tip", hidden: "hidden" });
+  document.body.append(chartTip);
+  return chartTip;
+}
+
+function placeChartTip(event) {
+  const tip = ensureChartTip();
+  tip.hidden = false;
+  const margin = 8;
+  const width = tip.offsetWidth;
+  const height = tip.offsetHeight;
+  let left = event.clientX + 14;
+  let top = event.clientY - height - 12;
+  if (left + width > window.innerWidth - margin) left = event.clientX - width - 14;
+  if (left < margin) left = margin;
+  if (top < margin) top = event.clientY + 16;
+  tip.style.left = `${Math.round(left)}px`;
+  tip.style.top = `${Math.round(top)}px`;
+}
+
+function showChartTip(event, key, count, word) {
+  const tip = ensureChartTip();
+  tip.replaceChildren(
+    el("strong", {}, [text(monthTitle(key))]),
+    el("span", {}, [text(`${formatNumber(count)} ${word}`)]),
+  );
+  placeChartTip(event);
+}
+
+function hideChartTip() {
+  if (chartTip) chartTip.hidden = true;
+}
+
+function bindChartHover(svg, entry, word) {
+  const show = (event) => showChartTip(event, entry.key, entry.count, word);
+  svg.addEventListener("mouseenter", show);
+  svg.addEventListener("mousemove", (event) => {
+    if (!chartTip || chartTip.hidden) show(event);
+    else placeChartTip(event);
+  });
+}
+
+function monthChart(entries, peakKey, onFocus, word = "incidents") {
+  hideChartTip();
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("class", "chart");
   svg.setAttribute("viewBox", "0 0 960 200");
@@ -756,15 +930,25 @@ function monthChart(entries, peakKey, onFocus) {
   const width = 960 / entries.length;
   entries.forEach((entry, index) => {
     const height = Math.max((entry.count / max) * 168, entry.count ? 2 : 0);
+    const x = index * width + 0.6;
+    const barWidth = Math.max(width - 1.2, 0.6);
     const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    rect.setAttribute("x", String(index * width + 0.6));
+    rect.setAttribute("x", String(x));
     rect.setAttribute("y", String(176 - height));
-    rect.setAttribute("width", String(Math.max(width - 1.2, 0.6)));
+    rect.setAttribute("width", String(barWidth));
     rect.setAttribute("height", String(height));
     rect.setAttribute("fill", entry.key === peakKey ? "#DF0024" : "#0085C7");
     rect.dataset.month = entry.key;
-    rect.addEventListener("click", () => onFocus(entry.key));
     svg.append(rect);
+    const hit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    hit.setAttribute("x", String(x));
+    hit.setAttribute("y", "0");
+    hit.setAttribute("width", String(barWidth));
+    hit.setAttribute("height", "176");
+    hit.setAttribute("fill", "transparent");
+    hit.addEventListener("click", () => onFocus(entry.key));
+    bindChartHover(hit, entry, word);
+    svg.append(hit);
     if (entry.key.endsWith("-01")) {
       const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
       label.setAttribute("x", String(index * width));
@@ -775,6 +959,7 @@ function monthChart(entries, peakKey, onFocus) {
       svg.append(label);
     }
   });
+  svg.addEventListener("mouseleave", hideChartTip);
   return svg;
 }
 
@@ -798,6 +983,7 @@ function categoryRows(byCategory, total, options = {}) {
 }
 
 function overviewChart(byMonth) {
+  hideChartTip();
   const entries = filledMonths(byMonth);
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("class", "chart");
@@ -816,14 +1002,25 @@ function overviewChart(byMonth) {
   const width = 640 / entries.length;
   entries.forEach((entry, index) => {
     const height = (entry.count / max) * 110;
+    const x = index * width + 0.4;
+    const barWidth = Math.max(width - 0.8, 0.4);
     const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    rect.setAttribute("x", String(index * width + 0.4));
+    rect.setAttribute("x", String(x));
     rect.setAttribute("y", String(120 - height));
-    rect.setAttribute("width", String(Math.max(width - 0.8, 0.4)));
+    rect.setAttribute("width", String(barWidth));
     rect.setAttribute("height", String(height));
     rect.setAttribute("fill", entry.key === peak.key ? "#DF0024" : "#0085C7");
     svg.append(rect);
+    const hit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    hit.setAttribute("x", String(x));
+    hit.setAttribute("y", "0");
+    hit.setAttribute("width", String(barWidth));
+    hit.setAttribute("height", "120");
+    hit.setAttribute("fill", "transparent");
+    bindChartHover(hit, entry, "incidents");
+    svg.append(hit);
   });
+  svg.addEventListener("mouseleave", hideChartTip);
   return svg;
 }
 
@@ -970,6 +1167,381 @@ function renderOverview() {
   );
 }
 
+function formatMean(value) {
+  return Number(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatMedian(value) {
+  const number = Number(value);
+  return Number.isInteger(number) ? String(number) : number.toFixed(1);
+}
+
+function formatGap(summary) {
+  if (summary.absolute_difference == null) return "—";
+  const difference = Number(summary.absolute_difference);
+  const signed = `${difference > 0 ? "+" : ""}${difference.toFixed(2)} / day`;
+  if (!summary.percent_shown || summary.lift_pct == null) return signed;
+  const lift = Number(summary.lift_pct);
+  return `${signed} · ${lift > 0 ? "+" : ""}${lift.toFixed(1)}%`;
+}
+
+function formatMaybeMean(value) {
+  if (value == null) return "—";
+  return formatMean(value);
+}
+
+function formatPermitSpan(start, end) {
+  const startDate = new Date(`${start}T00:00:00`);
+  const endDate = new Date(`${end}T00:00:00`);
+  const startLabel = `${MONTH_NAMES[startDate.getMonth()]} ${startDate.getDate()}, ${startDate.getFullYear()}`;
+  if (start === end) return startLabel;
+  if (startDate.getFullYear() === endDate.getFullYear() && startDate.getMonth() === endDate.getMonth()) {
+    return `${MONTH_NAMES[startDate.getMonth()]} ${startDate.getDate()}–${endDate.getDate()}, ${startDate.getFullYear()}`;
+  }
+  const endLabel = `${MONTH_NAMES[endDate.getMonth()]} ${endDate.getDate()}, ${endDate.getFullYear()}`;
+  return `${startLabel} – ${endLabel}`;
+}
+
+function permitTable(rows) {
+  const labels = ["", "Permit days", "Other days", "Permit-day mean", "Other-day mean", "Median", "Difference"];
+  const bodyRows = rows.map((row, index) => el("tr", { className: index === 0 ? "is-overall" : "" }, [
+    el("th", { scope: "row" }, [withInfo(row.label)]),
+    el("td", {}, [text(formatNumber(row.event_day_count))]),
+    el("td", {}, [text(formatNumber(row.other_day_count))]),
+    el("td", {}, [text(formatMean(row.event_day_mean))]),
+    el("td", {}, [text(formatMean(row.other_day_mean))]),
+    el("td", {}, [text(`${formatMedian(row.event_day_median)} vs ${formatMedian(row.other_day_median)}`)]),
+    el("td", {}, [text(formatGap(row))]),
+  ]));
+  return el("div", { className: "month-table-wrap" }, [
+    el("table", { className: "month-table permit-table" }, [
+      el("thead", {}, [el("tr", {}, labels.map((label) => el("th", {}, [withInfo(label)])))]),
+      el("tbody", {}, bodyRows),
+    ]),
+  ]);
+}
+
+function groupRows(groups) {
+  const max = groups.reduce(
+    (largest, group) => Math.max(largest, Math.abs(Number(group.absolute_difference) || 0)),
+    0,
+  ) || 1;
+  return groups.map((group) => {
+    const magnitude = Math.abs(Number(group.absolute_difference) || 0);
+    const means = `Permit-day mean ${formatMean(group.event_day_mean)}, other-day mean ${formatMean(group.other_day_mean)}`;
+    return el("div", { className: "bar-row" }, [
+      el("div", {}, [
+        el("div", { className: "bar-label", title: means }, [text(group.label)]),
+        el("div", { className: "bar-track" }, [
+          el("div", { className: "bar-fill", style: `width: ${(magnitude / max) * 100}%` }),
+        ]),
+      ]),
+      el("div", { className: "bar-count" }, [text(formatGap(group))]),
+    ]);
+  });
+}
+
+function permitLoadTable(rows) {
+  const labels = ["", "Days", "Reports per day", "Median", "Difference vs other days"];
+  return el("div", { className: "month-table-wrap" }, [
+    el("table", { className: "month-table permit-table" }, [
+      el("thead", {}, [el("tr", {}, labels.map((label) => el("th", {}, [withInfo(label)])))]),
+      el("tbody", {}, rows.map((row) => el("tr", {}, [
+        el("th", { scope: "row" }, [withInfo(row.label)]),
+        el("td", {}, [text(formatNumber(row.day_count))]),
+        el("td", {}, [text(formatMaybeMean(row.mean))]),
+        el("td", {}, [text(row.median == null ? "—" : formatMedian(row.median))]),
+        el("td", {}, [text(row.label === "Other days" ? "—" : formatGap(row))]),
+      ]))),
+    ]),
+  ]);
+}
+
+function upcomingTable(rows) {
+  const labels = ["Dates", "Permits", "Events"];
+  return el("div", { className: "month-table-wrap" }, [
+    el("table", { className: "month-table permit-upcoming" }, [
+      el("thead", {}, [el("tr", {}, labels.map((label) => el("th", {}, [withInfo(label)])))]),
+      el("tbody", {}, rows.map((row) => el("tr", {}, [
+        el("th", { scope: "row" }, [text(formatPermitSpan(row.start, row.end))]),
+        el("td", {}, [text(formatNumber(row.permit_count))]),
+        el("td", { className: "event-names" }, [text((row.event_names || []).join(" · ") || "Permit")]),
+      ]))),
+    ]),
+  ]);
+}
+
+function mountPermitSection(venueId, host) {
+  let request = 0;
+  let groupsExpanded = false;
+  let upcomingExpanded = false;
+
+  async function refresh() {
+    const token = ++request;
+    let body;
+    try {
+      body = await fetchJson(`/api/venues/${encodeURIComponent(venueId)}/permit-comparison`);
+    } catch (error) {
+      if (token === request) host.replaceChildren();
+      return;
+    }
+    if (token !== request || !body.available) {
+      if (token === request) host.replaceChildren();
+      return;
+    }
+    const rows = [{ label: "Overall", ...body.summary }, ...(body.series || []).map((item) => ({
+      label: item.year,
+      ...item,
+    }))];
+    const venueNote = el("p", { className: "muted" });
+    venueNote.hidden = !body.note;
+    venueNote.textContent = body.note || "";
+    const percentNote = el("p", { className: "muted" });
+    percentNote.hidden = !body.percent_note;
+    percentNote.textContent = body.percent_note || "";
+    const groups = body.groups || [];
+    const groupList = el("div", { className: "category-list" });
+    const groupToggle = el("button", { className: "show-more", type: "button" }, [text("Show more")]);
+
+    function paintGroups() {
+      const visible = groupsExpanded ? groups : groups.slice(0, 5);
+      groupList.replaceChildren(...groupRows(visible));
+      groupToggle.hidden = groups.length <= 5;
+      groupToggle.textContent = groupsExpanded ? "Show less" : "Show more";
+    }
+
+    groupToggle.addEventListener("click", () => {
+      groupsExpanded = !groupsExpanded;
+      paintGroups();
+    });
+    const groupBlock = groups.length
+      ? [
+        el("h3", { className: "section-title" }, [withInfo("Offense groups")]),
+        el("p", { className: "muted" }, [text("Groups that differ by at least 0.05 reports per day.")]),
+        groupList,
+        groupToggle,
+      ]
+      : (body.summary.event_day_count >= 8
+        ? [el("p", { className: "muted" }, [text("No offense group differs by at least 0.05 reports per day.")])]
+        : []);
+    if (groups.length) paintGroups();
+    const loadRows = body.permit_load || [];
+    const loadBlock = loadRows.length ? [
+      el("h3", { className: "section-title" }, [withInfo("Permits on the same day")]),
+      el("p", { className: "muted" }, [text("One permit on the day, versus several. Both are compared with other days.")]),
+      permitLoadTable(loadRows),
+    ] : [];
+    const upcoming = body.upcoming || [];
+    const upcomingHost = el("div");
+    const upcomingNote = el("p", { className: "muted" }, [text(
+      `These dates use the overall gap of ${formatGap(body.summary)}. That is the past pattern, not a prediction of these dates.`,
+    )]);
+    const upcomingToggle = el("button", { className: "show-more", type: "button" }, [text("Show more")]);
+
+    function paintUpcoming() {
+      const visible = upcomingExpanded ? upcoming : upcoming.slice(0, 8);
+      upcomingToggle.hidden = upcoming.length <= 8;
+      upcomingToggle.textContent = upcomingExpanded ? "Show less" : "Show more";
+      upcomingHost.replaceChildren(upcomingTable(visible));
+    }
+
+    upcomingToggle.addEventListener("click", () => {
+      upcomingExpanded = !upcomingExpanded;
+      paintUpcoming();
+    });
+    const upcomingBlock = upcoming.length ? [
+      el("h3", { className: "section-title" }, [withInfo("Later permit dates")]),
+      upcomingNote,
+      upcomingHost,
+      upcomingToggle,
+    ] : [];
+    if (upcoming.length) paintUpcoming();
+    host.replaceChildren(el("section", { className: "permit-section", "aria-label": "Permit days" }, [
+      el("h3", { className: "section-title" }, [withInfo("Permit days vs other days")]),
+      el("p", { className: "muted" }, [text(
+        "A permit day is a day covered by a temporary-event permit. Other days are the rest of the months that had a permit.",
+      )]),
+      venueNote,
+      percentNote,
+      body.empty ? el("span") : permitTable(rows),
+      ...groupBlock,
+      ...loadBlock,
+      ...upcomingBlock,
+      el("p", { className: "footnote" }, [text(body.disclaimer || "")]),
+    ]));
+  }
+
+  refresh();
+}
+
+const TIME_COLORS = {
+  night: "#1a1a1a",
+  morning: "#F4C300",
+  afternoon: "#0085C7",
+  evening: "#7B2CBF",
+};
+
+const GROUP_COLORS = {
+  vehicle: "#0085C7",
+  theft: "#009F3D",
+  assault: "#DF0024",
+  vandalism: "#F4C300",
+  burglary: "#7B2CBF",
+  robbery: "#800000",
+  weapons: "#1a1a1a",
+  sexual: "#B85C38",
+  homicide: "#4e5963",
+  other: "#C5CDD4",
+};
+
+function shareLabel(count, total) {
+  if (!total) return "0%";
+  const share = (count / total) * 100;
+  if (share > 0 && share < 1) return "<1%";
+  return `${Math.round(share)}%`;
+}
+
+function pieSlicePath(cx, cy, radius, start, end) {
+  const sweep = end - start;
+  if (sweep >= Math.PI * 2 - 0.0001) {
+    return `M ${cx - radius} ${cy} A ${radius} ${radius} 0 1 1 ${cx + radius} ${cy} A ${radius} ${radius} 0 1 1 ${cx - radius} ${cy} Z`;
+  }
+  const x1 = cx + radius * Math.cos(start);
+  const y1 = cy + radius * Math.sin(start);
+  const x2 = cx + radius * Math.cos(end);
+  const y2 = cy + radius * Math.sin(end);
+  const large = sweep > Math.PI ? 1 : 0;
+  return `M ${cx} ${cy} L ${x1} ${y1} A ${radius} ${radius} 0 ${large} 1 ${x2} ${y2} Z`;
+}
+
+function showSliceTip(event, title, detailText) {
+  const tip = ensureChartTip();
+  tip.replaceChildren(
+    el("strong", {}, [text(title)]),
+    el("span", {}, [text(detailText)]),
+  );
+  placeChartTip(event);
+}
+
+function pieBlock(entries, total, options = {}) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "pie-chart");
+  svg.setAttribute("viewBox", "0 0 200 200");
+  svg.setAttribute("role", "img");
+  const slices = entries.filter((entry) => entry.count > 0);
+  svg.setAttribute(
+    "aria-label",
+    slices.map((entry) => `${entry.label}, ${formatNumber(entry.count)}`).join(". "),
+  );
+  const radius = 86;
+  let angle = -Math.PI / 2;
+  const sliceTotal = slices.reduce((sum, entry) => sum + entry.count, 0) || 1;
+  for (const entry of slices) {
+    const sweep = (entry.count / sliceTotal) * Math.PI * 2;
+    const start = angle;
+    angle += sweep;
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    const selected = options.selectedId === entry.id;
+    path.setAttribute("d", pieSlicePath(100, 100, selected ? radius + 6 : radius, start, angle));
+    path.setAttribute("fill", entry.color);
+    path.setAttribute("stroke", selected ? "#1a1a1a" : "#f7f6f4");
+    path.setAttribute("stroke-width", selected ? "2" : "1");
+    const detailText = `${formatNumber(entry.count)} incidents · ${shareLabel(entry.count, total)}`;
+    const show = (event) => showSliceTip(event, entry.label, detailText);
+    path.addEventListener("mouseenter", show);
+    path.addEventListener("mousemove", (event) => {
+      if (!chartTip || chartTip.hidden) show(event);
+      else placeChartTip(event);
+    });
+    if (options.onPick) {
+      path.style.cursor = "pointer";
+      path.addEventListener("click", () => options.onPick(entry.id));
+    }
+    svg.append(path);
+  }
+  svg.addEventListener("mouseleave", hideChartTip);
+
+  const legend = el("div", { className: "pie-legend" });
+  for (const entry of slices) {
+    const selected = options.selectedId === entry.id;
+    const attrs = { className: selected ? "pie-key is-selected" : "pie-key" };
+    if (options.onPick) {
+      attrs.type = "button";
+      attrs["aria-pressed"] = selected ? "true" : "false";
+    }
+    const row = el(options.onPick ? "button" : "div", attrs, [
+      el("i", { className: "pie-swatch", style: `background:${entry.color}` }),
+      el("span", {}, [text(entry.label)]),
+      el("strong", {}, [text(`${formatNumber(entry.count)} · ${shareLabel(entry.count, total)}`)]),
+    ]);
+    const detailText = `${formatNumber(entry.count)} incidents · ${shareLabel(entry.count, total)}`;
+    const show = (event) => showSliceTip(event, entry.label, detailText);
+    row.addEventListener("mouseenter", show);
+    row.addEventListener("mousemove", (event) => {
+      if (!chartTip || chartTip.hidden) show(event);
+      else placeChartTip(event);
+    });
+    row.addEventListener("mouseleave", hideChartTip);
+    if (options.onPick) row.addEventListener("click", () => options.onPick(entry.id));
+    legend.append(row);
+  }
+  return el("div", { className: "pie-block" }, [svg, legend]);
+}
+
+function mountTimeSection(crimeTime, host) {
+  const periods = (crimeTime?.periods || []).filter((period) => period.count);
+  if (!periods.length) {
+    host.replaceChildren();
+    return;
+  }
+  let selected = "";
+  const pieHost = el("div");
+  const crimeHost = el("div");
+
+  function paint() {
+    hideChartTip();
+    const entries = periods.map((period) => ({
+      id: period.id,
+      label: period.label,
+      count: period.count,
+      color: TIME_COLORS[period.id] || "#4e5963",
+    }));
+    pieHost.replaceChildren(pieBlock(entries, crimeTime.total, {
+      selectedId: selected,
+      onPick: (id) => {
+        selected = selected === id ? "" : id;
+        paint();
+      },
+    }));
+    const period = periods.find((item) => item.id === selected);
+    if (!period) {
+      crimeHost.replaceChildren();
+      return;
+    }
+    const groups = (period.groups || []).map((group) => ({
+      id: group.id,
+      label: group.label,
+      count: group.count,
+      color: GROUP_COLORS[group.id] || "#4e5963",
+    }));
+    crimeHost.replaceChildren(
+      el("h3", { className: "section-title" }, [text(`Crimes, ${period.label}`)]),
+      pieBlock(groups, period.count),
+    );
+  }
+
+  host.replaceChildren(el("section", { className: "time-section", "aria-label": "Crimes by time of day" }, [
+    el("h3", { className: "section-title" }, [text("Crimes by time of day")]),
+    el("p", { className: "muted" }, [text(
+      "Click a slice to see the crimes in that part of the day. Click it again to clear.",
+    )]),
+    pieHost,
+    el("p", { className: "muted" }, [text(crimeTime.disclaimer || "")]),
+    crimeHost,
+  ]));
+  paint();
+}
+
 function renderDetail() {
   const venue = state.detail;
   if (!venue) {
@@ -1015,6 +1587,8 @@ function renderDetail() {
   )));
   toSelect.value = "12";
   let seriesId = "reports";
+  const permitHost = el("div");
+  const timeHost = el("div");
   const chartHost = el("div", { className: "chart-host" });
   const yearHost = el("div", { className: "year-row" });
   const seriesHint = el("p", { className: "muted" });
@@ -1250,7 +1824,7 @@ function renderDetail() {
         el("strong", {}, [text(formatNumber(count))]),
       ])
     )));
-    chartHost.replaceChildren(monthChart(entries, peakNow?.key, selectMonth));
+    chartHost.replaceChildren(monthChart(entries, peakNow?.key, selectMonth, seriesData().word));
     seriesHint.textContent = seriesNote();
     paintTable();
     markMonth(selectedKey);
@@ -1311,6 +1885,8 @@ function renderDetail() {
     categoryNote,
     categoryList,
     categoryToggle,
+    timeHost,
+    permitHost,
     el("h3", { className: "section-title" }, [text(`Rail · ${formatNumber(venue.rail_stations_nearby.count)} ${venue.rail_stations_nearby.count === 1 ? "station" : "stations"}`)]),
     rail.length ? el("ul", { className: "place-list" }, rail) : el("p", { className: "muted" }, [text("None in the buffer.")]),
     el("h3", { className: "section-title" }, [
@@ -1325,6 +1901,8 @@ function renderDetail() {
     ]),
     el("p", { className: "footnote" }, [text(state.meta.jurisdiction_method)]),
   ]));
+  mountTimeSection(venue.crime_time, timeHost);
+  mountPermitSection(venue.venue_id, permitHost);
 }
 
 function stat(label, value, note) {

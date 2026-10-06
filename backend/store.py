@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 
@@ -9,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from pipeline.geo import haversine_m
+from pipeline.permit_event_days import GROUP_IDS, collapse_upcoming, comparison_view
 
 from pipeline.loaders import (
     LAT_MAX,
@@ -28,6 +30,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SUMMARY_PATH = REPO_ROOT / "data" / "processed" / "venue_summary.json"
 POINTS_PATH = REPO_ROOT / "data" / "processed" / "crime_points_by_venue.json"
 MERGED_PATH = REPO_ROOT / "data" / "processed" / "crime_merged.json"
+PERMIT_DAYS_PATH = REPO_ROOT / "data" / "processed" / "permit_event_days.csv"
+PERMIT_LIFT_PATH = REPO_ROOT / "data" / "processed" / "permit_event_lift.json"
+TIME_PATH = REPO_ROOT / "data" / "processed" / "crime_time_of_day.json"
 
 _summary: dict | None = None
 _summary_mtime: float | None = None
@@ -39,6 +44,12 @@ _crime_views: dict | None = None
 _crime_heat_mtime: float | None = None
 _merged: dict | None = None
 _merged_mtime: float | None = None
+_permit_days: dict[str, list[dict]] | None = None
+_permit_days_mtime: float | None = None
+_permit_upcoming: dict[str, list[dict]] | None = None
+_permit_upcoming_mtime: float | None = None
+_crime_time: dict | None = None
+_crime_time_mtime: float | None = None
 
 # First matching rule wins. Descriptions are the LAPD "Crm Cd Desc" text.
 CRIME_TYPES = (
@@ -195,8 +206,32 @@ def get_venue(venue_id: str) -> dict | None:
                 groups = (load_merged() or {}).get("meta", {}).get("groups") or {}
                 if groups:
                     enriched["crime_groups"] = groups
+            time_block = crime_time_for(venue_id)
+            if time_block:
+                enriched["crime_time"] = time_block
             return enriched
     return None
+
+
+def load_crime_time() -> dict | None:
+    """Part-of-day counts. Empty when ``crime_time_of_day.json`` has not been built."""
+    global _crime_time, _crime_time_mtime
+    if not TIME_PATH.exists():
+        _crime_time = None
+        _crime_time_mtime = None
+        return None
+    mtime = TIME_PATH.stat().st_mtime
+    if _crime_time is None or mtime != _crime_time_mtime:
+        _crime_time = json.loads(TIME_PATH.read_text(encoding="utf-8"))
+        _crime_time_mtime = mtime
+    return _crime_time
+
+
+def crime_time_for(venue_id: str) -> dict | None:
+    payload = load_crime_time()
+    if not payload:
+        return None
+    return (payload.get("venues") or {}).get(venue_id)
 
 
 def get_crime_points(venue_id: str) -> dict | None:
@@ -204,6 +239,75 @@ def get_crime_points(venue_id: str) -> dict | None:
     if block is None:
         return None
     return block
+
+
+def load_permit_day_rows() -> dict[str, list[dict]]:
+    """Venue-day rows from the permit merge. Empty when that file is absent."""
+    global _permit_days, _permit_days_mtime
+    if not PERMIT_DAYS_PATH.exists():
+        _permit_days = {}
+        _permit_days_mtime = None
+        return _permit_days
+    mtime = PERMIT_DAYS_PATH.stat().st_mtime
+    if _permit_days is not None and mtime == _permit_days_mtime:
+        return _permit_days
+    grouped: dict[str, list[dict]] = {}
+    with PERMIT_DAYS_PATH.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            venue_id = row.get("venue_id") or ""
+            if not venue_id:
+                continue
+            parsed = {
+                "date": row.get("date") or "",
+                "venue_name": row.get("venue_name") or "",
+                "incident_count": int(row.get("incident_count") or 0),
+                "is_permit_event_day": int(row.get("is_permit_event_day") or 0),
+                "permit_count": int(row.get("permit_count") or 0),
+            }
+            for group_id in GROUP_IDS:
+                parsed[group_id] = int(row.get(group_id) or 0)
+            grouped.setdefault(venue_id, []).append(parsed)
+    _permit_days = grouped
+    _permit_days_mtime = mtime
+    return _permit_days
+
+
+def load_permit_upcoming() -> dict[str, list[dict]]:
+    """Later permit dates from the lift file, collapsed into date spans."""
+    global _permit_upcoming, _permit_upcoming_mtime
+    if not PERMIT_LIFT_PATH.exists():
+        _permit_upcoming = {}
+        _permit_upcoming_mtime = None
+        return _permit_upcoming
+    mtime = PERMIT_LIFT_PATH.stat().st_mtime
+    if _permit_upcoming is not None and mtime == _permit_upcoming_mtime:
+        return _permit_upcoming
+    payload = json.loads(PERMIT_LIFT_PATH.read_text(encoding="utf-8"))
+    upcoming = {}
+    for venue in payload.get("venues") or []:
+        venue_id = venue.get("venue_id")
+        if venue_id:
+            upcoming[venue_id] = collapse_upcoming(venue.get("upcoming_permit_days") or [])
+    _permit_upcoming = upcoming
+    _permit_upcoming_mtime = mtime
+    return _permit_upcoming
+
+
+def permit_comparison(venue_id: str, year: str = "all", month: str = "all") -> dict | None:
+    """Permit-day versus other-day means. None when the venue id is unknown."""
+    match = next((venue for venue in load_summary()["venues"] if venue["venue_id"] == venue_id), None)
+    if match is None:
+        return None
+    rows = load_permit_day_rows().get(venue_id) or []
+    if not rows:
+        return {"available": False, "venue_id": venue_id, "venue_name": match["venue_name"]}
+    note = None
+    if venue_id == "V01":
+        note = "These figures use permit days, not the MLB home-game list."
+    venue_name = rows[0].get("venue_name") or match["venue_name"]
+    view = comparison_view(rows, year=year, month=month, venue_id=venue_id, venue_name=venue_name, note=note)
+    view["upcoming"] = load_permit_upcoming().get(venue_id) or []
+    return view
 
 
 # Fixed frame for the citywide placeholder. Real tiles will replace this later.

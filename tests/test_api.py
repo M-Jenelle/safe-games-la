@@ -54,10 +54,59 @@ class ApiTests(unittest.TestCase):
         self.assertIn("2020-01", body["merged_by_month"])
         self.assertIn("2024-03", body["nibrs"]["by_month"])
         self.assertNotIn("2024-02", body["nibrs"]["by_month"])
+        clock = body["crime_time"]
+        self.assertEqual(clock["total"], body["crime_count_nearby"])
+        self.assertEqual(clock["noon_count"], 311)
+        self.assertEqual(clock["unknown_count"], 0)
+        self.assertIn("unknown hour", clock["disclaimer"])
+        self.assertIn("311 reports at 12:00", clock["disclaimer"])
+        self.assertEqual(
+            {period["id"]: period["count"] for period in clock["periods"]},
+            {"night": 2041, "morning": 2551, "afternoon": 4432, "evening": 5146},
+        )
+        evening = next(period for period in clock["periods"] if period["id"] == "evening")
+        self.assertEqual(sum(group["count"] for group in evening["groups"]), evening["count"])
+        self.assertEqual(evening["groups"][0]["label"], "Vehicle")
 
     def test_unknown_venue(self):
         response = self.client.get("/api/venues/V99")
         self.assertEqual(response.status_code, 404)
+        missing = self.client.get("/api/venues/V99/permit-comparison")
+        self.assertEqual(missing.status_code, 404)
+
+    def test_permit_comparison(self):
+        peacock = self.client.get("/api/venues/V04/permit-comparison")
+        self.assertEqual(peacock.status_code, 200)
+        body = peacock.json()
+        self.assertTrue(body["available"])
+        self.assertEqual(body["summary"]["event_day_count"], 302)
+        self.assertEqual(body["summary"]["event_day_mean"], 8.98)
+        self.assertEqual(body["summary"]["other_day_mean"], 7.51)
+        self.assertTrue(body["summary"]["percent_shown"])
+        self.assertGreaterEqual(len(body["series"]), 1)
+        self.assertTrue(body["groups"])
+        self.assertEqual(
+            [row["label"] for row in body["permit_load"]],
+            ["One permit", "Several permits", "Other days"],
+        )
+        self.assertGreater(body["permit_load"][0]["day_count"], 0)
+        self.assertGreater(len(body["upcoming"]), 0)
+        self.assertIn("start", body["upcoming"][0])
+        self.assertIn("weaker signal", body["disclaimer"])
+
+        dodger = self.client.get("/api/venues/V01/permit-comparison").json()
+        self.assertEqual(dodger["summary"]["event_day_count"], 41)
+        self.assertIn("MLB", dodger["note"])
+        self.assertIn("theft", [group["group"] for group in dodger["groups"]])
+        self.assertNotIn("assault", [group["group"] for group in dodger["groups"]])
+
+        valley = self.client.get("/api/venues/V12/permit-comparison")
+        self.assertEqual(valley.status_code, 200)
+        self.assertFalse(valley.json()["available"])
+
+        thin = self.client.get("/api/venues/V11/permit-comparison?year=2020&month=1")
+        self.assertEqual(thin.status_code, 200)
+        self.assertFalse(thin.json()["summary"]["percent_shown"])
 
     def test_crime_points_limit(self):
         response = self.client.get("/api/venues/V08/crime-points?limit=2")
