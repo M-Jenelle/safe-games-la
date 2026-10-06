@@ -1,0 +1,27 @@
+{
+  "incident_count": 1002654,
+  "land_area_sq_mi": 469.49,
+  "land_area_km2": 1215.97,
+  "crime_per_km2": 824.6,
+  "area_name": "City of Los Angeles",
+  "area_source": "U.S. Census Bureau, 2020 land area",
+  "period": "2020-2024",
+  "note": "Citywide rate is every LAPD report with a usable location, 2020-2024, divided by the City of Los Angeles land area (U.S. Census Bureau 2020, 469.49 square miles). Venue circles are not added into that total.",
+  "nibrs": {
+    "offense_count": 481109,
+    "crime_per_km2": 395.7,
+    "start": "2024-03-07",
+    "end": "2026-09-19",
+    "period": "Mar 2024\u2013present",
+    "note": "Citywide rate is every NIBRS offense with a usable location from March 7, 2024 through 2026-09-19, divided by the same city land area. One case can include more than one offense, so this is not the same count as a 2020-2024 report. Venue circles are not added into that total."
+  },
+  "present": {
+    "count": 1396325,
+    "legacy_count": 915216,
+    "nibrs_offense_count": 481109,
+    "crime_per_km2": 1148.3,
+    "through": "2026-09-19",
+    "period": "2020\u2013present",
+    "note": "2020-present counts LAPD reports through March 6, 2024, then NIBRS offenses from March 7, 2024 through 2026-09-19. One NIBRS case can include more than one offense. The city rate divides that combined count by the City of Los Angeles land area (U.S. Census Bureau 2020, 469.49 square miles). Venue circles are not added into that total."
+  }
+}

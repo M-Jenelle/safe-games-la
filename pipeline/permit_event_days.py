@@ -28,6 +28,8 @@ PERIOD_END = date(2024, 12, 31)
 ALPHA = 0.05
 MATERIAL_DAILY_DIFFERENCE = 0.05
 MIN_EVENT_DAYS_FOR_PERCENT = 8
+# A group percent is hidden when the other-day mean is below this.
+OTHER_DAY_MEAN_FOR_PERCENT = 0.25
 MONTH_NAMES = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 UI_DISCLAIMER = (
     "Permit days are a weaker signal than a published game. "
@@ -382,7 +384,7 @@ def comparison_view(rows: list[dict], *, year: str = "all", month: str = "all", 
             )
             if material:
                 public = _public_stats(group)
-                if public["percent_shown"] and group["other_day_mean"] < 0.25:
+                if public["percent_shown"] and group["other_day_mean"] < OTHER_DAY_MEAN_FOR_PERCENT:
                     public = {**public, "percent_shown": False, "lift_pct": None}
                 groups.append({"group": group["group"], "label": group["label"], **public})
         groups.sort(key=lambda item: abs(item["absolute_difference"]), reverse=True)
