@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from pipeline.geo import haversine_m, nearest_row
+from pipeline.crime_groups import crime_group
 from pipeline.weekday import combine_weekday, weekday_from_dates
 from pipeline.permit_event_days import GROUP_IDS, collapse_upcoming, comparison_view
 
@@ -288,9 +289,10 @@ def _venue_weekdays(venue_id: str) -> tuple[dict, dict]:
                 day = str(point.get("date") or "")[:10]
                 if len(day) != 10:
                     continue
-                dates.append(day)
+                item = {"date": day, "group": crime_group(point.get("category"))}
+                dates.append(item)
                 if day < NIBRS_CUTOFF:
-                    legacy.append(day)
+                    legacy.append(item)
             reports = weekday_from_dates(dates)
             reports["disclaimer"] = REPORT_WEEKDAY_NOTE
             built[vid] = (reports, weekday_from_dates(legacy))

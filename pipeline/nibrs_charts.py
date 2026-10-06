@@ -131,7 +131,9 @@ def charts_for_frame(
     distance_block = venue_distance_block(points, latitude, longitude)
     distance_block["disclaimer"] = DISTANCE_DISCLAIMER
     distance_block["by_month"] = distance_by_month(points, latitude, longitude)
-    weekday = weekday_from_dates(point["date"] for point in points)
+    weekday = weekday_from_dates(
+        {"date": point["date"], "group": crime_group(point["category"])} for point in points
+    )
     weekday["disclaimer"] = time_disclaimer(start, end)
     return (
         time_block,

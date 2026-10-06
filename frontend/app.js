@@ -55,6 +55,7 @@ const sortMode = document.querySelector("#sort-mode");
 const metaStrip = document.querySelector("#meta-strip");
 const overview = document.querySelector("#detail");
 const detail = document.querySelector("#venue-page");
+const comparePage = document.querySelector("#compare-page");
 const mapFrame = document.querySelector("#map-frame");
 const mapPanel = document.querySelector(".map-panel");
 const mapHint = document.querySelector("#map-hint");
@@ -122,6 +123,10 @@ document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (!chatPanel.hidden) {
     setChatOpen(false);
+    return;
+  }
+  if (comparePage && !comparePage.hidden) {
+    closeCompare();
     return;
   }
   if (rosterIsNarrow() && !appShell.classList.contains("roster-collapsed")) {
@@ -684,18 +689,29 @@ function closeVenuePage(options = {}) {
   resizeMap();
 }
 
+function venueToolbar() {
+  return el("div", { className: "venue-toolbar" }, [
+    el("button", { className: "venue-back", type: "button", "data-close-briefing": "true" }, [text("Back to map")]),
+    el("button", { className: "compare-link", type: "button" }, [text("Compare")]),
+  ]);
+}
+
 function openVenuePage(options = {}) {
+  if (comparePage) comparePage.hidden = true;
   const venueId = state.detail?.venue_id || state.selectedId;
   if (!venueId) return;
   if (options.history !== false) rememberVenue(venueId);
   if (!state.detail) {
     detail.hidden = false;
     detail.replaceChildren(el("div", { className: "venue-sheet" }, [
+      venueToolbar(),
       el("p", { className: "empty-detail" }, [text("Loading briefing…")]),
     ]));
+    syncCompareLink();
     return;
   }
   renderDetail();
+  syncCompareLink();
 }
 
 function clearSelection(options = {}) {
@@ -1871,19 +1887,49 @@ function scopedWeekday(block, month) {
   return { ...scoped, disclaimer: block.disclaimer || "" };
 }
 
-function weekdayBars(block) {
+function weekdayBars(block, selectedId, onPick) {
   const days = block.days || [];
   const max = Math.max(...days.map((day) => day.count), 1);
-  return el("div", { className: "weekday-chart" }, days.map((day) => el("div", {
-    className: day.id === "sat" || day.id === "sun" ? "weekday-col is-weekend" : "weekday-col",
-  }, [
-    el("span", { className: "weekday-count" }, [text(formatNumber(day.count))]),
-    el("span", {
-      className: "weekday-bar",
-      style: `height:${Math.max(4, Math.round((day.count / max) * 96))}px`,
-    }),
-    el("span", { className: "weekday-name" }, [text(day.label.slice(0, 3))]),
-  ])));
+  return el("div", { className: "weekday-chart" }, days.map((day) => {
+    const pressed = day.id === selectedId;
+    const attrs = {
+      className: day.id === "sat" || day.id === "sun" ? "weekday-col is-weekend" : "weekday-col",
+    };
+    if (onPick) {
+      attrs.type = "button";
+      attrs["aria-pressed"] = pressed ? "true" : "false";
+    }
+    const column = el(onPick ? "button" : "div", attrs, [
+      el("span", { className: "weekday-count" }, [text(formatNumber(day.count))]),
+      el("span", {
+        className: "weekday-bar",
+        style: `height:${Math.max(4, Math.round((day.count / max) * 96))}px`,
+      }),
+      el("span", { className: "weekday-name" }, [text(day.label.slice(0, 3))]),
+    ]);
+    if (onPick) column.addEventListener("click", () => onPick(day.id));
+    return column;
+  }));
+}
+
+function weekdayGroups(day, limit) {
+  const groups = (day.groups || []).slice(0, limit);
+  if (!groups.length) {
+    return el("p", { className: "muted" }, [text(`${day.label}. No offense groups for this day.`)]);
+  }
+  const max = Math.max(...groups.map((group) => group.count), 1);
+  return el("div", { className: "weekday-groups" }, [
+    el("p", { className: "listing-caption" }, [text(day.label)]),
+    ...groups.map((group) => el("div", { className: "bar-row weekday-group" }, [
+      el("div", {}, [
+        el("div", { className: "bar-label" }, [text(group.label)]),
+        el("div", { className: "bar-track" }, [
+          el("div", { className: "bar-fill", style: `width: ${(group.count / max) * 100}%` }),
+        ]),
+      ]),
+      el("div", { className: "bar-count" }, [text(formatNumber(group.count))]),
+    ])),
+  ]);
 }
 
 function weekdaySummary(block, countWord) {
@@ -1892,7 +1938,13 @@ function weekdaySummary(block, countWord) {
   return `${busiest.label} is the busiest day, ${formatNumber(busiest.count)} ${countWord}. Weekend days are ${formatNumber(block.weekend_count)} (${weekendShare}%).`;
 }
 
-function mountWeekdaySection(block, host, countWord, monthLabel) {
+const WEEKDAY_CLICK = "Click a day to see its main offense groups. Click it again to clear.";
+
+function weekdayHasGroups(block) {
+  return (block?.days || []).some((day) => (day.groups || []).length);
+}
+
+function mountWeekdaySection(block, host, countWord, monthLabel, placement) {
   if (!block || (!block.total && !monthLabel)) {
     host.replaceChildren();
     return;
@@ -1904,11 +1956,30 @@ function mountWeekdaySection(block, host, countWord, monthLabel) {
     ]));
     return;
   }
+  const stacked = placement === "below";
+  const limit = stacked ? 5 : 3;
   const when = monthLabel ? `${monthLabel}. ` : "";
+  const clickable = weekdayHasGroups(block);
+  let selected = "";
+  const row = el("div", { className: stacked ? "weekday-layout is-stacked" : "weekday-layout" });
+
+  function paint() {
+    const chosen = (block.days || []).find((day) => day.id === selected);
+    row.replaceChildren(
+      weekdayBars(block, selected, clickable ? (id) => {
+        selected = selected === id ? "" : id;
+        paint();
+      } : null),
+      chosen ? weekdayGroups(chosen, limit) : el("span"),
+    );
+  }
+
+  paint();
   host.replaceChildren(el("section", { className: "time-section", "aria-label": "Day of week" }, [
     el("h3", { className: "section-title" }, [text("Day of week")]),
     el("p", { className: "muted" }, [text(`${when}${weekdaySummary(block, countWord)}`)]),
-    weekdayBars(block),
+    clickable ? el("p", { className: "muted" }, [text(WEEKDAY_CLICK)]) : el("span"),
+    row,
     block.disclaimer ? el("p", { className: "terms" }, [text(block.disclaimer)]) : el("span"),
   ]));
 }
@@ -1925,15 +1996,35 @@ function mountWeekdayPair(host, reports, nibrs, monthLabel) {
     ]));
     return;
   }
+  const clickable = panels.some((panel) => weekdayHasGroups(panel.block));
+  const note = monthLabel ? `${monthLabel}. Yellow bars are Saturday and Sunday.` : "Yellow bars are Saturday and Sunday.";
   host.replaceChildren(el("section", { className: "time-section", "aria-label": "Day of week" }, [
     el("h3", { className: "section-title" }, [text("Day of week")]),
-    el("p", { className: "muted" }, [text(monthLabel ? `${monthLabel}. Yellow bars are Saturday and Sunday.` : "Yellow bars are Saturday and Sunday.")]),
-    el("div", { className: "pie-pair" }, panels.map((panel) => el("div", { className: "pie-column" }, [
-      el("p", { className: "listing-caption" }, [text(panel.label)]),
-      el("p", { className: "muted" }, [text(weekdaySummary(panel.block, panel.countWord))]),
-      weekdayBars(panel.block),
-      panel.block.disclaimer ? el("p", { className: "terms" }, [text(panel.block.disclaimer)]) : el("span"),
-    ]))),
+    el("p", { className: "muted" }, [text(clickable ? `${note} ${WEEKDAY_CLICK}` : note)]),
+    el("div", { className: "pie-pair" }, panels.map((panel) => {
+      let selected = "";
+      const row = el("div", { className: "weekday-layout is-stacked" });
+      const canPick = weekdayHasGroups(panel.block);
+
+      function paint() {
+        const chosen = (panel.block.days || []).find((day) => day.id === selected);
+        row.replaceChildren(
+          weekdayBars(panel.block, selected, canPick ? (id) => {
+            selected = selected === id ? "" : id;
+            paint();
+          } : null),
+          chosen ? weekdayGroups(chosen, 5) : el("span"),
+        );
+      }
+
+      paint();
+      return el("div", { className: "pie-column" }, [
+        el("p", { className: "listing-caption" }, [text(panel.label)]),
+        el("p", { className: "muted" }, [text(weekdaySummary(panel.block, panel.countWord))]),
+        row,
+        panel.block.disclaimer ? el("p", { className: "terms" }, [text(panel.block.disclaimer)]) : el("span"),
+      ]);
+    })),
   ]));
 }
 
@@ -2395,7 +2486,7 @@ function renderDetail() {
   detail.hidden = false;
   detail.scrollTop = 0;
   detail.replaceChildren(el("div", { className: "venue-sheet" }, [
-    el("button", { className: "venue-back", type: "button", "data-close-briefing": "true" }, [text("Back to map")]),
+    venueToolbar(),
     el("p", { className: "zone" }, [text(`${venue.olympic_zone} · ${formatSports(venue.sports)}`)]),
     el("h2", { className: "detail-title", id: "detail-heading" }, [text(venue.venue_name)]),
     el("p", { className: "address" }, [text(`${venue.address}, ${venue.city}`)]),
@@ -2563,6 +2654,302 @@ async function loadCrimeHeat(view = state.crimeView || "all") {
   }
 }
 
+let compareSeries = "reports";
+let compareView = "overview";
+let compareToken = 0;
+const compareCache = new Map();
+
+function compareRoute() {
+  if (!location.hash.startsWith("#/compare")) return null;
+  const match = location.hash.match(/^#\/compare\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)$/);
+  return { a: match ? match[1] : "", b: match ? match[2] : "" };
+}
+
+function syncCompareLink() {
+  const current = location.hash.startsWith("#/compare");
+  document.querySelectorAll(".compare-link").forEach((button) => {
+    if (current) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
+}
+
+function rankedVenueIds() {
+  return [...state.venues]
+    .sort((left, right) => Number(right.crime_per_km2) - Number(left.crime_per_km2))
+    .map((venue) => venue.venue_id);
+}
+
+function knownVenue(venueId) {
+  return state.venues.some((venue) => venue.venue_id === venueId);
+}
+
+function resolveComparePair(a, b) {
+  const ranked = rankedVenueIds();
+  const left = knownVenue(a) ? a : (ranked[0] || "");
+  const right = knownVenue(b) ? b : (ranked.find((venueId) => venueId !== left) || "");
+  return [left, right];
+}
+
+function rememberCompare(a, b) {
+  const next = a && b ? `#/compare/${a}/${b}` : "#/compare";
+  if (location.hash === next) return;
+  history.pushState({ compare: true }, "", next);
+  syncCompareLink();
+}
+
+function closeCompare(options = {}) {
+  compareToken += 1;
+  if (comparePage) comparePage.hidden = true;
+  if (options.history !== false && location.hash.startsWith("#/compare")) {
+    history.pushState({}, "", `${location.pathname}${location.search}`);
+  }
+  syncCompareLink();
+  resizeMap();
+}
+
+function pairOverlapNote(left, right) {
+  const overlaps = (left.overlapping_venues || []).some((item) => item.venue_id === right.venue_id)
+    || (right.overlapping_venues || []).some((item) => item.venue_id === left.venue_id);
+  if (!overlaps) return "";
+  return `The 800 m circles of ${left.venue_name} and ${right.venue_name} overlap. An incident in the overlap is counted for each venue.`;
+}
+
+function compareSeriesNote() {
+  if (compareView === "overview") return "";
+  if (compareView === "permits" && compareSeries !== "nibrs") {
+    return "Permit days in this view use 2020–2024 reports.";
+  }
+  if (compareSeries === "nibrs") return "Counts are NIBRS offenses. One case can count more than once.";
+  if (compareSeries === "merged") return "Each column shows 2020–2024 reports beside NIBRS offenses.";
+  return "";
+}
+
+function compareHeader(venue) {
+  return [
+    el("p", { className: "zone compare-zone" }, [text(`${venue.olympic_zone} · ${formatSports(venue.sports)}`)]),
+  ];
+}
+
+function overviewWeekdayLines(venue) {
+  if (compareSeries === "nibrs") {
+    const line = weekdayLine(venue.nibrs_weekday, "offenses");
+    return line ? [line] : [];
+  }
+  if (compareSeries === "merged") {
+    const reports = weekdayLine(venue.crime_weekday, "incidents");
+    const nibrs = weekdayLine(venue.nibrs_weekday, "offenses");
+    return [
+      reports ? `2020–2024: ${reports}` : "",
+      nibrs ? `NIBRS: ${nibrs}` : "",
+    ].filter(Boolean);
+  }
+  const line = weekdayLine(venue.crime_weekday, "incidents");
+  return line ? [line] : [];
+}
+
+function openComparedVenue(venueId) {
+  if (!venueId) return;
+  closeCompare({ history: false });
+  selectVenue(venueId, { expand: true });
+}
+
+function venueBar(label, select) {
+  const button = el("button", { type: "button", className: "compare-venue-link" }, [text("Venue page")]);
+  button.addEventListener("click", () => openComparedVenue(select.value));
+  return el("div", { className: "compare-venue-bar" }, [
+    el("label", {}, [text(label), select]),
+    button,
+  ]);
+}
+
+function weekdayLine(block, countWord) {
+  if (!block?.total || !(block.days || []).length) return "";
+  return weekdaySummary(block, countWord);
+}
+
+function quietCompareChart(host) {
+  host.querySelectorAll(".section-title, .pie-guide").forEach((node) => node.remove());
+  host.querySelectorAll(".time-section > .muted").forEach((node) => {
+    if (node.textContent.startsWith("Click a slice")) node.remove();
+  });
+}
+
+function venuePick(selected) {
+  const select = el("select", { className: "venue-pick" });
+  const venues = [...state.venues].sort((left, right) => left.venue_name.localeCompare(right.venue_name));
+  select.append(...venues.map((venue) => el("option", { value: venue.venue_id }, [text(venue.venue_name)])));
+  select.value = selected;
+  return select;
+}
+
+async function loadCompareVenue(venueId) {
+  if (compareCache.has(venueId)) return compareCache.get(venueId);
+  const venue = await fetchJson(`/api/venues/${encodeURIComponent(venueId)}`);
+  compareCache.set(venueId, venue);
+  return venue;
+}
+
+function compareColumn(venue) {
+  if (compareView === "overview") {
+    return el("div", { className: "compare-body" }, [
+      ...compareHeader(venue),
+      el("div", { className: "stats" }, [
+        stat("Incidents", formatNumber(venue.crime_count_nearby), "inside the buffer, 2020–2024"),
+        stat("Density", formatNumber(venue.crime_per_km2), densityNote(venue)),
+      ]),
+      venue.nibrs ? el("p", { className: "muted" }, [
+        text(`NIBRS offenses since Mar 2024: ${formatNumber(venue.nibrs.count)}.`),
+      ]) : el("span"),
+      ...overviewWeekdayLines(venue).map((line) => el("p", { className: "muted" }, [text(line)])),
+    ]);
+  }
+  if (compareView === "permits") {
+    const permitHost = el("div");
+    const homeHost = el("div");
+    const nibrsSeries = compareSeries === "nibrs";
+    mountPermitSection(venue.venue_id, permitHost, nibrsSeries ? "nibrs" : "reports");
+    if (venue.venue_id === "V01" && !nibrsSeries) mountHomeGames(homeHost);
+    return el("div", { className: "compare-body" }, [
+      ...compareHeader(venue),
+      permitHost,
+      homeHost,
+    ]);
+  }
+  const host = el("div");
+  const nibrsSeries = compareSeries === "nibrs";
+  const countWord = nibrsSeries ? "offenses" : "incidents";
+  const merged = compareSeries === "merged";
+  if (compareView === "time") {
+    if (merged) mountTimePair(host, venue.crime_time, venue.nibrs_time, "");
+    else mountTimeSection(nibrsSeries ? venue.nibrs_time : venue.crime_time, host, countWord, "", "");
+  } else if (compareView === "distance") {
+    if (merged) mountDistancePair(host, venue.crime_distance, venue.nibrs_distance, "");
+    else mountDistanceSection(nibrsSeries ? venue.nibrs_distance : venue.crime_distance, host, countWord, "", "");
+  } else {
+    if (merged) mountWeekdayPair(host, venue.crime_weekday, venue.nibrs_weekday, "");
+    else mountWeekdaySection(nibrsSeries ? venue.nibrs_weekday : venue.crime_weekday, host, countWord, "", "below");
+  }
+  quietCompareChart(host);
+  return el("div", { className: "compare-body" }, [
+    ...compareHeader(venue),
+    host,
+  ]);
+}
+
+function renderCompare(idA, idB) {
+  const token = ++compareToken;
+  const [leftId, rightId] = resolveComparePair(idA, idB);
+  const selectA = venuePick(leftId);
+  const selectB = venuePick(rightId);
+  const series = el("select", { "aria-label": "Crime series" }, [
+    el("option", { value: "reports" }, [text("2020–2024 reports")]),
+    el("option", { value: "nibrs" }, [text("NIBRS offenses, Mar 2024–present")]),
+    el("option", { value: "merged" }, [text("Merged groups, 2020–present")]),
+  ]);
+  series.value = compareSeries;
+  selectA.setAttribute("aria-label", "Venue A");
+  selectB.setAttribute("aria-label", "Venue B");
+
+  function paintPair() {
+    rememberCompare(selectA.value, selectB.value);
+    renderCompare(selectA.value, selectB.value);
+  }
+  selectA.addEventListener("change", paintPair);
+  selectB.addEventListener("change", paintPair);
+  series.addEventListener("change", () => {
+    compareSeries = series.value;
+    renderCompare(selectA.value, selectB.value);
+  });
+
+  const views = [
+    ["overview", "Overview"],
+    ["time", "Time of day"],
+    ["distance", "Distance"],
+    ["weekday", "Day of week"],
+    ["permits", "Permits"],
+  ];
+  const viewButtons = views.map(([id, label]) => {
+    const button = el("button", {
+      type: "button",
+      "aria-pressed": compareView === id ? "true" : "false",
+    }, [text(label)]);
+    button.addEventListener("click", () => {
+      if (compareView === id) return;
+      compareView = id;
+      renderCompare(selectA.value, selectB.value);
+    });
+    return button;
+  });
+  const viewBar = el("div", { className: "compare-controls" }, [
+    el("label", { className: "compare-series" }, [text("Series"), series]),
+    el("div", { className: "compare-views", role: "group", "aria-label": "What to compare" }, viewButtons),
+  ]);
+
+  const note = compareSeriesNote();
+  const bodyA = el("div");
+  const bodyB = el("div");
+  const columns = el("div", { className: "compare-columns" }, [
+    el("article", { className: "compare-column" }, [venueBar("Venue A", selectA), bodyA]),
+    el("article", { className: "compare-column" }, [venueBar("Venue B", selectB), bodyB]),
+  ]);
+  const sheet = el("div", { className: compareView === "permits" ? "compare-sheet is-permits" : "compare-sheet" }, [
+    el("div", { className: "compare-toolbar" }, [
+      el("button", { className: "venue-back", type: "button", "data-close-compare": "true" }, [text("Back to map")]),
+      el("button", { className: "compare-link", type: "button" }, [text("Compare")]),
+    ]),
+    el("h2", { className: "compare-kicker", id: "compare-heading" }, [text("Compare Venues")]),
+    viewBar,
+    note ? el("p", { className: "muted" }, [text(note)]) : el("span"),
+    columns,
+  ]);
+  comparePage.replaceChildren(sheet);
+  syncCompareLink();
+  comparePage.scrollTop = 0;
+
+  if (!leftId || !rightId) {
+    bodyA.replaceChildren(el("p", { className: "muted" }, [text("Venue list is still loading.")]));
+    return;
+  }
+  if (leftId === rightId) {
+    bodyA.replaceChildren(el("p", { className: "muted" }, [text("Choose two different venues.")]));
+    return;
+  }
+
+  bodyA.replaceChildren(el("p", { className: "muted" }, [text("Loading…")]));
+  Promise.all([loadCompareVenue(leftId), loadCompareVenue(rightId)]).then(([left, right]) => {
+    if (token !== compareToken) return;
+    const overlap = pairOverlapNote(left, right);
+    if (overlap) columns.after(el("p", { className: "terms compare-overlap" }, [text(overlap)]));
+    bodyA.replaceChildren(compareColumn(left));
+    bodyB.replaceChildren(compareColumn(right));
+  }).catch((error) => {
+    if (token !== compareToken) return;
+    bodyA.replaceChildren(el("p", { className: "muted" }, [text(error.message)]));
+  });
+}
+
+function openCompare(options = {}) {
+  closeVenuePage({ history: false });
+  const route = options.a || options.b ? options : (compareRoute() || {});
+  const [left, right] = resolveComparePair(route.a || options.a || "", route.b || options.b || "");
+  const next = left && right ? `#/compare/${left}/${right}` : "#/compare";
+  if (options.history === false) {
+    if (location.hash !== next) history.replaceState({ compare: true }, "", next);
+  } else {
+    rememberCompare(left, right);
+  }
+  syncCompareLink();
+  comparePage.hidden = false;
+  renderCompare(left, right);
+}
+
+comparePage.addEventListener("click", (event) => {
+  if (event.target.closest("[data-close-compare]")) closeCompare();
+});
+document.addEventListener("click", (event) => {
+  if (event.target.closest(".compare-link")) openCompare();
+});
+
 async function init() {
   bindLayerToggles();
   bindCrimeView();
@@ -2607,11 +2994,22 @@ async function init() {
       mapHint.textContent = error.message;
     }
   }
-  const routed = venueIdFromLocation();
-  if (routed) selectVenue(routed, { expand: true, history: false });
+  const compare = compareRoute();
+  if (compare) openCompare({ history: false, a: compare.a, b: compare.b });
+  else {
+    const routed = venueIdFromLocation();
+    if (routed) selectVenue(routed, { expand: true, history: false });
+  }
 }
 
 window.addEventListener("popstate", () => {
+  const compare = compareRoute();
+  if (compare) {
+    openCompare({ history: false, a: compare.a, b: compare.b });
+    return;
+  }
+  if (comparePage) comparePage.hidden = true;
+  syncCompareLink();
   const routed = venueIdFromLocation();
   if (routed) selectVenue(routed, { expand: true, history: false });
   else closeVenuePage({ history: false });
