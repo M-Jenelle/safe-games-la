@@ -9,7 +9,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from pipeline.geo import haversine_m
+from pipeline.geo import haversine_m, nearest_row
+from pipeline.weekday import combine_weekday, weekday_from_dates
 from pipeline.permit_event_days import GROUP_IDS, collapse_upcoming, comparison_view
 
 from pipeline.loaders import (
@@ -36,6 +37,12 @@ TIME_PATH = REPO_ROOT / "data" / "processed" / "crime_time_of_day.json"
 DISTANCE_PATH = REPO_ROOT / "data" / "processed" / "crime_by_distance.json"
 LISTINGS_PATH = REPO_ROOT / "data" / "processed" / "ticketmaster_listings.json"
 NIBRS_CHARTS_PATH = REPO_ROOT / "data" / "processed" / "nibrs_charts.json"
+NIBRS_CUTOFF = "2024-03-07"
+REPORT_WEEKDAY_NOTE = "Uses 2020-2024 reports and is inside the 800m buffer."
+MERGED_WEEKDAY_NOTE = (
+    "Reports before March 7, 2024, then NIBRS offenses.\n"
+    "One NIBRS case can count more than once."
+)
 
 _summary: dict | None = None
 _summary_mtime: float | None = None
@@ -43,6 +50,10 @@ _points: dict | None = None
 _points_mtime: float | None = None
 _month_categories: dict[str, dict[str, dict[str, int]]] = {}
 _month_categories_mtime: float | None = None
+_weekday_cache: dict[str, tuple[dict, dict]] | None = None
+_weekday_mtime: float | None = None
+_hospitals = None
+_hospitals_mtime: float | None = None
 _crime_views: dict | None = None
 _crime_heat_mtime: float | None = None
 _merged: dict | None = None
@@ -198,6 +209,93 @@ def crime_categories_by_month(venue_id: str) -> dict[str, dict[str, int]]:
     return counts
 
 
+def _density_rank(venue: dict, venues: list[dict]) -> dict:
+    rate = float(venue["crime_per_km2"])
+    higher = sum(1 for other in venues if float(other["crime_per_km2"]) > rate)
+    tied = sum(1 for other in venues if float(other["crime_per_km2"]) == rate) > 1
+    return {"rank": higher + 1, "of": len(venues), "tied": tied}
+
+
+def _overlapping_venues(venue: dict, venues: list[dict]) -> list[dict]:
+    radius = float(venue["buffer_radius_m"])
+    hits = []
+    for other in venues:
+        if other["venue_id"] == venue["venue_id"]:
+            continue
+        distance = float(haversine_m(
+            venue["latitude"],
+            venue["longitude"],
+            other["latitude"],
+            other["longitude"],
+        ))
+        if distance < radius + float(other["buffer_radius_m"]):
+            hits.append({
+                "venue_id": other["venue_id"],
+                "venue_name": other["venue_name"],
+                "distance_m": round(distance, 1),
+            })
+    hits.sort(key=lambda item: item["distance_m"])
+    return hits
+
+
+def _hospital_frame():
+    global _hospitals, _hospitals_mtime
+    path = _layer_sources()["hospitals"]
+    if not path.exists():
+        return None
+    mtime = path.stat().st_mtime
+    if _hospitals is None or mtime != _hospitals_mtime:
+        frame, _report = load_hospitals(path)
+        _hospitals = frame
+        _hospitals_mtime = mtime
+    return _hospitals
+
+
+def nearest_emergency_room(latitude: float, longitude: float) -> dict | None:
+    """Closest hospital whose record says it has an emergency room."""
+    frame = _hospital_frame()
+    if frame is None or frame.empty or "emergency_room" not in frame.columns:
+        return None
+    flag = frame["emergency_room"].astype(str).str.strip().str.lower()
+    rooms = frame.loc[flag.isin({"yes", "y", "true", "1"})]
+    hit = nearest_row(rooms, latitude, longitude)
+    if hit is None:
+        return None
+    row, distance = hit
+    return {
+        "station_id": _text(row["station_id"]),
+        "station_name": _text(row["station_name"]),
+        "distance_m": round(float(distance), 1),
+        "emergency_room": "Yes",
+        "hospital_type": _text(row.get("hospital_type", "")),
+        "bed_capacity": _text(row.get("bed_capacity", "")),
+    }
+
+
+def _venue_weekdays(venue_id: str) -> tuple[dict, dict]:
+    """2020–2024 day counts, and the same counts before the NIBRS cutoff."""
+    global _weekday_cache, _weekday_mtime
+    points = load_crime_points()
+    if _weekday_cache is None or _weekday_mtime != _points_mtime:
+        built: dict[str, tuple[dict, dict]] = {}
+        for vid, block in (points.get("by_venue") or {}).items():
+            dates = []
+            legacy = []
+            for point in block.get("points") or []:
+                day = str(point.get("date") or "")[:10]
+                if len(day) != 10:
+                    continue
+                dates.append(day)
+                if day < NIBRS_CUTOFF:
+                    legacy.append(day)
+            reports = weekday_from_dates(dates)
+            reports["disclaimer"] = REPORT_WEEKDAY_NOTE
+            built[vid] = (reports, weekday_from_dates(legacy))
+        _weekday_cache = built
+        _weekday_mtime = _points_mtime
+    return _weekday_cache.get(venue_id, ({}, {}))
+
+
 def get_venue(venue_id: str) -> dict | None:
     for venue in load_summary()["venues"]:
         if venue["venue_id"] == venue_id:
@@ -228,6 +326,23 @@ def get_venue(venue_id: str) -> dict | None:
             if nibrs_charts:
                 enriched["nibrs_time"] = nibrs_charts.get("time") or {}
                 enriched["nibrs_distance"] = nibrs_charts.get("distance") or {}
+            venues = load_summary()["venues"]
+            enriched["density_rank"] = _density_rank(venue, venues)
+            enriched["overlapping_venues"] = _overlapping_venues(venue, venues)
+            enriched["nearest_emergency_room"] = nearest_emergency_room(
+                float(venue["latitude"]),
+                float(venue["longitude"]),
+            )
+            reports_week, legacy_week = _venue_weekdays(venue_id)
+            nibrs_week = (nibrs_charts or {}).get("weekday") or {}
+            if reports_week:
+                enriched["crime_weekday"] = reports_week
+            if nibrs_week:
+                enriched["nibrs_weekday"] = nibrs_week
+            if legacy_week or nibrs_week:
+                merged_week = combine_weekday(legacy_week, nibrs_week)
+                merged_week["disclaimer"] = MERGED_WEEKDAY_NOTE
+                enriched["merged_weekday"] = merged_week
             return enriched
     return None
 

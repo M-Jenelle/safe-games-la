@@ -1027,6 +1027,46 @@ function overviewChart(byMonth) {
   return svg;
 }
 
+function ordinal(value) {
+  const number = Number(value);
+  const mod100 = number % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${number}th`;
+  return `${number}${["th", "st", "nd", "rd"][number % 10] || "th"}`;
+}
+
+function densityNote(venue) {
+  const rank = venue.density_rank;
+  if (!rank) return "per km²";
+  const place = `${rank.tied ? "tied for " : ""}${ordinal(rank.rank)} of ${rank.of}`;
+  return `${place} · per km²`;
+}
+
+function overlapNote(venue) {
+  const others = venue.overlapping_venues || [];
+  if (!others.length) return "";
+  const names = others.map((item) => item.venue_name);
+  const list = names.length === 1
+    ? names[0]
+    : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `The 800 m circle overlaps ${list}. An incident in the overlap is counted for each venue.`;
+}
+
+function hospitalHasEmergencyRoom(station) {
+  return String(station?.emergency_room || "").toLowerCase() === "yes";
+}
+
+function careStations(venue) {
+  const cards = [
+    stationCard("Fire", venue.nearest_fire_station),
+    stationCard("Police", venue.nearest_police_station),
+    stationCard("Hospital", venue.nearest_hospital),
+  ];
+  if (!hospitalHasEmergencyRoom(venue.nearest_hospital) && venue.nearest_emergency_room) {
+    cards.push(stationCard("Emergency room", venue.nearest_emergency_room));
+  }
+  return cards;
+}
+
 function stationCard(label, station) {
   if (!station) {
     return el("article", { className: "station" }, [
@@ -1137,7 +1177,7 @@ function renderOverview() {
     el("p", { className: "address" }, [text(`${venue.address}, ${venue.city}`)]),
     el("div", { className: "stats" }, [
       stat("Incidents", formatNumber(venue.crime_count_nearby), "inside the buffer"),
-      stat("Density", formatNumber(venue.crime_per_km2), "per km²"),
+      stat("Density", formatNumber(venue.crime_per_km2), densityNote(venue)),
       stat("Jurisdiction", jurisdictionLabel(venue.lapd_jurisdiction), "nearest local station"),
       stat("Buffer", `${Math.round(venue.buffer_radius_m)} m`, "radius"),
     ]),
@@ -1145,6 +1185,7 @@ function renderOverview() {
       text(`NIBRS offenses since Mar 2024: ${formatNumber(venue.nibrs.count)}. A case can include more than one offense.`),
     ]) : el("span"),
     flags.length ? el("div", { className: "flags" }, flags) : el("p", { className: "muted" }, [text("No data-quality flags.")]),
+    overlapNote(venue) ? el("p", { className: "terms" }, [text(overlapNote(venue))]) : el("span"),
     el("h3", { className: "section-title" }, [text("Top categories")]),
     ...(categories.length
       ? categories
@@ -1161,11 +1202,7 @@ function renderOverview() {
     ]),
     el("div", { className: "pills" }, buses.length ? buses : [el("span", { className: "muted" }, [text("None in the buffer.")])]),
     el("h3", { className: "section-title" }, [text("Nearest response and care")]),
-    el("div", { className: "station-grid" }, [
-      stationCard("Fire", venue.nearest_fire_station),
-      stationCard("Police", venue.nearest_police_station),
-      stationCard("Hospital", venue.nearest_hospital),
-    ]),
+    el("div", { className: "station-grid" }, careStations(venue)),
     el("p", { className: "terms" }, [text(state.meta?.jurisdiction_method || "")]),
   );
 }
@@ -1773,6 +1810,80 @@ function mountTimeSection(crimeTime, host, countWord, guide, monthLabel) {
   });
 }
 
+function scopedWeekday(block, month) {
+  if (!block) return null;
+  if (!month) return block;
+  const scoped = block.by_month?.[month];
+  if (!scoped || !scoped.total) return { total: 0, days: [], disclaimer: block.disclaimer || "" };
+  return { ...scoped, disclaimer: block.disclaimer || "" };
+}
+
+function weekdayBars(block) {
+  const days = block.days || [];
+  const max = Math.max(...days.map((day) => day.count), 1);
+  return el("div", { className: "weekday-chart" }, days.map((day) => el("div", {
+    className: day.id === "sat" || day.id === "sun" ? "weekday-col is-weekend" : "weekday-col",
+  }, [
+    el("span", { className: "weekday-count" }, [text(formatNumber(day.count))]),
+    el("span", {
+      className: "weekday-bar",
+      style: `height:${Math.max(4, Math.round((day.count / max) * 96))}px`,
+    }),
+    el("span", { className: "weekday-name" }, [text(day.label.slice(0, 3))]),
+  ])));
+}
+
+function weekdaySummary(block, countWord) {
+  const busiest = (block.days || []).reduce((best, day) => (day.count > best.count ? day : best), block.days[0]);
+  const weekendShare = block.total ? Math.round((block.weekend_count / block.total) * 100) : 0;
+  return `${busiest.label} is the busiest day, ${formatNumber(busiest.count)} ${countWord}. Weekend days are ${formatNumber(block.weekend_count)} (${weekendShare}%).`;
+}
+
+function mountWeekdaySection(block, host, countWord, monthLabel) {
+  if (!block || (!block.total && !monthLabel)) {
+    host.replaceChildren();
+    return;
+  }
+  if (!block.total) {
+    host.replaceChildren(el("section", { className: "time-section", "aria-label": "Day of week" }, [
+      el("h3", { className: "section-title" }, [text("Day of week")]),
+      el("p", { className: "muted" }, [text(`${monthLabel}. None in this month.`)]),
+    ]));
+    return;
+  }
+  const when = monthLabel ? `${monthLabel}. ` : "";
+  host.replaceChildren(el("section", { className: "time-section", "aria-label": "Day of week" }, [
+    el("h3", { className: "section-title" }, [text("Day of week")]),
+    el("p", { className: "muted" }, [text(`${when}${weekdaySummary(block, countWord)}`)]),
+    weekdayBars(block),
+    block.disclaimer ? el("p", { className: "terms" }, [text(block.disclaimer)]) : el("span"),
+  ]));
+}
+
+function mountWeekdayPair(host, reports, nibrs, monthLabel) {
+  const panels = [
+    { label: "2020–2024 reports", block: reports, countWord: "incidents" },
+    { label: "NIBRS offenses, Mar 2024–present", block: nibrs, countWord: "offenses" },
+  ].filter((panel) => panel.block?.total);
+  if (!panels.length) {
+    host.replaceChildren(el("section", { className: "time-section", "aria-label": "Day of week" }, [
+      el("h3", { className: "section-title" }, [text("Day of week")]),
+      el("p", { className: "muted" }, [text(monthLabel ? `${monthLabel}. None in this month.` : "None in this range.")]),
+    ]));
+    return;
+  }
+  host.replaceChildren(el("section", { className: "time-section", "aria-label": "Day of week" }, [
+    el("h3", { className: "section-title" }, [text("Day of week")]),
+    el("p", { className: "muted" }, [text(monthLabel ? `${monthLabel}. Yellow bars are Saturday and Sunday.` : "Yellow bars are Saturday and Sunday.")]),
+    el("div", { className: "pie-pair" }, panels.map((panel) => el("div", { className: "pie-column" }, [
+      el("p", { className: "listing-caption" }, [text(panel.label)]),
+      el("p", { className: "muted" }, [text(weekdaySummary(panel.block, panel.countWord))]),
+      weekdayBars(panel.block),
+      panel.block.disclaimer ? el("p", { className: "terms" }, [text(panel.block.disclaimer)]) : el("span"),
+    ]))),
+  ]));
+}
+
 function mountDistanceSection(crimeDistance, host, countWord, guide, monthLabel) {
   const bands = crimeDistance?.bands || [];
   mountDrillPie(host, {
@@ -1894,6 +2005,7 @@ function renderDetail() {
   const listingHost = el("div");
   const timeHost = el("div");
   const distanceHost = el("div");
+  const weekdayHost = el("div");
   const chartHost = el("div", { className: "chart-host" });
   const yearHost = el("div", { className: "year-row" });
   const seriesHint = el("p", { className: "muted" });
@@ -2080,6 +2192,7 @@ function renderDetail() {
     markMonth(selectedKey);
     paintCategories();
     paintPies();
+    paintWeekday();
   }
 
   function readRange(changed) {
@@ -2100,6 +2213,7 @@ function renderDetail() {
     markMonth(selectedKey);
     paintCategories();
     paintPies();
+    paintWeekday();
   }
 
   function seriesNote() {
@@ -2141,8 +2255,29 @@ function renderDetail() {
     }
   }
 
+  function paintWeekday() {
+    const monthName = selectedKey ? monthTitle(selectedKey) : "";
+    if (seriesId === "merged") {
+      mountWeekdayPair(
+        weekdayHost,
+        scopedWeekday(venue.crime_weekday, selectedKey),
+        scopedWeekday(venue.nibrs_weekday, selectedKey),
+        monthName,
+      );
+      return;
+    }
+    const nibrsSeries = seriesId === "nibrs";
+    mountWeekdaySection(
+      scopedWeekday(nibrsSeries ? venue.nibrs_weekday : venue.crime_weekday, selectedKey),
+      weekdayHost,
+      nibrsSeries ? "offenses" : "incidents",
+      monthName,
+    );
+  }
+
   function paintCharts() {
     paintPies();
+    paintWeekday();
     mountPermitSection(venue.venue_id, permitHost, seriesId === "nibrs" ? "nibrs" : "reports");
   }
 
@@ -2202,7 +2337,7 @@ function renderDetail() {
     el("p", { className: "address" }, [text(`${venue.address}, ${venue.city}`)]),
     el("div", { className: "stats" }, [
       stat("Incidents", formatNumber(total), "inside the buffer, 2020–2024"),
-      stat("Density", formatNumber(venue.crime_per_km2), "per km²"),
+      stat("Density", formatNumber(venue.crime_per_km2), densityNote(venue)),
       stat("Busiest month", peak ? monthLabel(peak.key) : "None", peak ? `${formatNumber(peak.count)} incidents` : "No dated incidents"),
       stat("Buffer", `${Math.round(venue.buffer_radius_m)} m`, jurisdictionLabel(venue.lapd_jurisdiction)),
     ]),
@@ -2210,6 +2345,7 @@ function renderDetail() {
       text(`NIBRS offenses since Mar 2024: ${formatNumber(venue.nibrs.count)}. A case can include more than one offense.`),
     ]) : el("span"),
     flags.length ? el("div", { className: "flags" }, flags) : el("span"),
+    overlapNote(venue) ? el("p", { className: "terms" }, [text(overlapNote(venue))]) : el("span"),
     el("h3", { className: "section-title" }, [text("Incidents by month")]),
     hasSeries ? el("div", { className: "table-filters" }, [
       el("label", {}, [text("Series"), seriesSelect]),
@@ -2229,6 +2365,7 @@ function renderDetail() {
     categoryToggle,
     timeHost,
     distanceHost,
+    weekdayHost,
     permitHost,
     listingHost,
     el("h3", { className: "section-title" }, [text(`Rail · ${formatNumber(venue.rail_stations_nearby.count)} ${venue.rail_stations_nearby.count === 1 ? "station" : "stations"}`)]),
@@ -2238,11 +2375,7 @@ function renderDetail() {
     ]),
     el("div", { className: "pills" }, buses.length ? buses : [el("span", { className: "muted" }, [text("None in the buffer.")])]),
     el("h3", { className: "section-title" }, [text("Nearest response and care")]),
-    el("div", { className: "station-grid" }, [
-      stationCard("Fire", venue.nearest_fire_station),
-      stationCard("Police", venue.nearest_police_station),
-      stationCard("Hospital", venue.nearest_hospital),
-    ]),
+    el("div", { className: "station-grid" }, careStations(venue)),
     el("p", { className: "terms" }, [text(state.meta.jurisdiction_method)]),
   ]));
   mountListingSection(venue.ticketmaster, listingHost);

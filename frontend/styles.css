@@ -884,6 +884,51 @@ select { width: 132px; }
   align-items: start;
   gap: 24px;
   padding-top: 4px;
+  flex-wrap: wrap;
+}
+
+.weekday-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 132px;
+  max-width: 520px;
+  margin-top: 8px;
+}
+
+.pie-column .weekday-chart {
+  max-width: none;
+}
+
+.weekday-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  height: 100%;
+}
+
+.weekday-count,
+.weekday-name {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.weekday-bar {
+  width: 100%;
+  max-width: 36px;
+  margin-top: 4px;
+  background: #0085C7;
+}
+
+.weekday-col.is-weekend .weekday-bar {
+  background: #F4C300;
+}
+
+.weekday-name {
+  margin-top: 6px;
 }
 
 .station {

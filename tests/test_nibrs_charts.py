@@ -29,7 +29,7 @@ class NibrsChartTests(unittest.TestCase):
             {"occurred_at": pd.Timestamp("2024-03-01 09:00"), "category": "THEFT", "latitude": 34.0446, "longitude": -118.2669},
             {"occurred_at": pd.Timestamp("2026-10-01 20:00"), "category": "THEFT", "latitude": 34.0446, "longitude": -118.2669},
         ])
-        time_block, distance_block, totals, groups = charts_for_frame(
+        time_block, distance_block, weekday, totals, groups = charts_for_frame(
             frame,
             34.0445,
             -118.2669,
@@ -37,6 +37,9 @@ class NibrsChartTests(unittest.TestCase):
             end=date(2026, 9, 19),
         )
         self.assertEqual(time_block["total"], 2)
+        self.assertEqual(weekday["total"], 2)
+        self.assertEqual(next(day["count"] for day in weekday["days"] if day["id"] == "fri"), 1)
+        self.assertEqual(weekday["weekend_count"], 1)
         self.assertEqual(time_block["noon_count"], 1)
         by_period = {item["id"]: item["count"] for item in time_block["periods"]}
         self.assertEqual(by_period["night"], 1)

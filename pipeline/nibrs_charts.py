@@ -21,6 +21,7 @@ from pipeline.crime_groups import crime_group
 from pipeline.crime_time import time_by_month, venue_time_block
 from pipeline.geo import DEFAULT_BUFFER_RADIUS_M, buffer_zone
 from pipeline.merge_crime import NIBRS_PATH, NIBRS_START, _load_nibrs
+from pipeline.weekday import weekday_from_dates
 from pipeline.permit_event_days import (
     GROUP_IDS,
     MONTH_NAMES,
@@ -97,7 +98,7 @@ def charts_for_frame(
     start: date,
     end: date,
     radius_m: float = DEFAULT_BUFFER_RADIUS_M,
-) -> tuple[dict, dict, dict[str, int], dict[str, dict[str, int]]]:
+) -> tuple[dict, dict, dict, dict[str, int], dict[str, dict[str, int]]]:
     """Time pie, distance pie, and daily group counts for one venue frame."""
     nearby = buffer_zone(frame, latitude, longitude, radius_m)
     points = []
@@ -130,7 +131,15 @@ def charts_for_frame(
     distance_block = venue_distance_block(points, latitude, longitude)
     distance_block["disclaimer"] = DISTANCE_DISCLAIMER
     distance_block["by_month"] = distance_by_month(points, latitude, longitude)
-    return time_block, distance_block, dict(totals), {group: dict(days) for group, days in groups.items()}
+    weekday = weekday_from_dates(point["date"] for point in points)
+    weekday["disclaimer"] = time_disclaimer(start, end)
+    return (
+        time_block,
+        distance_block,
+        weekday,
+        dict(totals),
+        {group: dict(days) for group, days in groups.items()},
+    )
 
 
 def permit_rows_for_venue(
@@ -180,7 +189,7 @@ def build_charts(
         longitude = venue.get("longitude")
         if latitude is None or longitude is None:
             continue
-        time_block, distance_block, totals, groups = charts_for_frame(
+        time_block, distance_block, weekday, totals, groups = charts_for_frame(
             frame,
             float(latitude),
             float(longitude),
@@ -191,6 +200,7 @@ def build_charts(
         built[venue_id] = {
             "time": time_block,
             "distance": distance_block,
+            "weekday": weekday,
             "permit_rows": permit_rows_for_venue(
                 venue_id,
                 venue_name,

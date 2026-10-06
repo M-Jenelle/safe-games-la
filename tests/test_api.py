@@ -97,6 +97,29 @@ class ApiTests(unittest.TestCase):
         self.assertIn("NIBRS offenses", nibrs_body["source_note"])
         self.assertIn("2025", nibrs_body["years"])
         self.assertEqual(nibrs_body["upcoming"], [])
+        self.assertEqual(body["density_rank"], {"rank": 1, "of": len(venues), "tied": False})
+        self.assertEqual(body["crime_per_km2"], max(venue["crime_per_km2"] for venue in venues))
+        self.assertTrue(body["overlapping_venues"])
+        self.assertTrue(all(item["distance_m"] < 1600 for item in body["overlapping_venues"]))
+        self.assertEqual(body["nearest_emergency_room"]["emergency_room"], "Yes")
+        clock_days = body["crime_weekday"]
+        self.assertEqual(sum(day["count"] for day in clock_days["days"]), clock_days["total"])
+        self.assertEqual(clock_days["weekday_count"] + clock_days["weekend_count"], clock_days["total"])
+        self.assertEqual(clock_days["by_month"]["2023-03"]["total"], 342)
+        self.assertEqual(body["nibrs_weekday"]["total"], body["nibrs"]["count"])
+        self.assertLess(
+            body["merged_weekday"]["total"],
+            clock_days["total"] + body["nibrs_weekday"]["total"],
+        )
+        self.assertIn("March 7, 2024", body["merged_weekday"]["disclaimer"])
+        dodger = self.client.get("/api/venues/V01").json()
+        self.assertEqual(dodger["nearest_hospital"]["emergency_room"], "No")
+        self.assertEqual(dodger["nearest_emergency_room"]["emergency_room"], "Yes")
+        self.assertNotEqual(
+            dodger["nearest_emergency_room"]["station_name"],
+            dodger["nearest_hospital"]["station_name"],
+        )
+        self.assertGreater(dodger["density_rank"]["rank"], 1)
 
     def test_ticketmaster_listings(self):
         dodger = self.client.get("/api/venues/V01").json()["ticketmaster"]
