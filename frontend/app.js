@@ -1288,24 +1288,52 @@ function formatClock(value) {
   return `${hour}:${minutes} ${suffix}`;
 }
 
-function listingMonthTable(months) {
+function todayIso() {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function listingMonthTable(months, selected, onPick) {
   const peak = months.reduce((best, month) => Math.max(best, month.count), 0);
   return el("div", { className: "month-table-wrap" }, [
     el("table", { className: "month-table listing-months" }, [
       el("thead", {}, [el("tr", {}, ["Month", "Listings"].map((label) => el("th", {}, [withInfo(label)])))]),
-      el("tbody", {}, months.map((month) => el("tr", { className: month.count && month.count === peak ? "is-overall" : "" }, [
-        el("th", { scope: "row" }, [text(month.label)]),
-        el("td", {}, [text(formatNumber(month.count))]),
-      ]))),
+      el("tbody", {}, months.map((month) => {
+        const pressed = month.month === selected;
+        const row = el("tr", { className: [
+          month.count && month.count === peak ? "is-overall" : "",
+          pressed ? "is-selected" : "",
+        ].filter(Boolean).join(" ") }, [
+          el("th", { scope: "row" }, [
+            el("button", {
+              type: "button",
+              className: "listing-month",
+              "aria-pressed": pressed ? "true" : "false",
+            }, [text(month.label)]),
+          ]),
+          el("td", {}, [text(formatNumber(month.count))]),
+        ]);
+        row.addEventListener("click", () => onPick(month.month));
+        return row;
+      })),
     ]),
   ]);
 }
 
 function listingEventTable(events) {
-  const labels = ["Date", "Event", "Start", "Tickets"];
+  const columns = [
+    { label: "Date", className: "" },
+    { label: "Event", className: "event-names" },
+    { label: "Start", className: "" },
+    { label: "Tickets", className: "" },
+  ];
   return el("div", { className: "month-table-wrap" }, [
     el("table", { className: "month-table listing-events" }, [
-      el("thead", {}, [el("tr", {}, labels.map((label) => el("th", {}, [withInfo(label)])))]),
+      el("thead", {}, [el("tr", {}, columns.map((column) => (
+        el("th", column.className ? { className: column.className } : {}, [withInfo(column.label)])
+      )))]),
       el("tbody", {}, events.map((event) => el("tr", {}, [
         el("th", { scope: "row" }, [text(formatPermitSpan(event.date, event.date))]),
         el("td", { className: "event-names" }, [text(event.name)]),
@@ -1321,31 +1349,61 @@ function mountListingSection(block, host) {
     host.replaceChildren();
     return;
   }
-  let expanded = false;
-  const events = block.events;
-  const tableHost = el("div");
-  const toggle = el("button", { className: "show-more", type: "button" }, [text("Show more")]);
+  let monthsExpanded = false;
+  let selectedMonth = "";
+  const months = block.months || [];
+  const events = block.events || [];
+  const monthHost = el("div", { className: "listing-pane listing-pane-months" });
+  const eventHost = el("div", { className: "listing-pane listing-pane-events" });
 
-  function paint() {
-    const visible = expanded ? events : events.slice(0, 8);
-    toggle.hidden = events.length <= 8;
-    toggle.textContent = expanded ? "Show less" : "Show more";
-    tableHost.replaceChildren(listingEventTable(visible));
+  function upcomingMonths() {
+    const start = todayIso().slice(0, 7);
+    const later = months.filter((month) => month.month >= start);
+    return later.length ? later : months;
   }
 
-  toggle.addEventListener("click", () => {
-    expanded = !expanded;
-    paint();
-  });
+  function paint() {
+    const laterMonths = upcomingMonths();
+    const shownMonths = monthsExpanded ? months : laterMonths.slice(0, 3);
+    const monthToggle = el("button", { className: "show-more", type: "button" }, [
+      text(monthsExpanded ? "Show less" : "Show more"),
+    ]);
+    monthToggle.hidden = months.length <= shownMonths.length && !monthsExpanded;
+    monthToggle.addEventListener("click", () => {
+      monthsExpanded = !monthsExpanded;
+      paint();
+    });
+
+    const selected = months.find((month) => month.month === selectedMonth);
+    const monthEvents = selected
+      ? events.filter((event) => event.date.slice(0, 7) === selectedMonth)
+      : [];
+    monthHost.replaceChildren(
+      listingMonthTable(shownMonths, selectedMonth, (key) => {
+        selectedMonth = selectedMonth === key ? "" : key;
+        paint();
+      }),
+      monthToggle,
+    );
+    eventHost.hidden = !selected;
+    eventHost.replaceChildren(
+      ...(selected ? [
+        el("p", { className: "listing-caption" }, [text(selected.label)]),
+        monthEvents.length
+          ? listingEventTable(monthEvents)
+          : el("p", { className: "muted" }, [text("No listings in this month.")]),
+      ] : []),
+    );
+  }
+
   paint();
   host.replaceChildren(el("section", { className: "permit-section listing-section", "aria-label": "Listed events" }, [
     el("h3", { className: "section-title" }, [withInfo("Listed events")]),
     el("p", { className: "muted" }, [text(block.note || "")]),
     block.busiest ? el("p", { className: "muted" }, [text(block.busiest)]) : el("span"),
     block.clock ? el("p", { className: "muted" }, [text(block.clock)]) : el("span"),
-    listingMonthTable(block.months || []),
-    tableHost,
-    toggle,
+    el("p", { className: "muted" }, [text("Click a month to see its events. Click it again to clear.")]),
+    el("div", { className: "listing-split" }, [monthHost, eventHost]),
     el("p", { className: "footnote" }, [text(block.disclaimer || "")]),
   ]));
 }
