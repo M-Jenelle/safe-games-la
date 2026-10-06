@@ -751,6 +751,13 @@ const PERMIT_HINTS = {
   "Reports per day": "Average reports on the dates in this row.",
   "Offenses per day": "Average NIBRS offenses on the dates in this row. One case can include more than one offense.",
   "Difference vs other days": "This row's average minus the average on other days. Other days is the baseline, so that row has no difference.",
+  "Home games vs other days": "Completed Dodgers regular-season home games, 2020 through 2024, compared with the other days in March through October of those years.",
+  "Game days": "Days with a completed regular-season home game. A doubleheader still counts as one day.",
+  "Other days in season": "The other days in March through October, 2020 through 2024. Winter days are left out.",
+  "Game-day mean": "Average reports on home-game days.",
+  "Other-day mean in season": "Average reports on the other days in those baseball months.",
+  "2020–2024": "All completed regular-season home games from 2020 through 2024, taken together.",
+  "Game-day groups": "Crime groups where the daily average on home-game days differs from other days in season by at least 0.05 reports. The bar length is the size of that gap.",
   "Listed events": "Ticketmaster listings matched to this venue. The dates are after 2024, so they are not joined to the crime reports.",
   "Month": "Calendar month of the listings. A month with no listing is still shown, so the gap stays visible.",
   "Listings": "How many Ticketmaster events fall in this month.",
@@ -1261,14 +1268,14 @@ function permitTable(rows) {
   ]);
 }
 
-function groupRows(groups) {
+function groupRows(groups, eventLabel = "Permit-day mean") {
   const max = groups.reduce(
     (largest, group) => Math.max(largest, Math.abs(Number(group.absolute_difference) || 0)),
     0,
   ) || 1;
   return groups.map((group) => {
     const magnitude = Math.abs(Number(group.absolute_difference) || 0);
-    const means = `Permit-day mean ${formatMean(group.event_day_mean)}, other-day mean ${formatMean(group.other_day_mean)}`;
+    const means = `${eventLabel} ${formatMean(group.event_day_mean)}, other-day mean ${formatMean(group.other_day_mean)}`;
     return el("div", { className: "bar-row" }, [
       el("div", {}, [
         el("div", { className: "bar-label", title: means }, [text(group.label)]),
@@ -1503,6 +1510,52 @@ function mountPermitSection(venueId, host, source) {
   }
 
   refresh();
+}
+
+function gameTable(summary) {
+  const labels = ["", "Game days", "Other days in season", "Game-day mean", "Other-day mean in season", "Median", "Difference"];
+  return el("div", { className: "month-table-wrap" }, [
+    el("table", { className: "month-table permit-table" }, [
+      el("thead", {}, [el("tr", {}, labels.map((label) => el("th", {}, [withInfo(label)])))]),
+      el("tbody", {}, [
+        el("tr", { className: "is-overall" }, [
+          el("th", { scope: "row" }, [withInfo("2020–2024")]),
+          el("td", {}, [text(formatNumber(summary.event_day_count))]),
+          el("td", {}, [text(formatNumber(summary.other_day_count))]),
+          el("td", {}, [text(formatMean(summary.event_day_mean))]),
+          el("td", {}, [text(formatMean(summary.other_day_mean))]),
+          el("td", {}, [text(`${formatMedian(summary.event_day_median)} vs ${formatMedian(summary.other_day_median)}`)]),
+          el("td", {}, [text(formatGap(summary))]),
+        ]),
+      ]),
+    ]),
+  ]);
+}
+
+function mountHomeGames(host) {
+  host.replaceChildren();
+  fetchJson("/api/venues/V01/home-games").then((body) => {
+    if (!body.available) {
+      host.replaceChildren();
+      return;
+    }
+    const groups = body.groups || [];
+    host.replaceChildren(el("section", { className: "permit-section", "aria-label": "Home games" }, [
+      el("h3", { className: "section-title" }, [withInfo("Home games vs other days")]),
+      el("p", { className: "muted" }, [text(body.note || "")]),
+      gameTable(body.summary),
+      groups.length
+        ? el("h3", { className: "section-title" }, [withInfo("Game-day groups")])
+        : el("span"),
+      groups.length
+        ? el("p", { className: "muted" }, [text("Groups that differ by at least 0.05 reports per day.")])
+        : el("span"),
+      groups.length ? el("div", { className: "category-list" }, groupRows(groups, "Game-day mean")) : el("span"),
+      el("p", { className: "terms" }, [text(body.disclaimer || "")]),
+    ]));
+  }).catch(() => {
+    host.replaceChildren();
+  });
 }
 
 const TIME_COLORS = {
@@ -2002,6 +2055,7 @@ function renderDetail() {
   toSelect.value = "12";
   let seriesId = "reports";
   const permitHost = el("div");
+  const homeHost = el("div");
   const listingHost = el("div");
   const timeHost = el("div");
   const distanceHost = el("div");
@@ -2275,10 +2329,20 @@ function renderDetail() {
     );
   }
 
+  function paintHomeGames() {
+    const show = venue.venue_id === "V01" && seriesId !== "nibrs";
+    homeHost.hidden = !show;
+    if (show && !homeHost.dataset.loaded) {
+      homeHost.dataset.loaded = "true";
+      mountHomeGames(homeHost);
+    }
+  }
+
   function paintCharts() {
     paintPies();
     paintWeekday();
     mountPermitSection(venue.venue_id, permitHost, seriesId === "nibrs" ? "nibrs" : "reports");
+    paintHomeGames();
   }
 
   function applySeries() {
@@ -2367,6 +2431,7 @@ function renderDetail() {
     distanceHost,
     weekdayHost,
     permitHost,
+    homeHost,
     listingHost,
     el("h3", { className: "section-title" }, [text(`Rail · ${formatNumber(venue.rail_stations_nearby.count)} ${venue.rail_stations_nearby.count === 1 ? "station" : "stations"}`)]),
     rail.length ? el("ul", { className: "place-list" }, rail) : el("p", { className: "muted" }, [text("None in the buffer.")]),

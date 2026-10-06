@@ -179,6 +179,24 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(valley.status_code, 200)
         self.assertFalse(valley.json()["available"])
 
+        home = self.client.get("/api/venues/V01/home-games")
+        self.assertEqual(home.status_code, 200)
+        games = home.json()
+        self.assertTrue(games["available"])
+        self.assertEqual(games["summary"]["event_day_count"], 350)
+        self.assertEqual(games["summary"]["other_day_count"], 875)
+        self.assertEqual(games["summary"]["event_day_mean"], 1.14)
+        self.assertEqual(games["summary"]["other_day_mean"], 0.31)
+        self.assertEqual(games["summary"]["absolute_difference"], 0.83)
+        self.assertTrue(games["summary"]["percent_shown"])
+        self.assertEqual([group["group"] for group in games["groups"]], [
+            "assault", "theft", "other", "vehicle", "vandalism",
+        ])
+        self.assertFalse(games["groups"][0]["percent_shown"])
+        self.assertNotIn("upcoming", games)
+        self.assertIn("not a forecast", games["disclaimer"])
+        self.assertFalse(self.client.get("/api/venues/V04/home-games").json()["available"])
+
         thin = self.client.get("/api/venues/V11/permit-comparison?year=2020&month=1")
         self.assertEqual(thin.status_code, 200)
         self.assertFalse(thin.json()["summary"]["percent_shown"])

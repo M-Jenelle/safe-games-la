@@ -37,6 +37,7 @@ TIME_PATH = REPO_ROOT / "data" / "processed" / "crime_time_of_day.json"
 DISTANCE_PATH = REPO_ROOT / "data" / "processed" / "crime_by_distance.json"
 LISTINGS_PATH = REPO_ROOT / "data" / "processed" / "ticketmaster_listings.json"
 NIBRS_CHARTS_PATH = REPO_ROOT / "data" / "processed" / "nibrs_charts.json"
+HOME_GAMES_PATH = REPO_ROOT / "data" / "processed" / "dodger_event_risk.json"
 NIBRS_CUTOFF = "2024-03-07"
 REPORT_WEEKDAY_NOTE = "Uses 2020-2024 reports and is inside the 800m buffer."
 MERGED_WEEKDAY_NOTE = (
@@ -54,6 +55,8 @@ _weekday_cache: dict[str, tuple[dict, dict]] | None = None
 _weekday_mtime: float | None = None
 _hospitals = None
 _hospitals_mtime: float | None = None
+_home_games: dict | None = None
+_home_games_mtime: float | None = None
 _crime_views: dict | None = None
 _crime_heat_mtime: float | None = None
 _merged: dict | None = None
@@ -515,6 +518,86 @@ def permit_comparison(venue_id: str, year: str = "all", month: str = "all", sour
     else:
         view["upcoming"] = load_permit_upcoming().get(venue_id) or []
     return view
+
+
+def _load_home_games() -> dict | None:
+    global _home_games, _home_games_mtime
+    if not HOME_GAMES_PATH.exists():
+        _home_games = None
+        _home_games_mtime = None
+        return None
+    mtime = HOME_GAMES_PATH.stat().st_mtime
+    if _home_games is None or mtime != _home_games_mtime:
+        _home_games = json.loads(HOME_GAMES_PATH.read_text(encoding="utf-8"))
+        _home_games_mtime = mtime
+    return _home_games
+
+
+def _game_public(block: dict) -> dict:
+    """Same percent rule as the permit table: enough days, a real gap, and a test that clears."""
+    difference = float(block["absolute_difference"])
+    other_mean = float(block["non_game_day_mean"])
+    shown = bool(
+        int(block["game_day_count"]) >= 8
+        and block.get("significant")
+        and abs(difference) >= 0.05
+        and other_mean > 0
+    )
+    return {
+        "event_day_count": int(block["game_day_count"]),
+        "other_day_count": int(block["non_game_day_count"]),
+        "event_day_mean": block["game_day_mean"],
+        "other_day_mean": block["non_game_day_mean"],
+        "event_day_median": block["game_day_median"],
+        "other_day_median": block["non_game_day_median"],
+        "absolute_difference": difference,
+        "lift_pct": block["lift_pct"] if shown else None,
+        "percent_shown": shown,
+    }
+
+
+def home_game_comparison(venue_id: str) -> dict | None:
+    """Dodger regular-season home games versus other days in those months.
+
+    The per-listing lift in the file is not returned. None when the venue id
+    is unknown.
+    """
+    match = next((venue for venue in load_summary()["venues"] if venue["venue_id"] == venue_id), None)
+    if match is None:
+        return None
+    payload = _load_home_games()
+    meta_block = (payload or {}).get("meta") or {}
+    if payload is None or meta_block.get("venue_id") != venue_id:
+        return {"available": False, "venue_id": venue_id, "venue_name": match["venue_name"]}
+    summary = _game_public(payload["lift"])
+    groups = []
+    for group in payload.get("by_category") or []:
+        if not group.get("significant"):
+            continue
+        if abs(float(group["absolute_difference"])) < 0.05:
+            continue
+        public = _game_public(group)
+        if public["percent_shown"] and float(group["non_game_day_mean"]) < 0.25:
+            public = {**public, "percent_shown": False, "lift_pct": None}
+        groups.append({"group": group["group"], "label": group["label"], **public})
+    groups.sort(key=lambda item: abs(item["absolute_difference"]), reverse=True)
+    return {
+        "available": True,
+        "venue_id": venue_id,
+        "venue_name": match["venue_name"],
+        "summary": summary,
+        "groups": groups,
+        "note": (
+            "A game day is a completed Dodgers regular-season home game. "
+            "Other days are the rest of March through October in 2020–2024."
+        ),
+        "disclaimer": (
+            "Uses completed regular-season home games, 2020-2024, inside the 800 m buffer.\n"
+            "2020 games had little or no crowd.\n"
+            "A large percentage can still be less than one extra report a day.\n"
+            "This is a past comparison, not a forecast."
+        ),
+    }
 
 
 # Fixed frame for the citywide placeholder. Real tiles will replace this later.
