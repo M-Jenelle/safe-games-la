@@ -1058,10 +1058,37 @@ function ordinal(value) {
 }
 
 function densityNote(venue) {
-  const rank = venue.density_rank;
+  const rank = venue.present?.density_rank || venue.density_rank;
   if (!rank) return "per km²";
   const place = `${rank.tied ? "tied for " : ""}${ordinal(rank.rank)} of ${rank.of}`;
   return `${place} · per km²`;
+}
+
+function stat(label, value, note, hint) {
+  const title = hint
+    ? el("span", { className: "info-label" }, [text(label), infoMark(hint)])
+    : el("span", {}, [text(label)]);
+  return el("article", { className: "stat" }, [
+    title,
+    el("strong", {}, [text(value)]),
+    el("em", {}, [text(note)]),
+  ]);
+}
+
+const DENSITY_HINT = "Records per square kilometer inside the 800 m circle, from 2020 through the latest data. Reports run through March 6, 2024, then NIBRS offenses, and one NIBRS case can count more than once. The circle covers about 2.01 km², so density is the count divided by that area. The place compares this venue with the other 13.";
+
+function presentCount(venue) {
+  return venue.present?.count ?? venue.crime_count_nearby;
+}
+
+function presentRate(venue) {
+  return venue.present?.crime_per_km2 ?? venue.crime_per_km2;
+}
+
+function cityStats(venue) {
+  const series = venue?.city_baseline?.present;
+  if (!series?.value) return [];
+  return [stat("Vs city", series.value, series.caption, series.hint)];
 }
 
 function overlapNote(venue) {
@@ -1199,10 +1226,10 @@ function renderOverview() {
     ]),
     el("p", { className: "address" }, [text(`${venue.address}, ${venue.city}`)]),
     el("div", { className: "stats" }, [
-      stat("Incidents", formatNumber(venue.crime_count_nearby), "inside the buffer"),
-      stat("Density", formatNumber(venue.crime_per_km2), densityNote(venue)),
+      stat("Incidents", formatNumber(presentCount(venue)), "inside the buffer, 2020–present"),
+      stat("Density", formatNumber(presentRate(venue)), densityNote(venue), DENSITY_HINT),
+      ...cityStats(venue),
       stat("Jurisdiction", jurisdictionLabel(venue.lapd_jurisdiction), "nearest local station"),
-      stat("Buffer", `${Math.round(venue.buffer_radius_m)} m`, "radius"),
     ]),
     venue.nibrs ? el("p", { className: "muted" }, [
       text(`NIBRS offenses since Mar 2024: ${formatNumber(venue.nibrs.count)}. A case can include more than one offense.`),
@@ -1903,7 +1930,7 @@ function weekdayBars(block, selectedId, onPick) {
       el("span", { className: "weekday-count" }, [text(formatNumber(day.count))]),
       el("span", {
         className: "weekday-bar",
-        style: `height:${Math.max(4, Math.round((day.count / max) * 96))}px`,
+        style: `height:${Math.max(6, Math.round((day.count / max) * 168))}px`,
       }),
       el("span", { className: "weekday-name" }, [text(day.label.slice(0, 3))]),
     ]);
@@ -2106,12 +2133,15 @@ function renderDetail() {
     detail.replaceChildren(el("p", { className: "empty-detail" }, [text("Select a venue to open its briefing.")]));
     return;
   }
+  const present = venue.present;
   const reportMonths = filledMonths(venue.crime_by_month);
-  const peak = reportMonths.reduce(
-    (best, entry) => (entry.count > best.count ? entry : best),
-    reportMonths[0],
-  );
-  const total = venue.crime_count_nearby;
+  const peak = present?.peak_month
+    ? { key: present.peak_month, count: present.peak_count }
+    : reportMonths.reduce(
+      (best, entry) => (entry.count > best.count ? entry : best),
+      reportMonths[0],
+    );
+  const total = presentCount(venue);
   const flags = venue.data_quality_flags.map((flag) => (
     el("span", { className: "flag" }, [text(FLAG_LABELS[flag] || flag)])
   ));
@@ -2491,10 +2521,10 @@ function renderDetail() {
     el("h2", { className: "detail-title", id: "detail-heading" }, [text(venue.venue_name)]),
     el("p", { className: "address" }, [text(`${venue.address}, ${venue.city}`)]),
     el("div", { className: "stats" }, [
-      stat("Incidents", formatNumber(total), "inside the buffer, 2020–2024"),
-      stat("Density", formatNumber(venue.crime_per_km2), densityNote(venue)),
-      stat("Busiest month", peak ? monthLabel(peak.key) : "None", peak ? `${formatNumber(peak.count)} incidents` : "No dated incidents"),
-      stat("Buffer", `${Math.round(venue.buffer_radius_m)} m`, jurisdictionLabel(venue.lapd_jurisdiction)),
+      stat("Incidents", formatNumber(total), "inside the buffer, 2020–present"),
+      stat("Density", formatNumber(presentRate(venue)), densityNote(venue), DENSITY_HINT),
+      ...cityStats(venue),
+      stat("Busiest month", peak?.key ? monthLabel(peak.key) : "None", peak?.count ? `${formatNumber(peak.count)} records` : "No dated records"),
     ]),
     venue.nibrs ? el("p", { className: "muted" }, [
       text(`NIBRS offenses since Mar 2024: ${formatNumber(venue.nibrs.count)}. A case can include more than one offense.`),
@@ -2535,14 +2565,6 @@ function renderDetail() {
     el("p", { className: "terms" }, [text(state.meta.jurisdiction_method)]),
   ]));
   mountListingSection(venue.ticketmaster, listingHost);
-}
-
-function stat(label, value, note) {
-  return el("article", { className: "stat" }, [
-    el("span", {}, [text(label)]),
-    el("strong", {}, [text(value)]),
-    el("em", {}, [text(note)]),
-  ]);
 }
 
 async function selectVenue(venueId, options = {}) {
@@ -2794,8 +2816,9 @@ function compareColumn(venue) {
     return el("div", { className: "compare-body" }, [
       ...compareHeader(venue),
       el("div", { className: "stats" }, [
-        stat("Incidents", formatNumber(venue.crime_count_nearby), "inside the buffer, 2020–2024"),
-        stat("Density", formatNumber(venue.crime_per_km2), densityNote(venue)),
+        stat("Incidents", formatNumber(presentCount(venue)), "inside the buffer, 2020–present"),
+        stat("Density", formatNumber(presentRate(venue)), densityNote(venue), DENSITY_HINT),
+        ...cityStats(venue),
       ]),
       venue.nibrs ? el("p", { className: "muted" }, [
         text(`NIBRS offenses since Mar 2024: ${formatNumber(venue.nibrs.count)}.`),

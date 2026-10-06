@@ -51,6 +51,48 @@ class ApiTests(unittest.TestCase):
         self.assertGreater(peacock["nibrs_count"], 0)
         self.assertEqual(body["nibrs"]["count"], peacock["nibrs_count"])
         self.assertEqual(body["crime_count_nearby"], peacock["crime_count_nearby"])
+        baseline = body["city_baseline"]
+        reports = baseline["reports"]
+        nibrs = baseline["nibrs"]
+        self.assertEqual(reports["crime_per_km2"], 824.6)
+        self.assertEqual(reports["incident_count"], 1_002_654)
+        self.assertEqual(reports["relation"], "above")
+        self.assertEqual(reports["value"], "8.5×")
+        self.assertIn("2020–2024", reports["caption"])
+        self.assertAlmostEqual(
+            reports["ratio"],
+            round(body["crime_per_km2"] / reports["crime_per_km2"], 3),
+            places=3,
+        )
+        self.assertIn("Above the city", reports["summary"])
+        self.assertIn("not added into that total", reports["hint"])
+        self.assertEqual(nibrs["crime_per_km2"], 395.7)
+        self.assertEqual(nibrs["offense_count"], 481_109)
+        self.assertEqual(nibrs["relation"], "above")
+        self.assertIn("Mar 2024–present", nibrs["caption"])
+        self.assertIn("not the same count", nibrs["hint"])
+        present = body["present"]
+        present_count = sum(
+            sum(groups.values()) for groups in body["merged_by_month"].values()
+        )
+        self.assertEqual(present["count"], present_count)
+        self.assertEqual(present["peak_count"], max(
+            sum(groups.values()) for groups in body["merged_by_month"].values()
+        ))
+        span = baseline["present"]
+        self.assertEqual(span["period"], "2020–present")
+        self.assertIn("2020–present", span["caption"])
+        self.assertIn("March 6, 2024", span["hint"])
+        self.assertAlmostEqual(
+            span["ratio"],
+            round(present["crime_per_km2"] / span["crime_per_km2"], 3),
+            places=3,
+        )
+        zoo = self.client.get("/api/venues/V08")
+        self.assertEqual(zoo.status_code, 200)
+        self.assertEqual(zoo.json()["city_baseline"]["reports"]["relation"], "below")
+        self.assertEqual(zoo.json()["city_baseline"]["nibrs"]["relation"], "below")
+        self.assertEqual(zoo.json()["city_baseline"]["present"]["relation"], "below")
         self.assertIn("2020-01", body["merged_by_month"])
         self.assertIn("2024-03", body["nibrs"]["by_month"])
         self.assertNotIn("2024-02", body["nibrs"]["by_month"])

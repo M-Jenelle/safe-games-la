@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from pipeline.geo import haversine_m, nearest_row
+from pipeline.city_baseline import compared_with_city
 from pipeline.crime_groups import crime_group
 from pipeline.weekday import combine_weekday, weekday_from_dates
 from pipeline.permit_event_days import GROUP_IDS, collapse_upcoming, comparison_view
@@ -38,6 +40,7 @@ TIME_PATH = REPO_ROOT / "data" / "processed" / "crime_time_of_day.json"
 DISTANCE_PATH = REPO_ROOT / "data" / "processed" / "crime_by_distance.json"
 LISTINGS_PATH = REPO_ROOT / "data" / "processed" / "ticketmaster_listings.json"
 NIBRS_CHARTS_PATH = REPO_ROOT / "data" / "processed" / "nibrs_charts.json"
+CITY_BASELINE_PATH = REPO_ROOT / "data" / "processed" / "city_baseline.json"
 HOME_GAMES_PATH = REPO_ROOT / "data" / "processed" / "dodger_event_risk.json"
 NIBRS_CUTOFF = "2024-03-07"
 REPORT_WEEKDAY_NOTE = "Uses 2020-2024 reports and is inside the 800m buffer."
@@ -60,6 +63,10 @@ _home_games: dict | None = None
 _home_games_mtime: float | None = None
 _crime_views: dict | None = None
 _crime_heat_mtime: float | None = None
+_city_baseline: dict | None = None
+_city_baseline_mtime: float | None = None
+_present_cache: dict | None = None
+_present_mtime: float | None = None
 _merged: dict | None = None
 _merged_mtime: float | None = None
 _permit_days: dict[str, list[dict]] | None = None
@@ -301,6 +308,129 @@ def _venue_weekdays(venue_id: str) -> tuple[dict, dict]:
     return _weekday_cache.get(venue_id, ({}, {}))
 
 
+def load_city_baseline() -> dict | None:
+    """Citywide reports per km². Missing until ``pipeline.city_baseline`` has run."""
+    global _city_baseline, _city_baseline_mtime
+    if not CITY_BASELINE_PATH.exists():
+        _city_baseline = None
+        _city_baseline_mtime = None
+        return None
+    mtime = CITY_BASELINE_PATH.stat().st_mtime
+    if _city_baseline is None or mtime != _city_baseline_mtime:
+        _city_baseline = json.loads(CITY_BASELINE_PATH.read_text(encoding="utf-8"))
+        _city_baseline_mtime = mtime
+    return _city_baseline
+
+
+def _record_total(value) -> int:
+    if isinstance(value, dict):
+        return sum(int(count) for count in value.values())
+    return int(value or 0)
+
+
+def present_headlines() -> dict[str, dict]:
+    """2020 through the latest month: reports before March 7, 2024, then NIBRS offenses."""
+    global _present_cache, _present_mtime
+    merged = load_merged()
+    if not merged:
+        return {}
+    if _present_cache is not None and _merged_mtime == _present_mtime:
+        return _present_cache
+    rows = []
+    for venue in load_summary()["venues"]:
+        block = (merged.get("venues") or {}).get(venue["venue_id"]) or {}
+        months = {
+            month: _record_total(groups)
+            for month, groups in (block.get("merged_by_month") or {}).items()
+        }
+        months = {month: count for month, count in months.items() if count}
+        count = sum(months.values())
+        radius_km = float(venue["buffer_radius_m"]) / 1000.0
+        area_km2 = math.pi * radius_km * radius_km
+        rate = round(count / area_km2, 1) if area_km2 else 0.0
+        peak_count = max(months.values()) if months else 0
+        peak_month = min(
+            (month for month, value in months.items() if value == peak_count),
+            default="",
+        )
+        rows.append({
+            "count": count,
+            "crime_per_km2": rate,
+            "peak_month": peak_month,
+            "peak_count": peak_count,
+            "venue_id": venue["venue_id"],
+        })
+    for row in rows:
+        rate = row["crime_per_km2"]
+        higher = sum(1 for other in rows if other["crime_per_km2"] > rate)
+        tied = sum(1 for other in rows if other["crime_per_km2"] == rate) > 1
+        row["density_rank"] = {"rank": higher + 1, "of": len(rows), "tied": tied}
+    _present_cache = {row["venue_id"]: row for row in rows}
+    _present_mtime = _merged_mtime
+    return _present_cache
+
+
+def _city_comparison(venue: dict, present: dict | None = None) -> dict | None:
+    baseline = load_city_baseline()
+    if not baseline:
+        return None
+    reports_rate = float(baseline["crime_per_km2"])
+    reports = compared_with_city(float(venue["crime_per_km2"]), reports_rate, "2020–2024")
+    payload = {
+        "reports": {
+            "incident_count": baseline["incident_count"],
+            "crime_per_km2": reports_rate,
+            "land_area_sq_mi": baseline["land_area_sq_mi"],
+            "period": "2020–2024",
+            "ratio": reports["ratio"],
+            "relation": reports["relation"],
+            "value": reports["value"],
+            "caption": reports["caption"],
+            "summary": reports["summary"],
+            "hint": baseline["note"],
+        },
+    }
+    nibrs_base = baseline.get("nibrs") or {}
+    nibrs_count = (venue.get("nibrs") or {}).get("count")
+    if nibrs_base and nibrs_count is not None:
+        radius_km = float(venue["buffer_radius_m"]) / 1000.0
+        area_km2 = math.pi * radius_km * radius_km
+        venue_rate = round(int(nibrs_count) / area_km2, 1) if area_km2 else 0.0
+        city_rate = float(nibrs_base["crime_per_km2"])
+        compared = compared_with_city(venue_rate, city_rate, "Mar 2024–present")
+        payload["nibrs"] = {
+            "offense_count": nibrs_base["offense_count"],
+            "crime_per_km2": city_rate,
+            "venue_per_km2": venue_rate,
+            "start": nibrs_base["start"],
+            "end": nibrs_base["end"],
+            "period": "Mar 2024–present",
+            "ratio": compared["ratio"],
+            "relation": compared["relation"],
+            "value": compared["value"],
+            "caption": compared["caption"],
+            "summary": compared["summary"],
+            "hint": nibrs_base["note"],
+        }
+    present_base = baseline.get("present") or {}
+    if present and present_base:
+        city_rate = float(present_base["crime_per_km2"])
+        compared = compared_with_city(float(present["crime_per_km2"]), city_rate, "2020–present")
+        payload["present"] = {
+            "count": present_base["count"],
+            "crime_per_km2": city_rate,
+            "through": present_base["through"],
+            "period": "2020–present",
+            "ratio": compared["ratio"],
+            "relation": compared["relation"],
+            "value": compared["value"],
+            "caption": compared["caption"],
+            "summary": compared["summary"],
+            "hint": present_base["note"],
+        }
+    return payload
+
+
 def get_venue(venue_id: str) -> dict | None:
     for venue in load_summary()["venues"]:
         if venue["venue_id"] == venue_id:
@@ -334,6 +464,12 @@ def get_venue(venue_id: str) -> dict | None:
             venues = load_summary()["venues"]
             enriched["density_rank"] = _density_rank(venue, venues)
             enriched["overlapping_venues"] = _overlapping_venues(venue, venues)
+            present = present_headlines().get(venue_id)
+            if present:
+                enriched["present"] = present
+            city = _city_comparison(enriched, present)
+            if city:
+                enriched["city_baseline"] = city
             enriched["nearest_emergency_room"] = nearest_emergency_room(
                 float(venue["latitude"]),
                 float(venue["longitude"]),

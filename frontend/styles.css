@@ -622,6 +622,8 @@ select { width: 132px; }
 
 .address { margin: 8px 0 16px; }
 
+.city-baseline { margin: 0 0 8px; }
+
 .stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -645,6 +647,10 @@ select { width: 132px; }
   letter-spacing: 0;
   text-transform: none;
   color: var(--muted);
+}
+
+.stat .info-label {
+  display: inline-flex;
 }
 
 .stat strong {
@@ -931,9 +937,9 @@ select { width: 132px; }
 .weekday-chart {
   display: flex;
   align-items: flex-end;
-  gap: 8px;
-  height: 132px;
-  max-width: 520px;
+  gap: 10px;
+  height: 220px;
+  max-width: 680px;
   margin-top: 8px;
 }
 
@@ -999,17 +1005,19 @@ button.weekday-col { cursor: pointer; }
 .weekday-group { margin: 2px 0; }
 
 .weekday-group .bar-label,
-.weekday-group .bar-count { font-size: 0.78rem; }
+.weekday-group .bar-count { font-size: 0.84rem; }
+
+.weekday-group .bar-track { height: 8px; }
 
 .weekday-count,
 .weekday-name {
-  font-size: 0.75rem;
+  font-size: 0.84rem;
   color: var(--muted);
 }
 
 .weekday-bar {
   width: 100%;
-  max-width: 36px;
+  max-width: 52px;
   margin-top: 4px;
   background: #0085C7;
 }
