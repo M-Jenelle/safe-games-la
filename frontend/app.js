@@ -754,6 +754,12 @@ const PERMIT_HINTS = {
   "Dates": "Consecutive days with the same events and the same permit count are one row.",
   "Permits": "How many permits cover this span.",
   "Events": "The event names on the permit. A permit records that a temporary event was allowed. It does not record attendance or a start time.",
+  "Listed events": "Ticketmaster listings matched to this venue. The dates are after 2024, so they are not joined to the crime reports.",
+  "Month": "Calendar month of the listings. A month with no listing is still shown, so the gap stays visible.",
+  "Listings": "How many Ticketmaster events fall in this month.",
+  "Event": "The name Ticketmaster published for this listing.",
+  "Start": "Local start time when Ticketmaster published one. Not listed means the hour was left off.",
+  "Tickets": "On sale means tickets are listed for sale. Not on sale yet is not a cancellation.",
 };
 
 let infoTip = null;
@@ -1271,6 +1277,79 @@ function upcomingTable(rows) {
   ]);
 }
 
+function formatClock(value) {
+  if (!value) return "Not listed";
+  const [hourText, minuteText] = value.split(":");
+  let hour = Number(hourText);
+  const minute = minuteText || "00";
+  const suffix = hour >= 12 ? "pm" : "am";
+  hour = hour % 12 || 12;
+  const minutes = minute === "00" ? "00" : minute;
+  return `${hour}:${minutes} ${suffix}`;
+}
+
+function listingMonthTable(months) {
+  const peak = months.reduce((best, month) => Math.max(best, month.count), 0);
+  return el("div", { className: "month-table-wrap" }, [
+    el("table", { className: "month-table listing-months" }, [
+      el("thead", {}, [el("tr", {}, ["Month", "Listings"].map((label) => el("th", {}, [withInfo(label)])))]),
+      el("tbody", {}, months.map((month) => el("tr", { className: month.count && month.count === peak ? "is-overall" : "" }, [
+        el("th", { scope: "row" }, [text(month.label)]),
+        el("td", {}, [text(formatNumber(month.count))]),
+      ]))),
+    ]),
+  ]);
+}
+
+function listingEventTable(events) {
+  const labels = ["Date", "Event", "Start", "Tickets"];
+  return el("div", { className: "month-table-wrap" }, [
+    el("table", { className: "month-table listing-events" }, [
+      el("thead", {}, [el("tr", {}, labels.map((label) => el("th", {}, [withInfo(label)])))]),
+      el("tbody", {}, events.map((event) => el("tr", {}, [
+        el("th", { scope: "row" }, [text(formatPermitSpan(event.date, event.date))]),
+        el("td", { className: "event-names" }, [text(event.name)]),
+        el("td", {}, [text(formatClock(event.start_time))]),
+        el("td", {}, [text(event.on_sale ? "On sale" : "Not on sale yet")]),
+      ]))),
+    ]),
+  ]);
+}
+
+function mountListingSection(block, host) {
+  if (!block || !(block.events || []).length) {
+    host.replaceChildren();
+    return;
+  }
+  let expanded = false;
+  const events = block.events;
+  const tableHost = el("div");
+  const toggle = el("button", { className: "show-more", type: "button" }, [text("Show more")]);
+
+  function paint() {
+    const visible = expanded ? events : events.slice(0, 8);
+    toggle.hidden = events.length <= 8;
+    toggle.textContent = expanded ? "Show less" : "Show more";
+    tableHost.replaceChildren(listingEventTable(visible));
+  }
+
+  toggle.addEventListener("click", () => {
+    expanded = !expanded;
+    paint();
+  });
+  paint();
+  host.replaceChildren(el("section", { className: "permit-section listing-section", "aria-label": "Listed events" }, [
+    el("h3", { className: "section-title" }, [withInfo("Listed events")]),
+    el("p", { className: "muted" }, [text(block.note || "")]),
+    block.busiest ? el("p", { className: "muted" }, [text(block.busiest)]) : el("span"),
+    block.clock ? el("p", { className: "muted" }, [text(block.clock)]) : el("span"),
+    listingMonthTable(block.months || []),
+    tableHost,
+    toggle,
+    el("p", { className: "footnote" }, [text(block.disclaimer || "")]),
+  ]));
+}
+
 function mountPermitSection(venueId, host) {
   let request = 0;
   let groupsExpanded = false;
@@ -1375,10 +1454,16 @@ function mountPermitSection(venueId, host) {
 }
 
 const TIME_COLORS = {
-  night: "#1a1a1a",
+  night: "#000000",
   morning: "#F4C300",
   afternoon: "#0085C7",
-  evening: "#7B2CBF",
+  evening: "#009F3D",
+};
+
+const DISTANCE_COLORS = {
+  near: "#0085C7",
+  mid: "#F4C300",
+  far: "#009F3D",
 };
 
 const GROUP_COLORS = {
@@ -1386,12 +1471,12 @@ const GROUP_COLORS = {
   theft: "#009F3D",
   assault: "#DF0024",
   vandalism: "#F4C300",
-  burglary: "#7B2CBF",
-  robbery: "#800000",
-  weapons: "#1a1a1a",
-  sexual: "#B85C38",
-  homicide: "#4e5963",
-  other: "#C5CDD4",
+  burglary: "#000000",
+  robbery: "#005A8C",
+  weapons: "#046A2C",
+  sexual: "#9E1B2E",
+  homicide: "#C4A035",
+  other: "#6B6B6B",
 };
 
 function shareLabel(count, total) {
@@ -1444,7 +1529,8 @@ function pieBlock(entries, total, options = {}) {
     const selected = options.selectedId === entry.id;
     path.setAttribute("d", pieSlicePath(100, 100, selected ? radius + 6 : radius, start, angle));
     path.setAttribute("fill", entry.color);
-    path.setAttribute("stroke", selected ? "#1a1a1a" : "#f7f6f4");
+    const selectedStroke = entry.color.toLowerCase() === "#000000" ? "#ffffff" : "#1a1a1a";
+    path.setAttribute("stroke", selected ? selectedStroke : "#f7f6f4");
     path.setAttribute("stroke-width", selected ? "2" : "1");
     const detailText = `${formatNumber(entry.count)} incidents · ${shareLabel(entry.count, total)}`;
     const show = (event) => showSliceTip(event, entry.label, detailText);
@@ -1462,6 +1548,9 @@ function pieBlock(entries, total, options = {}) {
   svg.addEventListener("mouseleave", hideChartTip);
 
   const legend = el("div", { className: "pie-legend" });
+  if (options.caption) {
+    legend.append(el("p", { className: "pie-caption" }, [text(options.caption)]));
+  }
   for (const entry of slices) {
     const selected = options.selectedId === entry.id;
     const attrs = { className: selected ? "pie-key is-selected" : "pie-key" };
@@ -1488,58 +1577,81 @@ function pieBlock(entries, total, options = {}) {
   return el("div", { className: "pie-block" }, [svg, legend]);
 }
 
-function mountTimeSection(crimeTime, host) {
-  const periods = (crimeTime?.periods || []).filter((period) => period.count);
-  if (!periods.length) {
+function groupEntries(groups) {
+  return (groups || []).map((group) => ({
+    id: group.id,
+    label: group.label,
+    count: group.count,
+    color: GROUP_COLORS[group.id] || "#4e5963",
+  }));
+}
+
+function mountDrillPie(host, options) {
+  const slices = (options.slices || []).filter((slice) => slice.count);
+  if (!slices.length) {
     host.replaceChildren();
     return;
   }
   let selected = "";
-  const pieHost = el("div");
-  const crimeHost = el("div");
+  const row = el("div", { className: "pie-row" });
 
   function paint() {
     hideChartTip();
-    const entries = periods.map((period) => ({
-      id: period.id,
-      label: period.label,
-      count: period.count,
-      color: TIME_COLORS[period.id] || "#4e5963",
-    }));
-    pieHost.replaceChildren(pieBlock(entries, crimeTime.total, {
+    const chosen = slices.find((slice) => slice.id === selected);
+    const primary = pieBlock(slices, options.total, {
       selectedId: selected,
       onPick: (id) => {
         selected = selected === id ? "" : id;
         paint();
       },
-    }));
-    const period = periods.find((item) => item.id === selected);
-    if (!period) {
-      crimeHost.replaceChildren();
+    });
+    if (!chosen) {
+      row.replaceChildren(primary);
       return;
     }
-    const groups = (period.groups || []).map((group) => ({
-      id: group.id,
-      label: group.label,
-      count: group.count,
-      color: GROUP_COLORS[group.id] || "#4e5963",
-    }));
-    crimeHost.replaceChildren(
-      el("h3", { className: "section-title" }, [text(`Crimes, ${period.label}`)]),
-      pieBlock(groups, period.count),
+    row.replaceChildren(
+      primary,
+      pieBlock(groupEntries(chosen.groups), chosen.count, {
+        caption: `Crimes, ${chosen.label}`,
+      }),
     );
   }
 
-  host.replaceChildren(el("section", { className: "time-section", "aria-label": "Crimes by time of day" }, [
-    el("h3", { className: "section-title" }, [text("Crimes by time of day")]),
-    el("p", { className: "muted" }, [text(
-      "Click a slice to see the crimes in that part of the day. Click it again to clear.",
-    )]),
-    pieHost,
-    el("p", { className: "muted" }, [text(crimeTime.disclaimer || "")]),
-    crimeHost,
+  host.replaceChildren(el("section", { className: "time-section", "aria-label": options.title }, [
+    el("h3", { className: "section-title" }, [text(options.title)]),
+    el("p", { className: "muted" }, [text(options.hint)]),
+    row,
+    el("p", { className: "muted" }, [text(options.disclaimer || "")]),
   ]));
   paint();
+}
+
+function mountTimeSection(crimeTime, host) {
+  const periods = crimeTime?.periods || [];
+  mountDrillPie(host, {
+    title: "Crimes by time of day",
+    hint: "Click a slice to see the crimes in that part of the day. Click it again to clear.",
+    disclaimer: crimeTime?.disclaimer || "",
+    total: crimeTime?.total || 0,
+    slices: periods.map((period) => ({
+      ...period,
+      color: TIME_COLORS[period.id] || "#4e5963",
+    })),
+  });
+}
+
+function mountDistanceSection(crimeDistance, host) {
+  const bands = crimeDistance?.bands || [];
+  mountDrillPie(host, {
+    title: "Distance from the venue",
+    hint: "Click a slice to see the crimes in that distance. Click it again to clear.",
+    disclaimer: crimeDistance?.disclaimer || "",
+    total: crimeDistance?.total || 0,
+    slices: bands.map((band) => ({
+      ...band,
+      color: DISTANCE_COLORS[band.id] || "#4e5963",
+    })),
+  });
 }
 
 function renderDetail() {
@@ -1588,7 +1700,9 @@ function renderDetail() {
   toSelect.value = "12";
   let seriesId = "reports";
   const permitHost = el("div");
+  const listingHost = el("div");
   const timeHost = el("div");
+  const distanceHost = el("div");
   const chartHost = el("div", { className: "chart-host" });
   const yearHost = el("div", { className: "year-row" });
   const seriesHint = el("p", { className: "muted" });
@@ -1886,7 +2000,9 @@ function renderDetail() {
     categoryList,
     categoryToggle,
     timeHost,
+    distanceHost,
     permitHost,
+    listingHost,
     el("h3", { className: "section-title" }, [text(`Rail · ${formatNumber(venue.rail_stations_nearby.count)} ${venue.rail_stations_nearby.count === 1 ? "station" : "stations"}`)]),
     rail.length ? el("ul", { className: "place-list" }, rail) : el("p", { className: "muted" }, [text("None in the buffer.")]),
     el("h3", { className: "section-title" }, [
@@ -1902,7 +2018,9 @@ function renderDetail() {
     el("p", { className: "footnote" }, [text(state.meta.jurisdiction_method)]),
   ]));
   mountTimeSection(venue.crime_time, timeHost);
+  mountDistanceSection(venue.crime_distance, distanceHost);
   mountPermitSection(venue.venue_id, permitHost);
+  mountListingSection(venue.ticketmaster, listingHost);
 }
 
 function stat(label, value, note) {

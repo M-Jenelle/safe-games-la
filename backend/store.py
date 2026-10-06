@@ -33,6 +33,8 @@ MERGED_PATH = REPO_ROOT / "data" / "processed" / "crime_merged.json"
 PERMIT_DAYS_PATH = REPO_ROOT / "data" / "processed" / "permit_event_days.csv"
 PERMIT_LIFT_PATH = REPO_ROOT / "data" / "processed" / "permit_event_lift.json"
 TIME_PATH = REPO_ROOT / "data" / "processed" / "crime_time_of_day.json"
+DISTANCE_PATH = REPO_ROOT / "data" / "processed" / "crime_by_distance.json"
+LISTINGS_PATH = REPO_ROOT / "data" / "processed" / "ticketmaster_listings.json"
 
 _summary: dict | None = None
 _summary_mtime: float | None = None
@@ -50,6 +52,10 @@ _permit_upcoming: dict[str, list[dict]] | None = None
 _permit_upcoming_mtime: float | None = None
 _crime_time: dict | None = None
 _crime_time_mtime: float | None = None
+_crime_distance: dict | None = None
+_crime_distance_mtime: float | None = None
+_listings: dict | None = None
+_listings_mtime: float | None = None
 
 # First matching rule wins. Descriptions are the LAPD "Crm Cd Desc" text.
 CRIME_TYPES = (
@@ -209,6 +215,12 @@ def get_venue(venue_id: str) -> dict | None:
             time_block = crime_time_for(venue_id)
             if time_block:
                 enriched["crime_time"] = time_block
+            distance_block = crime_distance_for(venue_id)
+            if distance_block:
+                enriched["crime_distance"] = distance_block
+            listings = ticketmaster_for(venue_id)
+            if listings:
+                enriched["ticketmaster"] = listings
             return enriched
     return None
 
@@ -229,6 +241,48 @@ def load_crime_time() -> dict | None:
 
 def crime_time_for(venue_id: str) -> dict | None:
     payload = load_crime_time()
+    if not payload:
+        return None
+    return (payload.get("venues") or {}).get(venue_id)
+
+
+def load_crime_distance() -> dict | None:
+    """Distance-band counts. Empty when ``crime_by_distance.json`` has not been built."""
+    global _crime_distance, _crime_distance_mtime
+    if not DISTANCE_PATH.exists():
+        _crime_distance = None
+        _crime_distance_mtime = None
+        return None
+    mtime = DISTANCE_PATH.stat().st_mtime
+    if _crime_distance is None or mtime != _crime_distance_mtime:
+        _crime_distance = json.loads(DISTANCE_PATH.read_text(encoding="utf-8"))
+        _crime_distance_mtime = mtime
+    return _crime_distance
+
+
+def crime_distance_for(venue_id: str) -> dict | None:
+    payload = load_crime_distance()
+    if not payload:
+        return None
+    return (payload.get("venues") or {}).get(venue_id)
+
+
+def load_ticketmaster() -> dict | None:
+    """Future Ticketmaster listings. Empty when that file has not been built."""
+    global _listings, _listings_mtime
+    if not LISTINGS_PATH.exists():
+        _listings = None
+        _listings_mtime = None
+        return None
+    mtime = LISTINGS_PATH.stat().st_mtime
+    if _listings is None or mtime != _listings_mtime:
+        _listings = json.loads(LISTINGS_PATH.read_text(encoding="utf-8"))
+        _listings_mtime = mtime
+    return _listings
+
+
+def ticketmaster_for(venue_id: str) -> dict | None:
+    payload = load_ticketmaster()
     if not payload:
         return None
     return (payload.get("venues") or {}).get(venue_id)

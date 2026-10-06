@@ -1198,17 +1198,31 @@ select { width: 132px; }
 
 .time-section { margin: 8px 0 4px; }
 
+.pie-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px 32px;
+}
+
 .pie-block {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px 28px;
-  max-width: 520px;
+  flex: 0 1 420px;
+  max-width: 420px;
+}
+
+.pie-caption {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .pie-chart {
-  width: 220px;
-  height: 220px;
+  width: 168px;
+  height: 168px;
   flex: none;
   display: block;
 }
@@ -1325,9 +1339,14 @@ button.pie-key { cursor: pointer; }
 .permit-table tbody tr.is-overall th,
 .permit-table tbody tr.is-overall td { font-weight: 700; }
 
-.permit-upcoming td.event-names {
+.permit-upcoming td.event-names,
+.listing-events td.event-names {
   text-align: left;
   white-space: normal;
+  max-width: 28rem;
+}
+
+.listing-months {
   max-width: 28rem;
 }
 

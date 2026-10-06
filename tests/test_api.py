@@ -67,6 +67,38 @@ class ApiTests(unittest.TestCase):
         evening = next(period for period in clock["periods"] if period["id"] == "evening")
         self.assertEqual(sum(group["count"] for group in evening["groups"]), evening["count"])
         self.assertEqual(evening["groups"][0]["label"], "Vehicle")
+        distance = body["crime_distance"]
+        self.assertEqual(distance["total"], body["crime_count_nearby"])
+        self.assertIn("not a crime at the door", distance["disclaimer"])
+        self.assertEqual(
+            {band["id"]: band["count"] for band in distance["bands"]},
+            {"near": 674, "mid": 2302, "far": 11194},
+        )
+        far = next(band for band in distance["bands"] if band["id"] == "far")
+        self.assertEqual(sum(group["count"] for group in far["groups"]), far["count"])
+        self.assertNotIn("ticketmaster", body)
+
+    def test_ticketmaster_listings(self):
+        dodger = self.client.get("/api/venues/V01").json()["ticketmaster"]
+        self.assertEqual(dodger["event_count"], 83)
+        self.assertEqual(dodger["with_start_time"], 1)
+        self.assertEqual(dodger["distance_m"], 907)
+        self.assertIn("outside the 800 m circle", dodger["note"])
+        self.assertIn("May 2027 and August 2027", dodger["busiest"])
+        self.assertIn("no report count", dodger["disclaimer"])
+        self.assertEqual(dodger["events"][0]["date"], "2026-10-09")
+        self.assertIn("NLDS", dodger["events"][0]["name"])
+        self.assertTrue(dodger["events"][0]["on_sale"])
+        self.assertEqual(sum(month["count"] for month in dodger["months"]), 83)
+        self.assertTrue(any(month["count"] == 0 for month in dodger["months"]))
+
+        center = self.client.get("/api/venues/V03").json()["ticketmaster"]
+        self.assertEqual(center["event_count"], 13)
+        self.assertEqual(center["with_start_time"], 13)
+        self.assertIn("Peacock Theater is", center["note"])
+        self.assertIn("inside the 800 m circle", center["note"])
+        self.assertEqual(center["busiest"], "October 2026 has the most listings, 7.")
+        self.assertTrue(all(event["start_time"] for event in center["events"]))
 
     def test_unknown_venue(self):
         response = self.client.get("/api/venues/V99")
