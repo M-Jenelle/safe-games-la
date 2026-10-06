@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from pipeline.geo import haversine_m
+from pipeline.geo import haversine_m, nearest_row
+from pipeline.crime_groups import crime_group
+from pipeline.weekday import combine_weekday, weekday_from_dates
+from pipeline.permit_event_days import GROUP_IDS, collapse_upcoming, comparison_view
 
 from pipeline.loaders import (
     LAT_MAX,
@@ -28,6 +32,19 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SUMMARY_PATH = REPO_ROOT / "data" / "processed" / "venue_summary.json"
 POINTS_PATH = REPO_ROOT / "data" / "processed" / "crime_points_by_venue.json"
 MERGED_PATH = REPO_ROOT / "data" / "processed" / "crime_merged.json"
+PERMIT_DAYS_PATH = REPO_ROOT / "data" / "processed" / "permit_event_days.csv"
+PERMIT_LIFT_PATH = REPO_ROOT / "data" / "processed" / "permit_event_lift.json"
+TIME_PATH = REPO_ROOT / "data" / "processed" / "crime_time_of_day.json"
+DISTANCE_PATH = REPO_ROOT / "data" / "processed" / "crime_by_distance.json"
+LISTINGS_PATH = REPO_ROOT / "data" / "processed" / "ticketmaster_listings.json"
+NIBRS_CHARTS_PATH = REPO_ROOT / "data" / "processed" / "nibrs_charts.json"
+HOME_GAMES_PATH = REPO_ROOT / "data" / "processed" / "dodger_event_risk.json"
+NIBRS_CUTOFF = "2024-03-07"
+REPORT_WEEKDAY_NOTE = "Uses 2020-2024 reports and is inside the 800m buffer."
+MERGED_WEEKDAY_NOTE = (
+    "Reports before March 7, 2024, then NIBRS offenses.\n"
+    "One NIBRS case can count more than once."
+)
 
 _summary: dict | None = None
 _summary_mtime: float | None = None
@@ -35,10 +52,28 @@ _points: dict | None = None
 _points_mtime: float | None = None
 _month_categories: dict[str, dict[str, dict[str, int]]] = {}
 _month_categories_mtime: float | None = None
+_weekday_cache: dict[str, tuple[dict, dict]] | None = None
+_weekday_mtime: float | None = None
+_hospitals = None
+_hospitals_mtime: float | None = None
+_home_games: dict | None = None
+_home_games_mtime: float | None = None
 _crime_views: dict | None = None
 _crime_heat_mtime: float | None = None
 _merged: dict | None = None
 _merged_mtime: float | None = None
+_permit_days: dict[str, list[dict]] | None = None
+_permit_days_mtime: float | None = None
+_permit_upcoming: dict[str, list[dict]] | None = None
+_permit_upcoming_mtime: float | None = None
+_crime_time: dict | None = None
+_crime_time_mtime: float | None = None
+_crime_distance: dict | None = None
+_crime_distance_mtime: float | None = None
+_listings: dict | None = None
+_listings_mtime: float | None = None
+_nibrs_charts: dict | None = None
+_nibrs_charts_mtime: float | None = None
 
 # First matching rule wins. Descriptions are the LAPD "Crm Cd Desc" text.
 CRIME_TYPES = (
@@ -178,6 +213,94 @@ def crime_categories_by_month(venue_id: str) -> dict[str, dict[str, int]]:
     return counts
 
 
+def _density_rank(venue: dict, venues: list[dict]) -> dict:
+    rate = float(venue["crime_per_km2"])
+    higher = sum(1 for other in venues if float(other["crime_per_km2"]) > rate)
+    tied = sum(1 for other in venues if float(other["crime_per_km2"]) == rate) > 1
+    return {"rank": higher + 1, "of": len(venues), "tied": tied}
+
+
+def _overlapping_venues(venue: dict, venues: list[dict]) -> list[dict]:
+    radius = float(venue["buffer_radius_m"])
+    hits = []
+    for other in venues:
+        if other["venue_id"] == venue["venue_id"]:
+            continue
+        distance = float(haversine_m(
+            venue["latitude"],
+            venue["longitude"],
+            other["latitude"],
+            other["longitude"],
+        ))
+        if distance < radius + float(other["buffer_radius_m"]):
+            hits.append({
+                "venue_id": other["venue_id"],
+                "venue_name": other["venue_name"],
+                "distance_m": round(distance, 1),
+            })
+    hits.sort(key=lambda item: item["distance_m"])
+    return hits
+
+
+def _hospital_frame():
+    global _hospitals, _hospitals_mtime
+    path = _layer_sources()["hospitals"]
+    if not path.exists():
+        return None
+    mtime = path.stat().st_mtime
+    if _hospitals is None or mtime != _hospitals_mtime:
+        frame, _report = load_hospitals(path)
+        _hospitals = frame
+        _hospitals_mtime = mtime
+    return _hospitals
+
+
+def nearest_emergency_room(latitude: float, longitude: float) -> dict | None:
+    """Closest hospital whose record says it has an emergency room."""
+    frame = _hospital_frame()
+    if frame is None or frame.empty or "emergency_room" not in frame.columns:
+        return None
+    flag = frame["emergency_room"].astype(str).str.strip().str.lower()
+    rooms = frame.loc[flag.isin({"yes", "y", "true", "1"})]
+    hit = nearest_row(rooms, latitude, longitude)
+    if hit is None:
+        return None
+    row, distance = hit
+    return {
+        "station_id": _text(row["station_id"]),
+        "station_name": _text(row["station_name"]),
+        "distance_m": round(float(distance), 1),
+        "emergency_room": "Yes",
+        "hospital_type": _text(row.get("hospital_type", "")),
+        "bed_capacity": _text(row.get("bed_capacity", "")),
+    }
+
+
+def _venue_weekdays(venue_id: str) -> tuple[dict, dict]:
+    """2020–2024 day counts, and the same counts before the NIBRS cutoff."""
+    global _weekday_cache, _weekday_mtime
+    points = load_crime_points()
+    if _weekday_cache is None or _weekday_mtime != _points_mtime:
+        built: dict[str, tuple[dict, dict]] = {}
+        for vid, block in (points.get("by_venue") or {}).items():
+            dates = []
+            legacy = []
+            for point in block.get("points") or []:
+                day = str(point.get("date") or "")[:10]
+                if len(day) != 10:
+                    continue
+                item = {"date": day, "group": crime_group(point.get("category"))}
+                dates.append(item)
+                if day < NIBRS_CUTOFF:
+                    legacy.append(item)
+            reports = weekday_from_dates(dates)
+            reports["disclaimer"] = REPORT_WEEKDAY_NOTE
+            built[vid] = (reports, weekday_from_dates(legacy))
+        _weekday_cache = built
+        _weekday_mtime = _points_mtime
+    return _weekday_cache.get(venue_id, ({}, {}))
+
+
 def get_venue(venue_id: str) -> dict | None:
     for venue in load_summary()["venues"]:
         if venue["venue_id"] == venue_id:
@@ -195,8 +318,122 @@ def get_venue(venue_id: str) -> dict | None:
                 groups = (load_merged() or {}).get("meta", {}).get("groups") or {}
                 if groups:
                     enriched["crime_groups"] = groups
+            time_block = crime_time_for(venue_id)
+            if time_block:
+                enriched["crime_time"] = time_block
+            distance_block = crime_distance_for(venue_id)
+            if distance_block:
+                enriched["crime_distance"] = distance_block
+            listings = ticketmaster_for(venue_id)
+            if listings:
+                enriched["ticketmaster"] = listings
+            nibrs_charts = nibrs_charts_for(venue_id)
+            if nibrs_charts:
+                enriched["nibrs_time"] = nibrs_charts.get("time") or {}
+                enriched["nibrs_distance"] = nibrs_charts.get("distance") or {}
+            venues = load_summary()["venues"]
+            enriched["density_rank"] = _density_rank(venue, venues)
+            enriched["overlapping_venues"] = _overlapping_venues(venue, venues)
+            enriched["nearest_emergency_room"] = nearest_emergency_room(
+                float(venue["latitude"]),
+                float(venue["longitude"]),
+            )
+            reports_week, legacy_week = _venue_weekdays(venue_id)
+            nibrs_week = (nibrs_charts or {}).get("weekday") or {}
+            if reports_week:
+                enriched["crime_weekday"] = reports_week
+            if nibrs_week:
+                enriched["nibrs_weekday"] = nibrs_week
+            if legacy_week or nibrs_week:
+                merged_week = combine_weekday(legacy_week, nibrs_week)
+                merged_week["disclaimer"] = MERGED_WEEKDAY_NOTE
+                enriched["merged_weekday"] = merged_week
             return enriched
     return None
+
+
+def load_crime_time() -> dict | None:
+    """Part-of-day counts. Empty when ``crime_time_of_day.json`` has not been built."""
+    global _crime_time, _crime_time_mtime
+    if not TIME_PATH.exists():
+        _crime_time = None
+        _crime_time_mtime = None
+        return None
+    mtime = TIME_PATH.stat().st_mtime
+    if _crime_time is None or mtime != _crime_time_mtime:
+        _crime_time = json.loads(TIME_PATH.read_text(encoding="utf-8"))
+        _crime_time_mtime = mtime
+    return _crime_time
+
+
+def crime_time_for(venue_id: str) -> dict | None:
+    payload = load_crime_time()
+    if not payload:
+        return None
+    return (payload.get("venues") or {}).get(venue_id)
+
+
+def load_crime_distance() -> dict | None:
+    """Distance-band counts. Empty when ``crime_by_distance.json`` has not been built."""
+    global _crime_distance, _crime_distance_mtime
+    if not DISTANCE_PATH.exists():
+        _crime_distance = None
+        _crime_distance_mtime = None
+        return None
+    mtime = DISTANCE_PATH.stat().st_mtime
+    if _crime_distance is None or mtime != _crime_distance_mtime:
+        _crime_distance = json.loads(DISTANCE_PATH.read_text(encoding="utf-8"))
+        _crime_distance_mtime = mtime
+    return _crime_distance
+
+
+def crime_distance_for(venue_id: str) -> dict | None:
+    payload = load_crime_distance()
+    if not payload:
+        return None
+    return (payload.get("venues") or {}).get(venue_id)
+
+
+def load_ticketmaster() -> dict | None:
+    """Future Ticketmaster listings. Empty when that file has not been built."""
+    global _listings, _listings_mtime
+    if not LISTINGS_PATH.exists():
+        _listings = None
+        _listings_mtime = None
+        return None
+    mtime = LISTINGS_PATH.stat().st_mtime
+    if _listings is None or mtime != _listings_mtime:
+        _listings = json.loads(LISTINGS_PATH.read_text(encoding="utf-8"))
+        _listings_mtime = mtime
+    return _listings
+
+
+def ticketmaster_for(venue_id: str) -> dict | None:
+    payload = load_ticketmaster()
+    if not payload:
+        return None
+    return (payload.get("venues") or {}).get(venue_id)
+
+
+def load_nibrs_charts() -> dict | None:
+    """NIBRS time, distance, and permit-day rows. Empty when that file is absent."""
+    global _nibrs_charts, _nibrs_charts_mtime
+    if not NIBRS_CHARTS_PATH.exists():
+        _nibrs_charts = None
+        _nibrs_charts_mtime = None
+        return None
+    mtime = NIBRS_CHARTS_PATH.stat().st_mtime
+    if _nibrs_charts is None or mtime != _nibrs_charts_mtime:
+        _nibrs_charts = json.loads(NIBRS_CHARTS_PATH.read_text(encoding="utf-8"))
+        _nibrs_charts_mtime = mtime
+    return _nibrs_charts
+
+
+def nibrs_charts_for(venue_id: str) -> dict | None:
+    payload = load_nibrs_charts()
+    if not payload:
+        return None
+    return (payload.get("venues") or {}).get(venue_id)
 
 
 def get_crime_points(venue_id: str) -> dict | None:
@@ -204,6 +441,165 @@ def get_crime_points(venue_id: str) -> dict | None:
     if block is None:
         return None
     return block
+
+
+def load_permit_day_rows() -> dict[str, list[dict]]:
+    """Venue-day rows from the permit merge. Empty when that file is absent."""
+    global _permit_days, _permit_days_mtime
+    if not PERMIT_DAYS_PATH.exists():
+        _permit_days = {}
+        _permit_days_mtime = None
+        return _permit_days
+    mtime = PERMIT_DAYS_PATH.stat().st_mtime
+    if _permit_days is not None and mtime == _permit_days_mtime:
+        return _permit_days
+    grouped: dict[str, list[dict]] = {}
+    with PERMIT_DAYS_PATH.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            venue_id = row.get("venue_id") or ""
+            if not venue_id:
+                continue
+            parsed = {
+                "date": row.get("date") or "",
+                "venue_name": row.get("venue_name") or "",
+                "incident_count": int(row.get("incident_count") or 0),
+                "is_permit_event_day": int(row.get("is_permit_event_day") or 0),
+                "permit_count": int(row.get("permit_count") or 0),
+            }
+            for group_id in GROUP_IDS:
+                parsed[group_id] = int(row.get(group_id) or 0)
+            grouped.setdefault(venue_id, []).append(parsed)
+    _permit_days = grouped
+    _permit_days_mtime = mtime
+    return _permit_days
+
+
+def load_permit_upcoming() -> dict[str, list[dict]]:
+    """Later permit dates from the lift file, collapsed into date spans."""
+    global _permit_upcoming, _permit_upcoming_mtime
+    if not PERMIT_LIFT_PATH.exists():
+        _permit_upcoming = {}
+        _permit_upcoming_mtime = None
+        return _permit_upcoming
+    mtime = PERMIT_LIFT_PATH.stat().st_mtime
+    if _permit_upcoming is not None and mtime == _permit_upcoming_mtime:
+        return _permit_upcoming
+    payload = json.loads(PERMIT_LIFT_PATH.read_text(encoding="utf-8"))
+    upcoming = {}
+    for venue in payload.get("venues") or []:
+        venue_id = venue.get("venue_id")
+        if venue_id:
+            upcoming[venue_id] = collapse_upcoming(venue.get("upcoming_permit_days") or [])
+    _permit_upcoming = upcoming
+    _permit_upcoming_mtime = mtime
+    return _permit_upcoming
+
+
+def permit_comparison(venue_id: str, year: str = "all", month: str = "all", source: str = "reports") -> dict | None:
+    """Permit-day versus other-day means. None when the venue id is unknown."""
+    match = next((venue for venue in load_summary()["venues"] if venue["venue_id"] == venue_id), None)
+    if match is None:
+        return None
+    if source == "nibrs":
+        charts = load_nibrs_charts() or {}
+        block = (charts.get("venues") or {}).get(venue_id) or {}
+        rows = block.get("permit_rows") or []
+    else:
+        rows = load_permit_day_rows().get(venue_id) or []
+    if not rows:
+        return {"available": False, "venue_id": venue_id, "venue_name": match["venue_name"], "source": source}
+    note = None
+    if venue_id == "V01":
+        note = "These figures use permit days, not the MLB home-game list."
+    venue_name = rows[0].get("venue_name") or match["venue_name"]
+    view = comparison_view(rows, year=year, month=month, venue_id=venue_id, venue_name=venue_name, note=note)
+    view["source"] = source
+    if source == "nibrs":
+        view["source_note"] = (load_nibrs_charts() or {}).get("permit_note") or ""
+        view["upcoming"] = []
+    else:
+        view["upcoming"] = load_permit_upcoming().get(venue_id) or []
+    return view
+
+
+def _load_home_games() -> dict | None:
+    global _home_games, _home_games_mtime
+    if not HOME_GAMES_PATH.exists():
+        _home_games = None
+        _home_games_mtime = None
+        return None
+    mtime = HOME_GAMES_PATH.stat().st_mtime
+    if _home_games is None or mtime != _home_games_mtime:
+        _home_games = json.loads(HOME_GAMES_PATH.read_text(encoding="utf-8"))
+        _home_games_mtime = mtime
+    return _home_games
+
+
+def _game_public(block: dict) -> dict:
+    """Same percent rule as the permit table: enough days, a real gap, and a test that clears."""
+    difference = float(block["absolute_difference"])
+    other_mean = float(block["non_game_day_mean"])
+    shown = bool(
+        int(block["game_day_count"]) >= 8
+        and block.get("significant")
+        and abs(difference) >= 0.05
+        and other_mean > 0
+    )
+    return {
+        "event_day_count": int(block["game_day_count"]),
+        "other_day_count": int(block["non_game_day_count"]),
+        "event_day_mean": block["game_day_mean"],
+        "other_day_mean": block["non_game_day_mean"],
+        "event_day_median": block["game_day_median"],
+        "other_day_median": block["non_game_day_median"],
+        "absolute_difference": difference,
+        "lift_pct": block["lift_pct"] if shown else None,
+        "percent_shown": shown,
+    }
+
+
+def home_game_comparison(venue_id: str) -> dict | None:
+    """Dodger regular-season home games versus other days in those months.
+
+    The per-listing lift in the file is not returned. None when the venue id
+    is unknown.
+    """
+    match = next((venue for venue in load_summary()["venues"] if venue["venue_id"] == venue_id), None)
+    if match is None:
+        return None
+    payload = _load_home_games()
+    meta_block = (payload or {}).get("meta") or {}
+    if payload is None or meta_block.get("venue_id") != venue_id:
+        return {"available": False, "venue_id": venue_id, "venue_name": match["venue_name"]}
+    summary = _game_public(payload["lift"])
+    groups = []
+    for group in payload.get("by_category") or []:
+        if not group.get("significant"):
+            continue
+        if abs(float(group["absolute_difference"])) < 0.05:
+            continue
+        public = _game_public(group)
+        if public["percent_shown"] and float(group["non_game_day_mean"]) < 0.25:
+            public = {**public, "percent_shown": False, "lift_pct": None}
+        groups.append({"group": group["group"], "label": group["label"], **public})
+    groups.sort(key=lambda item: abs(item["absolute_difference"]), reverse=True)
+    return {
+        "available": True,
+        "venue_id": venue_id,
+        "venue_name": match["venue_name"],
+        "summary": summary,
+        "groups": groups,
+        "note": (
+            "A game day is a completed Dodgers regular-season home game. "
+            "Other days are the rest of March through October in 2020–2024."
+        ),
+        "disclaimer": (
+            "Uses completed regular-season home games, 2020-2024, inside the 800 m buffer.\n"
+            "2020 games had little or no crowd.\n"
+            "A large percentage can still be less than one extra report a day.\n"
+            "This is a past comparison, not a forecast."
+        ),
+    }
 
 
 # Fixed frame for the citywide placeholder. Real tiles will replace this later.

@@ -62,7 +62,10 @@
       </button>
       <section class="map-panel" aria-labelledby="map-heading">
         <div class="panel-label">
-          <h2 id="map-heading">Los Angeles</h2>
+          <div class="panel-title-row">
+            <h2 id="map-heading">Los Angeles</h2>
+            <button type="button" class="compare-link" id="compare-open">Compare</button>
+          </div>
           <fieldset class="layer-toggles" id="layer-toggles">
             <legend>Map layers</legend>
             <label><input type="checkbox" data-layer="venues" checked> Venues</label>
@@ -130,6 +133,7 @@
     </main>
 
     <section class="venue-page" id="venue-page" hidden aria-labelledby="detail-heading"></section>
+    <section class="venue-page compare-page" id="compare-page" hidden aria-labelledby="compare-heading"></section>
 
     <div class="chat-dock">
     <aside class="chat-panel" id="chat-panel" hidden aria-labelledby="chat-heading">

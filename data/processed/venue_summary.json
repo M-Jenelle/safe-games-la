@@ -4,7 +4,7 @@
     "buffer_radius_m": 800.0,
     "buffer_area_km2": 2.010619,
     "distance": "haversine, earth radius 6371000 m",
-    "jurisdiction_method": "lapd_jurisdiction is true when the nearest municipal or sheriff station belongs to the Los Angeles Police Department. State and federal stations are excluded. This is a nearest-station estimate, not an official boundary.",
+    "jurisdiction_method": "This is a nearest-station estimate, not an official boundary.",
     "crime_points_note": "An incident that falls inside more than one venue buffer is listed under each of those venues.",
     "sources": {
       "venues": "la28_venues.csv",

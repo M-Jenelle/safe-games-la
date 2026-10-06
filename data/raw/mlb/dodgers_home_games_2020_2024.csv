@@ -1,0 +1,714 @@
+date,game_pk,home_team,home_team_id,away_team,venue_name,status,detailed_status,game_type,doubleheader
+2020-07-23,631377,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2020-07-24,631378,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2020-07-25,631382,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2020-07-26,631384,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2020-07-28,631443,Houston Astros,117,Los Angeles Dodgers,Minute Maid Park,Final,Final,R,N
+2020-07-29,631444,Houston Astros,117,Los Angeles Dodgers,Minute Maid Park,Final,Final,R,N
+2020-07-30,630145,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2020-07-31,630201,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2020-08-01,630100,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2020-08-02,630101,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2020-08-03,631090,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2020-08-04,631069,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2020-08-05,631085,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2020-08-07,631358,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2020-08-08,631343,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2020-08-09,631373,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2020-08-10,631346,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2020-08-11,631347,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2020-08-12,631350,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2020-08-13,631351,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2020-08-14,631381,Los Angeles Angels,108,Los Angeles Dodgers,Angel Stadium,Final,Final,R,N
+2020-08-15,631363,Los Angeles Angels,108,Los Angeles Dodgers,Angel Stadium,Final,Final,R,N
+2020-08-16,631364,Los Angeles Angels,108,Los Angeles Dodgers,Angel Stadium,Final,Final,R,N
+2020-08-17,631352,Los Angeles Dodgers,119,Seattle Mariners,Dodger Stadium,Final,Final,R,N
+2020-08-18,631353,Los Angeles Dodgers,119,Seattle Mariners,Dodger Stadium,Final,Final,R,N
+2020-08-19,631048,Seattle Mariners,136,Los Angeles Dodgers,T-Mobile Park,Final,Final,R,N
+2020-08-20,631049,Seattle Mariners,136,Los Angeles Dodgers,T-Mobile Park,Final,Final,R,N
+2020-08-21,631348,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2020-08-22,631349,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2020-08-23,631354,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2020-08-25,631015,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2020-08-27,631001,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Postponed,R,N
+2020-08-27,631017,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,Y
+2020-08-27,631001,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,Y
+2020-08-28,630933,Texas Rangers,140,Los Angeles Dodgers,Globe Life Field,Final,Final,R,N
+2020-08-29,630934,Texas Rangers,140,Los Angeles Dodgers,Globe Life Field,Final,Final,R,N
+2020-08-30,630921,Texas Rangers,140,Los Angeles Dodgers,Globe Life Field,Final,Final,R,N
+2020-09-01,631355,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2020-09-02,631356,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2020-09-03,631370,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2020-09-04,631345,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2020-09-05,631328,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2020-09-06,631344,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2020-09-08,630220,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2020-09-09,630221,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2020-09-10,630223,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2020-09-12,631331,Los Angeles Dodgers,119,Houston Astros,Dodger Stadium,Final,Final,R,N
+2020-09-13,631332,Los Angeles Dodgers,119,Houston Astros,Dodger Stadium,Final,Final,R,N
+2020-09-14,631061,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2020-09-15,631062,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2020-09-16,631063,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2020-09-17,631510,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2020-09-18,631511,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2020-09-19,631512,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2020-09-20,631519,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2020-09-22,631333,Los Angeles Dodgers,119,Oakland Athletics,Dodger Stadium,Final,Final,R,N
+2020-09-23,631334,Los Angeles Dodgers,119,Oakland Athletics,Dodger Stadium,Final,Final,R,N
+2020-09-24,631335,Los Angeles Dodgers,119,Oakland Athletics,Dodger Stadium,Final,Final,R,N
+2020-09-25,631336,Los Angeles Dodgers,119,Los Angeles Angels,Dodger Stadium,Final,Final,R,N
+2020-09-26,631337,Los Angeles Dodgers,119,Los Angeles Angels,Dodger Stadium,Final,Final,R,N
+2020-09-27,631338,Los Angeles Dodgers,119,Los Angeles Angels,Dodger Stadium,Final,Final,R,N
+2021-04-01,634615,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2021-04-02,634653,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2021-04-03,634633,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2021-04-04,634557,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2021-04-05,634600,Oakland Athletics,133,Los Angeles Dodgers,Oakland Coliseum,Final,Final,R,N
+2021-04-06,634628,Oakland Athletics,133,Los Angeles Dodgers,Oakland Coliseum,Final,Final,R,N
+2021-04-07,634567,Oakland Athletics,133,Los Angeles Dodgers,Oakland Coliseum,Final,Final,R,N
+2021-04-09,634533,Los Angeles Dodgers,119,Washington Nationals,Dodger Stadium,Final,Final,R,N
+2021-04-10,632191,Los Angeles Dodgers,119,Washington Nationals,Dodger Stadium,Final,Final,R,N
+2021-04-11,632214,Los Angeles Dodgers,119,Washington Nationals,Dodger Stadium,Final,Final,R,N
+2021-04-13,632212,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2021-04-14,634614,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2021-04-15,634547,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2021-04-16,634531,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2021-04-17,634449,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2021-04-18,634488,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2021-04-19,634421,Seattle Mariners,136,Los Angeles Dodgers,T-Mobile Park,Final,Final,R,N
+2021-04-20,634417,Seattle Mariners,136,Los Angeles Dodgers,T-Mobile Park,Final,Final,R,N
+2021-04-22,634420,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2021-04-23,634370,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2021-04-24,634361,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2021-04-25,634356,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2021-04-26,634363,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,R,N
+2021-04-27,634379,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,R,N
+2021-04-28,634365,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,R,N
+2021-04-29,634346,Milwaukee Brewers,158,Los Angeles Dodgers,American Family Field,Final,Final,R,N
+2021-04-30,634290,Milwaukee Brewers,158,Los Angeles Dodgers,American Family Field,Final,Final,R,N
+2021-05-01,634338,Milwaukee Brewers,158,Los Angeles Dodgers,American Family Field,Final,Final,R,N
+2021-05-02,634282,Milwaukee Brewers,158,Los Angeles Dodgers,American Family Field,Final,Final,R,N
+2021-05-04,634264,Chicago Cubs,112,Los Angeles Dodgers,Wrigley Field,Final,Postponed,R,N
+2021-05-04,634264,Chicago Cubs,112,Los Angeles Dodgers,Wrigley Field,Final,Final,R,S
+2021-05-04,634321,Chicago Cubs,112,Los Angeles Dodgers,Wrigley Field,Final,Final,R,S
+2021-05-05,634230,Chicago Cubs,112,Los Angeles Dodgers,Wrigley Field,Final,Final,R,N
+2021-05-07,634213,Los Angeles Angels,108,Los Angeles Dodgers,Angel Stadium,Final,Final,R,N
+2021-05-08,634262,Los Angeles Angels,108,Los Angeles Dodgers,Angel Stadium,Final,Final,R,N
+2021-05-09,634205,Los Angeles Angels,108,Los Angeles Dodgers,Angel Stadium,Final,Final,R,N
+2021-05-11,634142,Los Angeles Dodgers,119,Seattle Mariners,Dodger Stadium,Final,Final,R,N
+2021-05-12,634140,Los Angeles Dodgers,119,Seattle Mariners,Dodger Stadium,Final,Final,R,N
+2021-05-14,634145,Los Angeles Dodgers,119,Miami Marlins,Dodger Stadium,Final,Final,R,N
+2021-05-15,634096,Los Angeles Dodgers,119,Miami Marlins,Dodger Stadium,Final,Final,R,N
+2021-05-16,634122,Los Angeles Dodgers,119,Miami Marlins,Dodger Stadium,Final,Final,R,N
+2021-05-17,634091,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2021-05-18,634092,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2021-05-19,634033,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2021-05-20,634059,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2021-05-21,634013,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2021-05-22,634011,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2021-05-23,633980,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2021-05-25,633953,Houston Astros,117,Los Angeles Dodgers,Minute Maid Park,Final,Final,R,N
+2021-05-26,634021,Houston Astros,117,Los Angeles Dodgers,Minute Maid Park,Final,Final,R,N
+2021-05-27,633930,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2021-05-28,633921,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2021-05-29,633938,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2021-05-30,633923,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2021-05-31,633851,Los Angeles Dodgers,119,St. Louis Cardinals,Dodger Stadium,Final,Final,R,N
+2021-06-01,633879,Los Angeles Dodgers,119,St. Louis Cardinals,Dodger Stadium,Final,Final,R,N
+2021-06-02,633988,Los Angeles Dodgers,119,St. Louis Cardinals,Dodger Stadium,Final,Final,R,N
+2021-06-04,633820,Atlanta Braves,144,Los Angeles Dodgers,Truist Park,Final,Final,R,N
+2021-06-05,633828,Atlanta Braves,144,Los Angeles Dodgers,Truist Park,Final,Final,R,N
+2021-06-06,633810,Atlanta Braves,144,Los Angeles Dodgers,Truist Park,Final,Final,R,N
+2021-06-08,633772,Pittsburgh Pirates,134,Los Angeles Dodgers,PNC Park,Final,Final,R,N
+2021-06-09,633753,Pittsburgh Pirates,134,Los Angeles Dodgers,PNC Park,Final,Final,R,N
+2021-06-10,633744,Pittsburgh Pirates,134,Los Angeles Dodgers,PNC Park,Final,Completed Early,R,N
+2021-06-11,633761,Los Angeles Dodgers,119,Texas Rangers,Dodger Stadium,Final,Final,R,N
+2021-06-12,633723,Los Angeles Dodgers,119,Texas Rangers,Dodger Stadium,Final,Final,R,N
+2021-06-13,633719,Los Angeles Dodgers,119,Texas Rangers,Dodger Stadium,Final,Final,R,N
+2021-06-14,633652,Los Angeles Dodgers,119,Philadelphia Phillies,Dodger Stadium,Final,Final,R,N
+2021-06-15,633675,Los Angeles Dodgers,119,Philadelphia Phillies,Dodger Stadium,Final,Final,R,N
+2021-06-16,633677,Los Angeles Dodgers,119,Philadelphia Phillies,Dodger Stadium,Final,Final,R,N
+2021-06-18,633604,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2021-06-19,633598,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2021-06-20,633582,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2021-06-21,633651,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2021-06-22,633540,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2021-06-23,633627,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2021-06-24,633505,Los Angeles Dodgers,119,Chicago Cubs,Dodger Stadium,Final,Final,R,N
+2021-06-25,633608,Los Angeles Dodgers,119,Chicago Cubs,Dodger Stadium,Final,Final,R,N
+2021-06-26,633562,Los Angeles Dodgers,119,Chicago Cubs,Dodger Stadium,Final,Final,R,N
+2021-06-27,633472,Los Angeles Dodgers,119,Chicago Cubs,Dodger Stadium,Final,Final,R,N
+2021-06-28,633458,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2021-06-29,633471,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2021-07-01,633481,Washington Nationals,120,Los Angeles Dodgers,Nationals Park,Final,Completed Early,R,N
+2021-07-02,633404,Washington Nationals,120,Los Angeles Dodgers,Nationals Park,Final,Final,R,N
+2021-07-03,633430,Washington Nationals,120,Los Angeles Dodgers,Nationals Park,Final,Final,R,N
+2021-07-04,633398,Washington Nationals,120,Los Angeles Dodgers,Nationals Park,Final,Final,R,N
+2021-07-05,633361,Miami Marlins,146,Los Angeles Dodgers,loanDepot park,Final,Final,R,N
+2021-07-06,633376,Miami Marlins,146,Los Angeles Dodgers,loanDepot park,Final,Final,R,N
+2021-07-07,633333,Miami Marlins,146,Los Angeles Dodgers,loanDepot park,Final,Final,R,N
+2021-07-08,633334,Miami Marlins,146,Los Angeles Dodgers,loanDepot park,Final,Final,R,N
+2021-07-09,633320,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2021-07-10,633311,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2021-07-11,633302,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2021-07-16,633321,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2021-07-17,633261,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2021-07-18,633255,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2021-07-19,633259,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2021-07-20,633199,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2021-07-21,633217,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2021-07-22,633244,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2021-07-23,633173,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2021-07-24,633188,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2021-07-25,633172,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2021-07-27,633149,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2021-07-28,633125,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2021-07-29,633109,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2021-07-30,633102,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2021-07-31,633099,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2021-08-01,633101,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2021-08-03,633061,Los Angeles Dodgers,119,Houston Astros,Dodger Stadium,Final,Final,R,N
+2021-08-04,633019,Los Angeles Dodgers,119,Houston Astros,Dodger Stadium,Final,Final,R,N
+2021-08-06,633028,Los Angeles Dodgers,119,Los Angeles Angels,Dodger Stadium,Final,Final,R,N
+2021-08-07,632986,Los Angeles Dodgers,119,Los Angeles Angels,Dodger Stadium,Final,Final,R,N
+2021-08-08,632956,Los Angeles Dodgers,119,Los Angeles Angels,Dodger Stadium,Final,Final,R,N
+2021-08-10,632984,Philadelphia Phillies,143,Los Angeles Dodgers,Citizens Bank Park,Final,Final,R,N
+2021-08-11,632915,Philadelphia Phillies,143,Los Angeles Dodgers,Citizens Bank Park,Final,Final,R,N
+2021-08-12,632969,Philadelphia Phillies,143,Los Angeles Dodgers,Citizens Bank Park,Final,Final,R,N
+2021-08-13,632911,New York Mets,121,Los Angeles Dodgers,Citi Field,Final,Final,R,N
+2021-08-14,632958,New York Mets,121,Los Angeles Dodgers,Citi Field,Final,Final,R,N
+2021-08-15,632895,New York Mets,121,Los Angeles Dodgers,Citi Field,Final,Final,R,N
+2021-08-16,632882,Los Angeles Dodgers,119,Pittsburgh Pirates,Dodger Stadium,Final,Final,R,N
+2021-08-17,632909,Los Angeles Dodgers,119,Pittsburgh Pirates,Dodger Stadium,Final,Final,R,N
+2021-08-18,632887,Los Angeles Dodgers,119,Pittsburgh Pirates,Dodger Stadium,Final,Final,R,N
+2021-08-19,632835,Los Angeles Dodgers,119,New York Mets,Dodger Stadium,Final,Final,R,N
+2021-08-20,632811,Los Angeles Dodgers,119,New York Mets,Dodger Stadium,Final,Final,R,N
+2021-08-21,632795,Los Angeles Dodgers,119,New York Mets,Dodger Stadium,Final,Final,R,N
+2021-08-22,632796,Los Angeles Dodgers,119,New York Mets,Dodger Stadium,Final,Final,R,N
+2021-08-24,632748,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2021-08-25,632764,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2021-08-26,632685,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2021-08-27,632740,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2021-08-28,632707,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2021-08-29,632714,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2021-08-30,632674,Los Angeles Dodgers,119,Atlanta Braves,Dodger Stadium,Final,Final,R,N
+2021-08-31,632663,Los Angeles Dodgers,119,Atlanta Braves,Dodger Stadium,Final,Final,R,N
+2021-09-01,632656,Los Angeles Dodgers,119,Atlanta Braves,Dodger Stadium,Final,Final,R,N
+2021-09-03,632645,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2021-09-04,632636,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2021-09-05,632599,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2021-09-06,632628,St. Louis Cardinals,138,Los Angeles Dodgers,Busch Stadium,Final,Final,R,N
+2021-09-07,632558,St. Louis Cardinals,138,Los Angeles Dodgers,Busch Stadium,Final,Final,R,N
+2021-09-08,632643,St. Louis Cardinals,138,Los Angeles Dodgers,Busch Stadium,Final,Final,R,N
+2021-09-09,632564,St. Louis Cardinals,138,Los Angeles Dodgers,Busch Stadium,Final,Final,R,N
+2021-09-10,632542,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2021-09-11,632530,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2021-09-12,632568,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2021-09-13,632509,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2021-09-14,632505,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2021-09-15,632484,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2021-09-17,632470,Cincinnati Reds,113,Los Angeles Dodgers,Great American Ball Park,Final,Final,R,N
+2021-09-18,632455,Cincinnati Reds,113,Los Angeles Dodgers,Great American Ball Park,Final,Final,R,N
+2021-09-19,632432,Cincinnati Reds,113,Los Angeles Dodgers,Great American Ball Park,Final,Final,R,N
+2021-09-21,632399,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2021-09-22,632394,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2021-09-23,632376,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2021-09-24,632340,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2021-09-25,632353,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2021-09-26,632337,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2021-09-28,632318,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2021-09-29,632297,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2021-09-30,632291,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2021-10-01,632273,Los Angeles Dodgers,119,Milwaukee Brewers,Dodger Stadium,Final,Final,R,N
+2021-10-02,632260,Los Angeles Dodgers,119,Milwaukee Brewers,Dodger Stadium,Final,Final,R,N
+2021-10-03,632242,Los Angeles Dodgers,119,Milwaukee Brewers,Dodger Stadium,Final,Final,R,N
+2022-04-08,662933,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2022-04-09,662931,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2022-04-10,662934,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2022-04-12,661753,Minnesota Twins,142,Los Angeles Dodgers,Target Field,Final,Final,R,N
+2022-04-13,661734,Minnesota Twins,142,Los Angeles Dodgers,Target Field,Final,Final,R,N
+2022-04-14,662627,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,R,N
+2022-04-15,662620,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,R,N
+2022-04-16,662619,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,R,N
+2022-04-17,662618,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,R,N
+2022-04-18,662617,Los Angeles Dodgers,119,Atlanta Braves,Dodger Stadium,Final,Final,R,N
+2022-04-19,662717,Los Angeles Dodgers,119,Atlanta Braves,Dodger Stadium,Final,Final,R,N
+2022-04-20,662734,Los Angeles Dodgers,119,Atlanta Braves,Dodger Stadium,Final,Final,R,N
+2022-04-22,662230,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2022-04-23,662276,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2022-04-24,662274,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2022-04-25,663382,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2022-04-26,663383,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2022-04-27,663393,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2022-04-29,662699,Los Angeles Dodgers,119,Detroit Tigers,Dodger Stadium,Final,Final,R,N
+2022-04-30,662698,Los Angeles Dodgers,119,Detroit Tigers,Dodger Stadium,Final,Final,R,N
+2022-05-01,662716,Los Angeles Dodgers,119,Detroit Tigers,Dodger Stadium,Final,Final,R,N
+2022-05-03,662708,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2022-05-04,662707,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2022-05-07,663142,Chicago Cubs,112,Los Angeles Dodgers,Wrigley Field,Final,Postponed,R,N
+2022-05-07,663162,Chicago Cubs,112,Los Angeles Dodgers,Wrigley Field,Final,Final,R,S
+2022-05-07,663142,Chicago Cubs,112,Los Angeles Dodgers,Wrigley Field,Final,Final,R,S
+2022-05-08,663161,Chicago Cubs,112,Los Angeles Dodgers,Wrigley Field,Final,Final,R,N
+2022-05-09,662287,Pittsburgh Pirates,134,Los Angeles Dodgers,PNC Park,Final,Final,R,N
+2022-05-10,662292,Pittsburgh Pirates,134,Los Angeles Dodgers,PNC Park,Final,Final,R,N
+2022-05-11,662385,Pittsburgh Pirates,134,Los Angeles Dodgers,PNC Park,Final,Final,R,N
+2022-05-12,662706,Los Angeles Dodgers,119,Philadelphia Phillies,Dodger Stadium,Final,Final,R,N
+2022-05-13,662705,Los Angeles Dodgers,119,Philadelphia Phillies,Dodger Stadium,Final,Final,R,N
+2022-05-14,662704,Los Angeles Dodgers,119,Philadelphia Phillies,Dodger Stadium,Final,Final,R,N
+2022-05-15,662696,Los Angeles Dodgers,119,Philadelphia Phillies,Dodger Stadium,Final,Final,R,N
+2022-05-16,662695,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2022-05-17,662628,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,S
+2022-05-17,662697,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,S
+2022-05-18,662744,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2022-05-20,661632,Philadelphia Phillies,143,Los Angeles Dodgers,Citizens Bank Park,Final,Final,R,N
+2022-05-21,661631,Philadelphia Phillies,143,Los Angeles Dodgers,Citizens Bank Park,Final,Final,R,N
+2022-05-22,661611,Philadelphia Phillies,143,Los Angeles Dodgers,Citizens Bank Park,Final,Final,R,N
+2022-05-23,662524,Washington Nationals,120,Los Angeles Dodgers,Nationals Park,Final,Final,R,N
+2022-05-24,662536,Washington Nationals,120,Los Angeles Dodgers,Nationals Park,Final,Final,R,N
+2022-05-25,662527,Washington Nationals,120,Los Angeles Dodgers,Nationals Park,Final,Final,R,N
+2022-05-26,663338,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2022-05-27,663347,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2022-05-28,663330,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2022-05-29,663328,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2022-05-30,662743,Los Angeles Dodgers,119,Pittsburgh Pirates,Dodger Stadium,Final,Final,R,N
+2022-05-31,662735,Los Angeles Dodgers,119,Pittsburgh Pirates,Dodger Stadium,Final,Final,R,N
+2022-06-01,662721,Los Angeles Dodgers,119,Pittsburgh Pirates,Dodger Stadium,Final,Final,R,N
+2022-06-02,662693,Los Angeles Dodgers,119,New York Mets,Dodger Stadium,Final,Final,R,N
+2022-06-03,662720,Los Angeles Dodgers,119,New York Mets,Dodger Stadium,Final,Final,R,N
+2022-06-04,662687,Los Angeles Dodgers,119,New York Mets,Dodger Stadium,Final,Final,R,N
+2022-06-05,662612,Los Angeles Dodgers,119,New York Mets,Dodger Stadium,Final,Final,R,N
+2022-06-07,661460,Chicago White Sox,145,Los Angeles Dodgers,Guaranteed Rate Field,Final,Final,R,N
+2022-06-08,661459,Chicago White Sox,145,Los Angeles Dodgers,Guaranteed Rate Field,Final,Final,R,N
+2022-06-09,661458,Chicago White Sox,145,Los Angeles Dodgers,Guaranteed Rate Field,Final,Final,R,N
+2022-06-10,662090,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2022-06-11,662089,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2022-06-12,662085,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2022-06-14,662611,Los Angeles Dodgers,119,Los Angeles Angels,Dodger Stadium,Final,Final,R,N
+2022-06-15,662694,Los Angeles Dodgers,119,Los Angeles Angels,Dodger Stadium,Final,Final,R,N
+2022-06-17,662719,Los Angeles Dodgers,119,Cleveland Guardians,Dodger Stadium,Final,Final,R,N
+2022-06-18,662686,Los Angeles Dodgers,119,Cleveland Guardians,Dodger Stadium,Final,Final,R,N
+2022-06-19,662590,Los Angeles Dodgers,119,Cleveland Guardians,Dodger Stadium,Final,Final,R,N
+2022-06-21,663041,Cincinnati Reds,113,Los Angeles Dodgers,Great American Ball Park,Final,Final,R,N
+2022-06-22,663040,Cincinnati Reds,113,Los Angeles Dodgers,Great American Ball Park,Final,Final,R,N
+2022-06-23,663039,Cincinnati Reds,113,Los Angeles Dodgers,Great American Ball Park,Final,Final,R,N
+2022-06-24,661139,Atlanta Braves,144,Los Angeles Dodgers,Truist Park,Final,Final,R,N
+2022-06-25,661138,Atlanta Braves,144,Los Angeles Dodgers,Truist Park,Final,Final,R,N
+2022-06-26,661512,Atlanta Braves,144,Los Angeles Dodgers,Truist Park,Final,Final,R,N
+2022-06-27,662912,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2022-06-28,662911,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2022-06-29,662894,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2022-06-30,662733,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2022-07-01,662609,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2022-07-02,662718,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2022-07-03,662684,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2022-07-04,662732,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2022-07-05,662731,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2022-07-06,662630,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2022-07-07,662730,Los Angeles Dodgers,119,Chicago Cubs,Dodger Stadium,Final,Final,R,N
+2022-07-08,662610,Los Angeles Dodgers,119,Chicago Cubs,Dodger Stadium,Final,Final,R,N
+2022-07-09,662683,Los Angeles Dodgers,119,Chicago Cubs,Dodger Stadium,Final,Final,R,N
+2022-07-10,662729,Los Angeles Dodgers,119,Chicago Cubs,Dodger Stadium,Final,Final,R,N
+2022-07-12,661119,St. Louis Cardinals,138,Los Angeles Dodgers,Busch Stadium,Final,Final,R,N
+2022-07-13,661118,St. Louis Cardinals,138,Los Angeles Dodgers,Busch Stadium,Final,Final,R,N
+2022-07-14,661117,St. Louis Cardinals,138,Los Angeles Dodgers,Busch Stadium,Final,Final,R,N
+2022-07-15,663385,Los Angeles Angels,108,Los Angeles Dodgers,Angel Stadium,Final,Final,R,N
+2022-07-16,663415,Los Angeles Angels,108,Los Angeles Dodgers,Angel Stadium,Final,Final,R,N
+2022-07-21,662685,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2022-07-22,662589,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2022-07-23,662608,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2022-07-24,662682,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2022-07-25,662576,Los Angeles Dodgers,119,Washington Nationals,Dodger Stadium,Final,Final,R,N
+2022-07-26,662573,Los Angeles Dodgers,119,Washington Nationals,Dodger Stadium,Final,Final,R,N
+2022-07-27,662565,Los Angeles Dodgers,119,Washington Nationals,Dodger Stadium,Final,Final,R,N
+2022-07-28,661077,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2022-07-29,661076,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2022-07-30,662989,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2022-07-31,662988,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2022-08-01,662070,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2022-08-02,662056,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2022-08-03,662055,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2022-08-04,662114,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2022-08-05,662564,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2022-08-06,662654,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2022-08-07,662563,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2022-08-09,662562,Los Angeles Dodgers,119,Minnesota Twins,Dodger Stadium,Final,Final,R,N
+2022-08-10,662575,Los Angeles Dodgers,119,Minnesota Twins,Dodger Stadium,Final,Final,R,N
+2022-08-12,662671,Kansas City Royals,118,Los Angeles Dodgers,Kauffman Stadium,Final,Final,R,N
+2022-08-13,662670,Kansas City Royals,118,Los Angeles Dodgers,Kauffman Stadium,Final,Final,R,N
+2022-08-14,662669,Kansas City Royals,118,Los Angeles Dodgers,Kauffman Stadium,Final,Final,R,N
+2022-08-15,661199,Milwaukee Brewers,158,Los Angeles Dodgers,American Family Field,Final,Final,R,N
+2022-08-16,661191,Milwaukee Brewers,158,Los Angeles Dodgers,American Family Field,Final,Final,R,N
+2022-08-17,661171,Milwaukee Brewers,158,Los Angeles Dodgers,American Family Field,Final,Final,R,N
+2022-08-18,661179,Milwaukee Brewers,158,Los Angeles Dodgers,American Family Field,Final,Final,R,N
+2022-08-19,662574,Los Angeles Dodgers,119,Miami Marlins,Dodger Stadium,Final,Final,R,N
+2022-08-20,662561,Los Angeles Dodgers,119,Miami Marlins,Dodger Stadium,Final,Final,R,N
+2022-08-21,662600,Los Angeles Dodgers,119,Miami Marlins,Dodger Stadium,Final,Final,R,N
+2022-08-22,662594,Los Angeles Dodgers,119,Milwaukee Brewers,Dodger Stadium,Final,Final,R,N
+2022-08-23,662605,Los Angeles Dodgers,119,Milwaukee Brewers,Dodger Stadium,Final,Final,R,N
+2022-08-24,662604,Los Angeles Dodgers,119,Milwaukee Brewers,Dodger Stadium,Final,Final,R,N
+2022-08-26,661355,Miami Marlins,146,Los Angeles Dodgers,loanDepot park,Final,Final,R,N
+2022-08-27,661354,Miami Marlins,146,Los Angeles Dodgers,loanDepot park,Final,Final,R,N
+2022-08-28,661353,Miami Marlins,146,Los Angeles Dodgers,loanDepot park,Final,Final,R,N
+2022-08-29,661352,Miami Marlins,146,Los Angeles Dodgers,loanDepot park,Final,Final,R,N
+2022-08-30,662426,New York Mets,121,Los Angeles Dodgers,Citi Field,Final,Final,R,N
+2022-08-31,662447,New York Mets,121,Los Angeles Dodgers,Citi Field,Final,Final,R,N
+2022-09-01,662410,New York Mets,121,Los Angeles Dodgers,Citi Field,Final,Final,R,N
+2022-09-02,662603,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2022-09-03,662597,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2022-09-04,662599,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2022-09-05,662602,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2022-09-06,662601,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2022-09-07,662582,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2022-09-09,661850,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2022-09-10,661849,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2022-09-11,661848,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2022-09-12,663324,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2022-09-13,663323,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2022-09-14,663322,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2022-09-16,662026,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2022-09-17,662024,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2022-09-18,662025,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2022-09-19,662622,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2022-09-20,662621,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,S
+2022-09-20,662607,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,S
+2022-09-21,662606,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2022-09-22,662586,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2022-09-23,662585,Los Angeles Dodgers,119,St. Louis Cardinals,Dodger Stadium,Final,Final,R,N
+2022-09-24,662584,Los Angeles Dodgers,119,St. Louis Cardinals,Dodger Stadium,Final,Final,R,N
+2022-09-25,662598,Los Angeles Dodgers,119,St. Louis Cardinals,Dodger Stadium,Final,Final,R,N
+2022-09-27,662210,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2022-09-28,662214,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2022-09-29,662209,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2022-09-30,662596,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2022-10-01,662595,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2022-10-02,662581,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2022-10-03,662629,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2022-10-04,662624,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2022-10-05,662623,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2023-03-30,718770,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2023-03-31,718765,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2023-04-01,718749,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2023-04-02,718736,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2023-04-03,718718,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2023-04-04,718703,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2023-04-06,718683,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2023-04-07,718671,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2023-04-08,718656,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2023-04-09,718639,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2023-04-10,718641,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2023-04-11,718624,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2023-04-12,718612,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2023-04-14,718575,Los Angeles Dodgers,119,Chicago Cubs,Dodger Stadium,Final,Final,R,N
+2023-04-15,718564,Los Angeles Dodgers,119,Chicago Cubs,Dodger Stadium,Final,Final,R,N
+2023-04-16,718547,Los Angeles Dodgers,119,Chicago Cubs,Dodger Stadium,Final,Final,R,N
+2023-04-17,718532,Los Angeles Dodgers,119,New York Mets,Dodger Stadium,Final,Final,R,N
+2023-04-18,718516,Los Angeles Dodgers,119,New York Mets,Dodger Stadium,Final,Final,R,N
+2023-04-19,718508,Los Angeles Dodgers,119,New York Mets,Dodger Stadium,Final,Final,R,N
+2023-04-20,718499,Chicago Cubs,112,Los Angeles Dodgers,Wrigley Field,Final,Final,R,N
+2023-04-21,718491,Chicago Cubs,112,Los Angeles Dodgers,Wrigley Field,Final,Final,R,N
+2023-04-22,718479,Chicago Cubs,112,Los Angeles Dodgers,Wrigley Field,Final,Final,R,N
+2023-04-23,718451,Chicago Cubs,112,Los Angeles Dodgers,Wrigley Field,Final,Final,R,N
+2023-04-25,718432,Pittsburgh Pirates,134,Los Angeles Dodgers,PNC Park,Final,Final,R,N
+2023-04-26,718413,Pittsburgh Pirates,134,Los Angeles Dodgers,PNC Park,Final,Final,R,N
+2023-04-27,718403,Pittsburgh Pirates,134,Los Angeles Dodgers,PNC Park,Final,Final,R,N
+2023-04-28,718382,Los Angeles Dodgers,119,St. Louis Cardinals,Dodger Stadium,Final,Final,R,N
+2023-04-29,718369,Los Angeles Dodgers,119,St. Louis Cardinals,Dodger Stadium,Final,Final,R,N
+2023-04-30,718359,Los Angeles Dodgers,119,St. Louis Cardinals,Dodger Stadium,Final,Final,R,N
+2023-05-01,718343,Los Angeles Dodgers,119,Philadelphia Phillies,Dodger Stadium,Final,Final,R,N
+2023-05-02,718331,Los Angeles Dodgers,119,Philadelphia Phillies,Dodger Stadium,Final,Final,R,N
+2023-05-03,718327,Los Angeles Dodgers,119,Philadelphia Phillies,Dodger Stadium,Final,Final,R,N
+2023-05-05,718295,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2023-05-06,718279,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2023-05-07,718266,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2023-05-08,718257,Milwaukee Brewers,158,Los Angeles Dodgers,American Family Field,Final,Final,R,N
+2023-05-09,718241,Milwaukee Brewers,158,Los Angeles Dodgers,American Family Field,Final,Final,R,N
+2023-05-10,718228,Milwaukee Brewers,158,Los Angeles Dodgers,American Family Field,Final,Final,R,N
+2023-05-12,718201,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2023-05-13,718185,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2023-05-14,718168,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2023-05-15,718159,Los Angeles Dodgers,119,Minnesota Twins,Dodger Stadium,Final,Final,R,N
+2023-05-16,718141,Los Angeles Dodgers,119,Minnesota Twins,Dodger Stadium,Final,Final,R,N
+2023-05-17,718136,Los Angeles Dodgers,119,Minnesota Twins,Dodger Stadium,Final,Final,R,N
+2023-05-18,718124,St. Louis Cardinals,138,Los Angeles Dodgers,Busch Stadium,Final,Final,R,N
+2023-05-19,718113,St. Louis Cardinals,138,Los Angeles Dodgers,Busch Stadium,Final,Final,R,N
+2023-05-20,718109,St. Louis Cardinals,138,Los Angeles Dodgers,Busch Stadium,Final,Final,R,N
+2023-05-21,718083,St. Louis Cardinals,138,Los Angeles Dodgers,Busch Stadium,Final,Final,R,N
+2023-05-22,718074,Atlanta Braves,144,Los Angeles Dodgers,Truist Park,Final,Final,R,N
+2023-05-23,718057,Atlanta Braves,144,Los Angeles Dodgers,Truist Park,Final,Final,R,N
+2023-05-24,718042,Atlanta Braves,144,Los Angeles Dodgers,Truist Park,Final,Final,R,N
+2023-05-26,718018,Tampa Bay Rays,139,Los Angeles Dodgers,Tropicana Field,Final,Final,R,N
+2023-05-27,718002,Tampa Bay Rays,139,Los Angeles Dodgers,Tropicana Field,Final,Final,R,N
+2023-05-28,717994,Tampa Bay Rays,139,Los Angeles Dodgers,Tropicana Field,Final,Final,R,N
+2023-05-29,717973,Los Angeles Dodgers,119,Washington Nationals,Dodger Stadium,Final,Final,R,N
+2023-05-30,717957,Los Angeles Dodgers,119,Washington Nationals,Dodger Stadium,Final,Final,R,N
+2023-05-31,717954,Los Angeles Dodgers,119,Washington Nationals,Dodger Stadium,Final,Final,R,N
+2023-06-02,717917,Los Angeles Dodgers,119,New York Yankees,Dodger Stadium,Final,Final,R,N
+2023-06-03,717905,Los Angeles Dodgers,119,New York Yankees,Dodger Stadium,Final,Final,R,N
+2023-06-04,717888,Los Angeles Dodgers,119,New York Yankees,Dodger Stadium,Final,Final,R,N
+2023-06-06,717870,Cincinnati Reds,113,Los Angeles Dodgers,Great American Ball Park,Final,Final,R,N
+2023-06-07,717853,Cincinnati Reds,113,Los Angeles Dodgers,Great American Ball Park,Final,Final,R,N
+2023-06-08,717844,Cincinnati Reds,113,Los Angeles Dodgers,Great American Ball Park,Final,Final,R,N
+2023-06-09,717837,Philadelphia Phillies,143,Los Angeles Dodgers,Citizens Bank Park,Final,Final,R,N
+2023-06-10,717811,Philadelphia Phillies,143,Los Angeles Dodgers,Citizens Bank Park,Final,Final,R,N
+2023-06-11,717806,Philadelphia Phillies,143,Los Angeles Dodgers,Citizens Bank Park,Final,Final,R,N
+2023-06-13,717776,Los Angeles Dodgers,119,Chicago White Sox,Dodger Stadium,Final,Final,R,N
+2023-06-14,717760,Los Angeles Dodgers,119,Chicago White Sox,Dodger Stadium,Final,Final,R,N
+2023-06-15,717748,Los Angeles Dodgers,119,Chicago White Sox,Dodger Stadium,Final,Final,R,N
+2023-06-16,717731,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2023-06-17,717721,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2023-06-18,717702,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2023-06-20,717678,Los Angeles Angels,108,Los Angeles Dodgers,Angel Stadium,Final,Final,R,N
+2023-06-21,717662,Los Angeles Angels,108,Los Angeles Dodgers,Angel Stadium,Final,Final,R,N
+2023-06-23,717643,Los Angeles Dodgers,119,Houston Astros,Dodger Stadium,Final,Final,R,N
+2023-06-24,717626,Los Angeles Dodgers,119,Houston Astros,Dodger Stadium,Final,Final,R,N
+2023-06-25,717615,Los Angeles Dodgers,119,Houston Astros,Dodger Stadium,Final,Final,R,N
+2023-06-27,717594,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2023-06-28,717578,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2023-06-29,717572,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2023-06-30,717553,Kansas City Royals,118,Los Angeles Dodgers,Kauffman Stadium,Final,Final,R,N
+2023-07-01,717537,Kansas City Royals,118,Los Angeles Dodgers,Kauffman Stadium,Final,Final,R,N
+2023-07-02,717527,Kansas City Royals,118,Los Angeles Dodgers,Kauffman Stadium,Final,Final,R,N
+2023-07-03,717506,Los Angeles Dodgers,119,Pittsburgh Pirates,Dodger Stadium,Final,Final,R,N
+2023-07-04,717492,Los Angeles Dodgers,119,Pittsburgh Pirates,Dodger Stadium,Final,Final,R,N
+2023-07-05,717479,Los Angeles Dodgers,119,Pittsburgh Pirates,Dodger Stadium,Final,Final,R,N
+2023-07-06,717462,Los Angeles Dodgers,119,Pittsburgh Pirates,Dodger Stadium,Final,Final,R,N
+2023-07-07,717456,Los Angeles Dodgers,119,Los Angeles Angels,Dodger Stadium,Final,Final,R,N
+2023-07-08,717437,Los Angeles Dodgers,119,Los Angeles Angels,Dodger Stadium,Final,Final,R,N
+2023-07-14,717413,New York Mets,121,Los Angeles Dodgers,Citi Field,Final,Final,R,N
+2023-07-15,717400,New York Mets,121,Los Angeles Dodgers,Citi Field,Final,Final,R,N
+2023-07-16,717385,New York Mets,121,Los Angeles Dodgers,Citi Field,Final,Final,R,N
+2023-07-17,717372,Baltimore Orioles,110,Los Angeles Dodgers,Oriole Park at Camden Yards,Final,Final,R,N
+2023-07-18,717361,Baltimore Orioles,110,Los Angeles Dodgers,Oriole Park at Camden Yards,Final,Final,R,N
+2023-07-19,717343,Baltimore Orioles,110,Los Angeles Dodgers,Oriole Park at Camden Yards,Final,Final,R,N
+2023-07-21,717316,Texas Rangers,140,Los Angeles Dodgers,Globe Life Field,Final,Final,R,N
+2023-07-22,717305,Texas Rangers,140,Los Angeles Dodgers,Globe Life Field,Final,Final,R,N
+2023-07-23,717284,Texas Rangers,140,Los Angeles Dodgers,Globe Life Field,Final,Final,R,N
+2023-07-24,717271,Los Angeles Dodgers,119,Toronto Blue Jays,Dodger Stadium,Final,Final,R,N
+2023-07-25,717256,Los Angeles Dodgers,119,Toronto Blue Jays,Dodger Stadium,Final,Final,R,N
+2023-07-26,717253,Los Angeles Dodgers,119,Toronto Blue Jays,Dodger Stadium,Final,Final,R,N
+2023-07-28,717225,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,R,N
+2023-07-29,717205,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,R,N
+2023-07-30,717194,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,R,N
+2023-08-01,717171,Los Angeles Dodgers,119,Oakland Athletics,Dodger Stadium,Final,Final,R,N
+2023-08-02,717154,Los Angeles Dodgers,119,Oakland Athletics,Dodger Stadium,Final,Final,R,N
+2023-08-03,717137,Los Angeles Dodgers,119,Oakland Athletics,Dodger Stadium,Final,Final,R,N
+2023-08-04,717129,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2023-08-05,717112,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2023-08-06,717093,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2023-08-07,717094,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2023-08-08,717073,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2023-08-09,717057,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2023-08-10,717045,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2023-08-11,717032,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2023-08-12,717017,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2023-08-13,717007,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2023-08-15,716979,Los Angeles Dodgers,119,Milwaukee Brewers,Dodger Stadium,Final,Final,R,N
+2023-08-16,716962,Los Angeles Dodgers,119,Milwaukee Brewers,Dodger Stadium,Final,Final,R,N
+2023-08-17,716961,Los Angeles Dodgers,119,Milwaukee Brewers,Dodger Stadium,Final,Final,R,N
+2023-08-18,716946,Los Angeles Dodgers,119,Miami Marlins,Dodger Stadium,Final,Final,R,N
+2023-08-19,716909,Los Angeles Dodgers,119,Miami Marlins,Dodger Stadium,Final,Final,R,S
+2023-08-19,716926,Los Angeles Dodgers,119,Miami Marlins,Dodger Stadium,Final,Final,R,S
+2023-08-22,716897,Cleveland Guardians,114,Los Angeles Dodgers,Progressive Field,Final,Final,R,N
+2023-08-23,716875,Cleveland Guardians,114,Los Angeles Dodgers,Progressive Field,Final,Final,R,N
+2023-08-23,716875,Cleveland Guardians,114,Los Angeles Dodgers,Progressive Field,Final,Final,R,N
+2023-08-24,716871,Cleveland Guardians,114,Los Angeles Dodgers,Progressive Field,Final,Final,R,N
+2023-08-25,716866,Boston Red Sox,111,Los Angeles Dodgers,Fenway Park,Final,Final,R,N
+2023-08-26,716849,Boston Red Sox,111,Los Angeles Dodgers,Fenway Park,Final,Final,R,N
+2023-08-27,716831,Boston Red Sox,111,Los Angeles Dodgers,Fenway Park,Final,Final,R,N
+2023-08-28,716805,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2023-08-29,716792,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2023-08-30,716774,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2023-08-31,716768,Los Angeles Dodgers,119,Atlanta Braves,Dodger Stadium,Final,Final,R,N
+2023-09-01,716757,Los Angeles Dodgers,119,Atlanta Braves,Dodger Stadium,Final,Final,R,N
+2023-09-02,716741,Los Angeles Dodgers,119,Atlanta Braves,Dodger Stadium,Final,Final,R,N
+2023-09-03,716725,Los Angeles Dodgers,119,Atlanta Braves,Dodger Stadium,Final,Final,R,N
+2023-09-05,716710,Miami Marlins,146,Los Angeles Dodgers,loanDepot park,Final,Final,R,N
+2023-09-06,716695,Miami Marlins,146,Los Angeles Dodgers,loanDepot park,Final,Final,R,N
+2023-09-07,716682,Miami Marlins,146,Los Angeles Dodgers,loanDepot park,Final,Final,R,N
+2023-09-08,716676,Washington Nationals,120,Los Angeles Dodgers,Nationals Park,Final,Final,R,N
+2023-09-09,716662,Washington Nationals,120,Los Angeles Dodgers,Nationals Park,Final,Final,R,N
+2023-09-10,716647,Washington Nationals,120,Los Angeles Dodgers,Nationals Park,Final,Final,R,N
+2023-09-11,716622,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2023-09-12,716608,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2023-09-13,716589,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2023-09-15,716568,Seattle Mariners,136,Los Angeles Dodgers,T-Mobile Park,Final,Final,R,N
+2023-09-16,716552,Seattle Mariners,136,Los Angeles Dodgers,T-Mobile Park,Final,Final,R,N
+2023-09-17,716537,Seattle Mariners,136,Los Angeles Dodgers,T-Mobile Park,Final,Final,R,N
+2023-09-18,716528,Los Angeles Dodgers,119,Detroit Tigers,Dodger Stadium,Final,Final,R,N
+2023-09-19,716510,Los Angeles Dodgers,119,Detroit Tigers,Dodger Stadium,Final,Final,R,N
+2023-09-20,716494,Los Angeles Dodgers,119,Detroit Tigers,Dodger Stadium,Final,Final,R,N
+2023-09-21,716484,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2023-09-22,716474,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2023-09-23,716456,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2023-09-24,716439,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2023-09-26,716438,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,S
+2023-09-26,716424,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,S
+2023-09-27,716406,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2023-09-28,716405,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2023-09-29,716382,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2023-09-30,716381,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2023-10-01,716363,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2024-03-20,745444,San Diego Padres,135,Los Angeles Dodgers,Gocheok Sky Dome,Final,Final,R,N
+2024-03-21,746175,Los Angeles Dodgers,119,San Diego Padres,Gocheok Sky Dome,Final,Final,R,N
+2024-03-28,746165,Los Angeles Dodgers,119,St. Louis Cardinals,Dodger Stadium,Final,Final,R,N
+2024-03-29,746167,Los Angeles Dodgers,119,St. Louis Cardinals,Dodger Stadium,Final,Final,R,N
+2024-03-30,746168,Los Angeles Dodgers,119,St. Louis Cardinals,Dodger Stadium,Final,Final,R,N
+2024-03-31,746166,Los Angeles Dodgers,119,St. Louis Cardinals,Dodger Stadium,Final,Final,R,N
+2024-04-01,746170,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2024-04-02,746169,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2024-04-03,746163,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2024-04-05,746897,Chicago Cubs,112,Los Angeles Dodgers,Wrigley Field,Final,Final,R,N
+2024-04-06,746896,Chicago Cubs,112,Los Angeles Dodgers,Wrigley Field,Final,Final,R,N
+2024-04-07,746895,Chicago Cubs,112,Los Angeles Dodgers,Wrigley Field,Final,Final,R,N
+2024-04-08,745925,Minnesota Twins,142,Los Angeles Dodgers,Target Field,Final,Final,R,N
+2024-04-09,745924,Minnesota Twins,142,Los Angeles Dodgers,Target Field,Final,Final,R,N
+2024-04-10,745923,Minnesota Twins,142,Los Angeles Dodgers,Target Field,Final,Final,R,N
+2024-04-12,746162,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2024-04-13,746161,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2024-04-14,746164,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2024-04-15,746158,Los Angeles Dodgers,119,Washington Nationals,Dodger Stadium,Final,Final,R,N
+2024-04-16,746157,Los Angeles Dodgers,119,Washington Nationals,Dodger Stadium,Final,Final,R,N
+2024-04-17,746159,Los Angeles Dodgers,119,Washington Nationals,Dodger Stadium,Final,Final,R,N
+2024-04-19,746160,Los Angeles Dodgers,119,New York Mets,Dodger Stadium,Final,Final,R,N
+2024-04-20,746156,Los Angeles Dodgers,119,New York Mets,Dodger Stadium,Final,Final,R,N
+2024-04-21,746154,Los Angeles Dodgers,119,New York Mets,Dodger Stadium,Final,Final,R,N
+2024-04-23,744863,Washington Nationals,120,Los Angeles Dodgers,Nationals Park,Final,Final,R,N
+2024-04-24,744864,Washington Nationals,120,Los Angeles Dodgers,Nationals Park,Final,Final,R,N
+2024-04-25,744867,Washington Nationals,120,Los Angeles Dodgers,Nationals Park,Final,Final,R,N
+2024-04-26,744949,Toronto Blue Jays,141,Los Angeles Dodgers,Rogers Centre,Final,Final,R,N
+2024-04-27,744946,Toronto Blue Jays,141,Los Angeles Dodgers,Rogers Centre,Final,Final,R,N
+2024-04-28,744947,Toronto Blue Jays,141,Los Angeles Dodgers,Rogers Centre,Final,Final,R,N
+2024-04-29,747211,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2024-04-30,747210,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2024-05-01,747207,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2024-05-03,746152,Los Angeles Dodgers,119,Atlanta Braves,Dodger Stadium,Final,Final,R,N
+2024-05-04,746155,Los Angeles Dodgers,119,Atlanta Braves,Dodger Stadium,Final,Final,R,N
+2024-05-05,746153,Los Angeles Dodgers,119,Atlanta Braves,Dodger Stadium,Final,Final,R,N
+2024-05-06,746149,Los Angeles Dodgers,119,Miami Marlins,Dodger Stadium,Final,Final,R,N
+2024-05-07,746147,Los Angeles Dodgers,119,Miami Marlins,Dodger Stadium,Final,Final,R,N
+2024-05-08,746151,Los Angeles Dodgers,119,Miami Marlins,Dodger Stadium,Final,Final,R,N
+2024-05-10,745421,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2024-05-11,745422,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2024-05-12,745419,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2024-05-13,745343,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2024-05-14,745342,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2024-05-15,745341,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2024-05-16,746150,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,R,N
+2024-05-17,746148,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,R,N
+2024-05-18,746142,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,R,N
+2024-05-19,746144,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,R,N
+2024-05-20,746146,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2024-05-21,746145,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2024-05-22,746143,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2024-05-24,746713,Cincinnati Reds,113,Los Angeles Dodgers,Great American Ball Park,Final,Final,R,N
+2024-05-25,746710,Cincinnati Reds,113,Los Angeles Dodgers,Great American Ball Park,Final,Final,R,N
+2024-05-26,746711,Cincinnati Reds,113,Los Angeles Dodgers,Great American Ball Park,Final,Final,R,N
+2024-05-28,745816,New York Mets,121,Los Angeles Dodgers,Citi Field,Final,Postponed,R,N
+2024-05-28,745818,New York Mets,121,Los Angeles Dodgers,Citi Field,Final,Final,R,Y
+2024-05-28,745816,New York Mets,121,Los Angeles Dodgers,Citi Field,Final,Final,R,Y
+2024-05-29,745817,New York Mets,121,Los Angeles Dodgers,Citi Field,Final,Final,R,N
+2024-05-31,746140,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2024-06-01,746138,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2024-06-02,746141,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2024-06-04,745497,Pittsburgh Pirates,134,Los Angeles Dodgers,PNC Park,Final,Final,R,N
+2024-06-05,745494,Pittsburgh Pirates,134,Los Angeles Dodgers,PNC Park,Final,Final,R,N
+2024-06-06,745495,Pittsburgh Pirates,134,Los Angeles Dodgers,PNC Park,Final,Final,R,N
+2024-06-07,745737,New York Yankees,147,Los Angeles Dodgers,Yankee Stadium,Final,Final,R,N
+2024-06-08,745735,New York Yankees,147,Los Angeles Dodgers,Yankee Stadium,Final,Final,R,N
+2024-06-09,745736,New York Yankees,147,Los Angeles Dodgers,Yankee Stadium,Final,Final,R,N
+2024-06-11,746139,Los Angeles Dodgers,119,Texas Rangers,Dodger Stadium,Final,Final,R,N
+2024-06-12,746137,Los Angeles Dodgers,119,Texas Rangers,Dodger Stadium,Final,Final,R,N
+2024-06-13,746136,Los Angeles Dodgers,119,Texas Rangers,Dodger Stadium,Final,Final,R,N
+2024-06-14,746134,Los Angeles Dodgers,119,Kansas City Royals,Dodger Stadium,Final,Final,R,N
+2024-06-15,746135,Los Angeles Dodgers,119,Kansas City Royals,Dodger Stadium,Final,Final,R,N
+2024-06-16,746130,Los Angeles Dodgers,119,Kansas City Royals,Dodger Stadium,Final,Final,R,N
+2024-06-17,746543,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2024-06-18,746542,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2024-06-19,746538,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2024-06-20,746539,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2024-06-21,746131,Los Angeles Dodgers,119,Los Angeles Angels,Dodger Stadium,Final,Final,R,N
+2024-06-22,746132,Los Angeles Dodgers,119,Los Angeles Angels,Dodger Stadium,Final,Final,R,N
+2024-06-24,746780,Chicago White Sox,145,Los Angeles Dodgers,Guaranteed Rate Field,Final,Final,R,N
+2024-06-25,746775,Chicago White Sox,145,Los Angeles Dodgers,Guaranteed Rate Field,Final,Final,R,N
+2024-06-26,746777,Chicago White Sox,145,Los Angeles Dodgers,Guaranteed Rate Field,Final,Final,R,N
+2024-06-28,745319,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2024-06-29,745317,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2024-06-30,745320,San Francisco Giants,137,Los Angeles Dodgers,Oracle Park,Final,Final,R,N
+2024-07-02,746133,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2024-07-03,746128,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2024-07-04,746126,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2024-07-05,746127,Los Angeles Dodgers,119,Milwaukee Brewers,Dodger Stadium,Final,Final,R,N
+2024-07-06,746129,Los Angeles Dodgers,119,Milwaukee Brewers,Dodger Stadium,Final,Final,R,N
+2024-07-07,746122,Los Angeles Dodgers,119,Milwaukee Brewers,Dodger Stadium,Final,Final,R,N
+2024-07-09,745557,Philadelphia Phillies,143,Los Angeles Dodgers,Citizens Bank Park,Final,Final,R,N
+2024-07-10,745556,Philadelphia Phillies,143,Los Angeles Dodgers,Citizens Bank Park,Final,Final,R,N
+2024-07-11,745558,Philadelphia Phillies,143,Los Angeles Dodgers,Citizens Bank Park,Final,Final,R,N
+2024-07-12,746450,Detroit Tigers,116,Los Angeles Dodgers,Comerica Park,Final,Final,R,N
+2024-07-13,746447,Detroit Tigers,116,Los Angeles Dodgers,Comerica Park,Final,Final,R,N
+2024-07-14,746449,Detroit Tigers,116,Los Angeles Dodgers,Comerica Park,Final,Final,R,N
+2024-07-19,746123,Los Angeles Dodgers,119,Boston Red Sox,Dodger Stadium,Final,Final,R,N
+2024-07-20,746121,Los Angeles Dodgers,119,Boston Red Sox,Dodger Stadium,Final,Final,R,N
+2024-07-21,746125,Los Angeles Dodgers,119,Boston Red Sox,Dodger Stadium,Final,Final,R,N
+2024-07-22,746124,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2024-07-23,746118,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2024-07-24,746119,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2024-07-25,746117,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2024-07-26,746361,Houston Astros,117,Los Angeles Dodgers,Minute Maid Park,Final,Final,R,N
+2024-07-27,746362,Houston Astros,117,Los Angeles Dodgers,Minute Maid Park,Final,Final,R,N
+2024-07-28,746364,Houston Astros,117,Los Angeles Dodgers,Minute Maid Park,Final,Final,R,N
+2024-07-30,745389,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2024-07-31,745386,San Diego Padres,135,Los Angeles Dodgers,Petco Park,Final,Final,R,N
+2024-08-02,745631,Oakland Athletics,133,Los Angeles Dodgers,Oakland Coliseum,Final,Final,R,N
+2024-08-03,745636,Oakland Athletics,133,Los Angeles Dodgers,Oakland Coliseum,Final,Final,R,N
+2024-08-04,745627,Oakland Athletics,133,Los Angeles Dodgers,Oakland Coliseum,Final,Final,R,N
+2024-08-05,746116,Los Angeles Dodgers,119,Philadelphia Phillies,Dodger Stadium,Final,Final,R,N
+2024-08-06,746120,Los Angeles Dodgers,119,Philadelphia Phillies,Dodger Stadium,Final,Final,R,N
+2024-08-07,746115,Los Angeles Dodgers,119,Philadelphia Phillies,Dodger Stadium,Final,Final,R,N
+2024-08-09,746113,Los Angeles Dodgers,119,Pittsburgh Pirates,Dodger Stadium,Final,Final,R,N
+2024-08-10,746112,Los Angeles Dodgers,119,Pittsburgh Pirates,Dodger Stadium,Final,Final,R,N
+2024-08-11,746114,Los Angeles Dodgers,119,Pittsburgh Pirates,Dodger Stadium,Final,Final,R,N
+2024-08-12,745953,Milwaukee Brewers,158,Los Angeles Dodgers,American Family Field,Final,Final,R,N
+2024-08-13,745954,Milwaukee Brewers,158,Los Angeles Dodgers,American Family Field,Final,Final,R,N
+2024-08-14,745951,Milwaukee Brewers,158,Los Angeles Dodgers,American Family Field,Final,Final,R,N
+2024-08-15,745950,Milwaukee Brewers,158,Los Angeles Dodgers,American Family Field,Final,Final,R,N
+2024-08-16,745144,St. Louis Cardinals,138,Los Angeles Dodgers,Busch Stadium,Final,Final,R,N
+2024-08-17,745140,St. Louis Cardinals,138,Los Angeles Dodgers,Busch Stadium,Final,Final,R,N
+2024-08-18,745139,St. Louis Cardinals,138,Los Angeles Dodgers,Busch Stadium,Final,Final,R,N
+2024-08-19,746109,Los Angeles Dodgers,119,Seattle Mariners,Dodger Stadium,Final,Final,R,N
+2024-08-20,746107,Los Angeles Dodgers,119,Seattle Mariners,Dodger Stadium,Final,Final,R,N
+2024-08-21,746110,Los Angeles Dodgers,119,Seattle Mariners,Dodger Stadium,Final,Final,R,N
+2024-08-23,746111,Los Angeles Dodgers,119,Tampa Bay Rays,Dodger Stadium,Final,Final,R,N
+2024-08-24,746108,Los Angeles Dodgers,119,Tampa Bay Rays,Dodger Stadium,Final,Final,R,N
+2024-08-25,746106,Los Angeles Dodgers,119,Tampa Bay Rays,Dodger Stadium,Final,Final,R,N
+2024-08-27,746105,Los Angeles Dodgers,119,Baltimore Orioles,Dodger Stadium,Final,Final,R,N
+2024-08-28,746103,Los Angeles Dodgers,119,Baltimore Orioles,Dodger Stadium,Final,Final,R,N
+2024-08-29,746102,Los Angeles Dodgers,119,Baltimore Orioles,Dodger Stadium,Final,Final,R,N
+2024-08-30,747156,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2024-08-31,747158,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2024-09-01,747157,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2024-09-02,747155,Arizona Diamondbacks,109,Los Angeles Dodgers,Chase Field,Final,Final,R,N
+2024-09-03,746185,Los Angeles Angels,108,Los Angeles Dodgers,Angel Stadium,Final,Final,R,N
+2024-09-04,746178,Los Angeles Angels,108,Los Angeles Dodgers,Angel Stadium,Final,Final,R,N
+2024-09-06,746104,Los Angeles Dodgers,119,Cleveland Guardians,Dodger Stadium,Final,Final,R,N
+2024-09-07,746099,Los Angeles Dodgers,119,Cleveland Guardians,Dodger Stadium,Final,Final,R,N
+2024-09-08,746098,Los Angeles Dodgers,119,Cleveland Guardians,Dodger Stadium,Final,Final,R,N
+2024-09-09,746101,Los Angeles Dodgers,119,Chicago Cubs,Dodger Stadium,Final,Final,R,N
+2024-09-10,746097,Los Angeles Dodgers,119,Chicago Cubs,Dodger Stadium,Final,Final,R,N
+2024-09-11,746100,Los Angeles Dodgers,119,Chicago Cubs,Dodger Stadium,Final,Final,R,N
+2024-09-13,747069,Atlanta Braves,144,Los Angeles Dodgers,Truist Park,Final,Final,R,N
+2024-09-14,747070,Atlanta Braves,144,Los Angeles Dodgers,Truist Park,Final,Final,R,N
+2024-09-15,747071,Atlanta Braves,144,Los Angeles Dodgers,Truist Park,Final,Final,R,N
+2024-09-16,747067,Atlanta Braves,144,Los Angeles Dodgers,Truist Park,Final,Final,R,N
+2024-09-17,746015,Miami Marlins,146,Los Angeles Dodgers,loanDepot park,Final,Final,R,N
+2024-09-18,746014,Miami Marlins,146,Los Angeles Dodgers,loanDepot park,Final,Final,R,N
+2024-09-19,746011,Miami Marlins,146,Los Angeles Dodgers,loanDepot park,Final,Final,R,N
+2024-09-20,746094,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2024-09-21,746096,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2024-09-22,746092,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2024-09-24,746093,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2024-09-25,746095,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2024-09-26,746088,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2024-09-27,746494,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2024-09-28,746499,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N
+2024-09-29,746496,Colorado Rockies,115,Los Angeles Dodgers,Coors Field,Final,Final,R,N

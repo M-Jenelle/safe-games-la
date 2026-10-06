@@ -54,10 +54,152 @@ class ApiTests(unittest.TestCase):
         self.assertIn("2020-01", body["merged_by_month"])
         self.assertIn("2024-03", body["nibrs"]["by_month"])
         self.assertNotIn("2024-02", body["nibrs"]["by_month"])
+        clock = body["crime_time"]
+        self.assertEqual(clock["total"], body["crime_count_nearby"])
+        self.assertEqual(clock["noon_count"], 311)
+        self.assertEqual(clock["unknown_count"], 0)
+        self.assertIn("800m buffer", clock["disclaimer"])
+        self.assertIn("unknown hour", clock["disclaimer"])
+        self.assertEqual(
+            {period["id"]: period["count"] for period in clock["periods"]},
+            {"night": 2041, "morning": 2551, "afternoon": 4432, "evening": 5146},
+        )
+        evening = next(period for period in clock["periods"] if period["id"] == "evening")
+        self.assertEqual(sum(group["count"] for group in evening["groups"]), evening["count"])
+        self.assertEqual(evening["groups"][0]["label"], "Vehicle")
+        self.assertEqual(sum(item["total"] for item in clock["by_month"].values()), clock["total"])
+        self.assertEqual(clock["by_month"]["2023-03"]["total"], 342)
+        distance = body["crime_distance"]
+        self.assertEqual(distance["total"], body["crime_count_nearby"])
+        self.assertEqual(sum(item["total"] for item in distance["by_month"].values()), distance["total"])
+        self.assertIn("not a crime at the door", distance["disclaimer"])
+        self.assertEqual(
+            {band["id"]: band["count"] for band in distance["bands"]},
+            {"near": 674, "mid": 2302, "far": 11194},
+        )
+        far = next(band for band in distance["bands"] if band["id"] == "far")
+        self.assertEqual(sum(group["count"] for group in far["groups"]), far["count"])
+        self.assertNotIn("ticketmaster", body)
+        nibrs_time = body["nibrs_time"]
+        self.assertEqual(nibrs_time["total"], body["nibrs"]["count"])
+        self.assertIn("NIBRS offenses", nibrs_time["disclaimer"])
+        self.assertEqual(sum(period["count"] for period in nibrs_time["periods"]), nibrs_time["total"])
+        self.assertEqual(sum(item["total"] for item in nibrs_time["by_month"].values()), nibrs_time["total"])
+        self.assertNotIn("2023-03", nibrs_time["by_month"])
+        nibrs_distance = body["nibrs_distance"]
+        self.assertEqual(nibrs_distance["total"], body["nibrs"]["count"])
+        self.assertIn("not a crime at the door", nibrs_distance["disclaimer"])
+        nibrs_permit = self.client.get("/api/venues/V04/permit-comparison?source=nibrs")
+        self.assertEqual(nibrs_permit.status_code, 200)
+        nibrs_body = nibrs_permit.json()
+        self.assertTrue(nibrs_body["available"])
+        self.assertEqual(nibrs_body["source"], "nibrs")
+        self.assertIn("NIBRS offenses", nibrs_body["source_note"])
+        self.assertIn("2025", nibrs_body["years"])
+        self.assertEqual(nibrs_body["upcoming"], [])
+        self.assertEqual(body["density_rank"], {"rank": 1, "of": len(venues), "tied": False})
+        self.assertEqual(body["crime_per_km2"], max(venue["crime_per_km2"] for venue in venues))
+        self.assertTrue(body["overlapping_venues"])
+        self.assertTrue(all(item["distance_m"] < 1600 for item in body["overlapping_venues"]))
+        self.assertEqual(body["nearest_emergency_room"]["emergency_room"], "Yes")
+        clock_days = body["crime_weekday"]
+        self.assertEqual(sum(day["count"] for day in clock_days["days"]), clock_days["total"])
+        self.assertEqual(clock_days["weekday_count"] + clock_days["weekend_count"], clock_days["total"])
+        self.assertEqual(clock_days["by_month"]["2023-03"]["total"], 342)
+        self.assertEqual(body["nibrs_weekday"]["total"], body["nibrs"]["count"])
+        self.assertLess(
+            body["merged_weekday"]["total"],
+            clock_days["total"] + body["nibrs_weekday"]["total"],
+        )
+        self.assertIn("March 7, 2024", body["merged_weekday"]["disclaimer"])
+        dodger = self.client.get("/api/venues/V01").json()
+        self.assertEqual(dodger["nearest_hospital"]["emergency_room"], "No")
+        self.assertEqual(dodger["nearest_emergency_room"]["emergency_room"], "Yes")
+        self.assertNotEqual(
+            dodger["nearest_emergency_room"]["station_name"],
+            dodger["nearest_hospital"]["station_name"],
+        )
+        self.assertGreater(dodger["density_rank"]["rank"], 1)
+
+    def test_ticketmaster_listings(self):
+        dodger = self.client.get("/api/venues/V01").json()["ticketmaster"]
+        self.assertEqual(dodger["event_count"], 83)
+        self.assertEqual(dodger["with_start_time"], 1)
+        self.assertEqual(dodger["distance_m"], 907)
+        self.assertIn("outside the 800 m circle", dodger["note"])
+        self.assertIn("May 2027 and August 2027", dodger["busiest"])
+        self.assertIn("no report count", dodger["disclaimer"])
+        self.assertEqual(dodger["events"][0]["date"], "2026-10-09")
+        self.assertIn("NLDS", dodger["events"][0]["name"])
+        self.assertTrue(dodger["events"][0]["on_sale"])
+        self.assertEqual(sum(month["count"] for month in dodger["months"]), 83)
+        self.assertTrue(any(month["count"] == 0 for month in dodger["months"]))
+
+        center = self.client.get("/api/venues/V03").json()["ticketmaster"]
+        self.assertEqual(center["event_count"], 13)
+        self.assertEqual(center["with_start_time"], 13)
+        self.assertIn("Peacock Theater is", center["note"])
+        self.assertIn("inside the 800 m circle", center["note"])
+        self.assertEqual(center["busiest"], "October 2026 has the most listings, 7.")
+        self.assertTrue(all(event["start_time"] for event in center["events"]))
 
     def test_unknown_venue(self):
         response = self.client.get("/api/venues/V99")
         self.assertEqual(response.status_code, 404)
+        missing = self.client.get("/api/venues/V99/permit-comparison")
+        self.assertEqual(missing.status_code, 404)
+
+    def test_permit_comparison(self):
+        peacock = self.client.get("/api/venues/V04/permit-comparison")
+        self.assertEqual(peacock.status_code, 200)
+        body = peacock.json()
+        self.assertTrue(body["available"])
+        self.assertEqual(body["summary"]["event_day_count"], 302)
+        self.assertEqual(body["summary"]["event_day_mean"], 8.98)
+        self.assertEqual(body["summary"]["other_day_mean"], 7.51)
+        self.assertTrue(body["summary"]["percent_shown"])
+        self.assertGreaterEqual(len(body["series"]), 1)
+        self.assertTrue(body["groups"])
+        self.assertEqual(
+            [row["label"] for row in body["permit_load"]],
+            ["One permit", "Several permits", "Other days"],
+        )
+        self.assertGreater(body["permit_load"][0]["day_count"], 0)
+        self.assertGreater(len(body["upcoming"]), 0)
+        self.assertIn("start", body["upcoming"][0])
+        self.assertIn("weaker signal", body["disclaimer"])
+
+        dodger = self.client.get("/api/venues/V01/permit-comparison").json()
+        self.assertEqual(dodger["summary"]["event_day_count"], 41)
+        self.assertIn("MLB", dodger["note"])
+        self.assertIn("theft", [group["group"] for group in dodger["groups"]])
+        self.assertNotIn("assault", [group["group"] for group in dodger["groups"]])
+
+        valley = self.client.get("/api/venues/V12/permit-comparison")
+        self.assertEqual(valley.status_code, 200)
+        self.assertFalse(valley.json()["available"])
+
+        home = self.client.get("/api/venues/V01/home-games")
+        self.assertEqual(home.status_code, 200)
+        games = home.json()
+        self.assertTrue(games["available"])
+        self.assertEqual(games["summary"]["event_day_count"], 350)
+        self.assertEqual(games["summary"]["other_day_count"], 875)
+        self.assertEqual(games["summary"]["event_day_mean"], 1.14)
+        self.assertEqual(games["summary"]["other_day_mean"], 0.31)
+        self.assertEqual(games["summary"]["absolute_difference"], 0.83)
+        self.assertTrue(games["summary"]["percent_shown"])
+        self.assertEqual([group["group"] for group in games["groups"]], [
+            "assault", "theft", "other", "vehicle", "vandalism",
+        ])
+        self.assertFalse(games["groups"][0]["percent_shown"])
+        self.assertNotIn("upcoming", games)
+        self.assertIn("not a forecast", games["disclaimer"])
+        self.assertFalse(self.client.get("/api/venues/V04/home-games").json()["available"])
+
+        thin = self.client.get("/api/venues/V11/permit-comparison?year=2020&month=1")
+        self.assertEqual(thin.status_code, 200)
+        self.assertFalse(thin.json()["summary"]["percent_shown"])
 
     def test_crime_points_limit(self):
         response = self.client.get("/api/venues/V08/crime-points?limit=2")

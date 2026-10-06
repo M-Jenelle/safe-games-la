@@ -28,6 +28,8 @@ from backend.store import (
     map_layers,
     map_payload,
     meta,
+    home_game_comparison,
+    permit_comparison,
 )
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -169,6 +171,35 @@ def read_venue(venue_id: str) -> dict:
     if venue is None:
         raise HTTPException(status_code=404, detail=f"Unknown venue_id '{venue_id}'")
     return venue
+
+
+@app.get("/api/venues/{venue_id}/permit-comparison")
+def read_permit_comparison(
+    venue_id: str,
+    year: str = Query(default="all", pattern="^(all|20[0-9]{2})$"),
+    month: str = Query(default="all", pattern="^(all|[1-9]|1[0-2])$"),
+    source: str = Query(default="reports", pattern="^(reports|nibrs)$"),
+) -> dict:
+    """Permit-day means versus other days in the same months."""
+    try:
+        body = permit_comparison(venue_id, year=year, month=month, source=source)
+    except DatasetNotFound as exc:
+        raise _missing(exc) from exc
+    if body is None:
+        raise HTTPException(status_code=404, detail=f"Unknown venue_id '{venue_id}'")
+    return body
+
+
+@app.get("/api/venues/{venue_id}/home-games")
+def read_home_games(venue_id: str) -> dict:
+    """Dodger Stadium regular-season home games versus other days in those months."""
+    try:
+        body = home_game_comparison(venue_id)
+    except DatasetNotFound as exc:
+        raise _missing(exc) from exc
+    if body is None:
+        raise HTTPException(status_code=404, detail=f"Unknown venue_id '{venue_id}'")
+    return body
 
 
 @app.get("/api/venues/{venue_id}/crime-points")
