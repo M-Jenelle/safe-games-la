@@ -344,6 +344,23 @@ class ApiTests(unittest.TestCase):
             body["densest_venue"]["crime_per_km2"],
             body["quietest_venue"]["crime_per_km2"],
         )
+        self.assertIn("2.01", body["copy"]["density_hint"])
+        self.assertIn("at least 8 permit days", body["copy"]["permit_hints"]["Difference"])
+        self.assertIn("0.05", body["copy"]["permit_hints"]["Offense groups"])
+
+    def test_display_fields_come_from_the_briefing(self):
+        peacock = self.client.get("/api/venues/V04").json()
+        self.assertIn("2.01", peacock["display"]["density_hint"])
+        self.assertIn("other 13", peacock["display"]["density_hint"])
+        self.assertTrue(peacock["display"]["overlap_note"])
+        self.assertFalse(peacock["home_games_available"])
+        self.assertIn("Saturday", peacock["crime_weekday"]["summary"])
+        dodger = self.client.get("/api/venues/V01").json()
+        self.assertTrue(dodger["home_games_available"])
+        self.assertNotIn("V01", dodger["display"]["overlap_note"])
+        permit = self.client.get("/api/venues/V01/permit-comparison").json()
+        self.assertIn("permit days, not the MLB", permit["note"])
+        self.assertIn("0.05", permit["group_gap_note"])
 
 
 if __name__ == "__main__":
