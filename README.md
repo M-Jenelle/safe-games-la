@@ -21,10 +21,16 @@ A public-safety readiness tool for LA agencies ahead of the 2028 Olympics. It ha
   - `pipeline/loaders.py` — cleans and loads each raw dataset
   - `pipeline/aggregate.py` — per-venue rollup
   - Run with: `python -m pipeline.run` (default radius) or `python -m pipeline.run --radius-m 800` to set the buffer radius explicitly
-- **Two processed outputs ready for the frontend**, in `data/processed/`:
+- **Processed outputs for the 2020–2024 series**, in `data/processed/`:
   - `venue_summary.json` — one row per venue: coordinates, `crime_count_nearby`, `crime_per_km2`, `crime_by_category`, `crime_by_month`, nearby rail stations, bus stop count + unique lines, nearest fire station, nearest police station, `lapd_jurisdiction` flag
-  - `crime_points_by_venue.json` (16.7 MB) — individual incidents per venue (lat/long, category, date, incident id) for the heatmap point layer
-- **FastAPI backend and venue chatbot** — the existing app serves the map, venue briefings, and `POST /api/chat`. The chatbot calculates crime totals/categories/comparisons, nearby transit, nearest facilities, and listed sports directly from the processed summary. Click **Ask venue data** or open `/?chat=1` for the demo.
+  - `crime_points_by_venue.json` — individual incidents per venue (lat/long, category, date, incident id) for the heatmap
+  - `crime_time_of_day.json` and `crime_by_distance.json` — time-of-day and distance-band counts inside each 800 m circle
+- **Map and venue pages** — Google Maps basemap with a deck.gl heatmap. Venue pins, plus fire, hospital, police, rail, and bus layers. Click a venue for a briefing under the map; Expand opens the venue page. The page script is `frontend/js/main.js` (ES modules under `frontend/js/`). `frontend/app.js` is gone.
+- **Three crime series on the venue page.** Headline incidents, density, vs-city, and busiest month use the 2020–present blend: LAPD reports dated before March 7, 2024, then NIBRS offenses from that date forward. The series menu still switches charts among **2020–2024 reports**, **NIBRS offenses, Mar 2024–present**, and **Merged groups, 2020–present**. Those two files are not added together for the overlap months. Charts cover month, category, time of day, distance, and day of week (click a day for its top offense groups).
+- **Compare page** — two venues side by side (`#/compare`). Downtown circles that overlap say so: an incident in the overlap is counted for each venue.
+- **City baseline** — `data/processed/city_baseline.json`. The city rate is every usable LAPD record divided by the Census 2020 Los Angeles land area (469.49 square miles). Venue circles are not summed into it. The venue page shows that comparison as **Vs city**.
+- **Event-day comparisons.** LADBS temporary-event permits are matched to the nearest venue and compared with other days in the same months (`permit_event_days.csv`, `permit_event_lift.json`). Dodger Stadium also has a separate MLB home-game comparison (`dodger_event_risk.json`). Ticketmaster listings appear only for venues the collector matched, with no crime lift attached.
+- **FastAPI backend and venue chatbot** — the app serves the map, venue briefings, compare page, and `POST /api/chat`. The chatbot calculates crime totals/categories/comparisons, nearby transit, nearest facilities, and listed sports from the 2020–2024 summary. It does not answer from NIBRS, the city rate, permits, or home games. Click **Ask venue data** or open `/?chat=1` for the demo.
 
 ### ⚠️ Known issues to be aware of
 - **`lapd_jurisdiction` flag is a nearest-station estimate, not an official boundary check.** It currently flags LA Zoo, Griffith Observatory, Riviera Country Club, and both Venice Beach venues as "non-LAPD," but this is very likely wrong for the Zoo, Griffith Observatory, and Venice (all are LAPD territory in reality — nearest station distance isn't the same as jurisdiction). Needs a boundary-map cross-check before we present this flag anywhere. Don't hide venues from the map based on this flag yet.
@@ -33,28 +39,34 @@ A public-safety readiness tool for LA agencies ahead of the 2028 Olympics. It ha
 - **Two venue rows (Port of LA, Venice Beach) had a malformed CSV row** (unquoted comma) — the loader repairs this automatically, but flagging it in case anyone edits `la28_venues.csv` by hand in the future.
 - **4 venues (Sepulveda Basin, Venice Beach, Venice Beach Boardwalk, Port of LA) still have soft or approximate coordinates** — good enough for buffer-zone joins, but not fully geocoder-verified. Not currently blocking anything, but worth knowing if precision ever matters more.
 - **Crime data caveats from the source itself**: transcribed from paper reports (may contain inaccuracies), addresses only given to the nearest hundred block for privacy — so our data is realistically block-level, not exact-address level.
+- **Permit-day comparison is not adjusted for day of week.** Permit days cluster on weekends, and crime is higher on weekends, so part of the gap is the weekday mix. 2020 is still inside the 2020–2024 window. Each offense group is tested on its own; those tests are not corrected for looking at many groups.
+- **The heatmap is LAPD only.** Torrance and other cities outside LAPD have no points. San Pedro, Wilmington, and the Port still do. The default crime layer is the 2020–2024 extract. NIBRS is a separate crime-view option.
 
-### To DO
-- **Frontend map** — first heatmap version is wired in `frontend/index.html` and `frontend/app.js`. Google Maps provides the basemap; venue markers are colored/sized by crime density; selecting a venue loads its per-venue crime points and displays a deck.gl heatmap inside the analysis radius. Emergency-service and transit overlays remain the next map-layer additions.
-- **Traffic data integration** — we have a few manual traffic-count PDFs (Dodger Stadium, Exposition Park, Venice Beach) but haven't joined them in yet. These are area-matched by name, not by coordinates, so they need manual mapping to venues rather than a spatial join.
-- **Jurisdiction boundary fix** — cross-check the 4 flagged venues against an actual LAPD division boundary map instead of relying on nearest-station distance.
-- **NIBRS "recent activity" layer (optional/stretch)** — decided to explore showing bi-weekly-refreshed NIBRS data as a secondary "most recent activity" indicator per venue, clearly labeled as NOT live/real-time. This needs its own ingestion path since NIBRS uses a different schema than our main 2020–2024 dataset — treat as a stretch goal, not core.
-- **Anomaly/baseline comparison (optional/stretch)** — if time allows: compute current-period vs. historical baseline deviation per venue/category using data we already have. Would strengthen both the map and the chatbot's answers.
+### Still open
+- **Traffic** — not joined. The spreadsheet in the repo is Caltrans District 8 (Riverside and San Bernardino), so it does not cover these venues. A District 7 or LADOT source would be required.
+- **Jurisdiction boundary fix** — cross-check the flagged venues against an actual LAPD division boundary map instead of relying on nearest-station distance.
+- **Weekday-adjusted event comparison, and a real baseline model** — the permit and home-game gaps are Mann–Whitney tests on daily counts. They do not hold day of week fixed, and there is no Poisson or negative-binomial baseline yet. The chatbot still refuses forecast language.
 
 ## Data sources reference
 
 | Data | Source | Notes |
 |---|---|---|
-| Crime (2020–2024) | LA Open Data Portal, "Crime Data from 2020 to Present" | Legacy/frozen dataset — official source per hackathon doc |
+| Crime (2020–2024) | LA Open Data Portal, "Crime Data from 2020 to Present" | Legacy/frozen dataset — official source per hackathon doc. One row per police report. |
+| NIBRS offenses | LA Open Data, view `k7nn-b2ep` | Current LAPD NIBRS extract. One row per offense. Product coverage starts March 7, 2024. The older view `y8y3-fqfu` stopped updating. |
+| City land area | U.S. Census Bureau QuickFacts, Los Angeles city, 2020 | 469.49 square miles. Used only for the citywide rate. |
 | Olympic venues | LA28 official venues page (la28.org) | Cross-checked and geocoded; verification status per row in `la28_venues.csv` |
 | Metro rail/bus | LA Metro GTFS (via LACMTA GitHub) | Static schedule data, not live |
 | Fire stations | data.lacity.org | Static |
 | Police/Sheriff stations | LA County GIS | Static |
 | Hospitals | `hospitals_in_LA.csv` | LA County hospital facility data; normalized by the pipeline |
+| Event permits | LADBS temporary special event permits | Matched to the nearest venue within 800 m. Weaker than a published game list. |
+| Dodger home games | MLB home-game list, 2020–2024 | Dodger Stadium only. Separate from the permit comparison. |
+| Listed events | Ticketmaster Discovery | Calendar only. Not joined to crime counts. |
 
-## Immediate next steps 
+## Immediate next steps
 1. Cross-check the jurisdiction flag against an actual LAPD boundary map.
-2. Revisit traffic data joins and stretch goals (NIBRS layer, anomaly detection) if time remains.
+2. If the event-day gaps need to be more defensible, stratify them by day of week or add day of week (and a 2020 term) to a count model. Say on the page that the per-group tests are uncorrected.
+3. Traffic still needs a Los Angeles source. Do not wire in the District 8 spreadsheet.
 
 ## How to run
 
@@ -67,21 +79,33 @@ python -m uvicorn backend.main:app --reload
 
 Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
-The app serves the processed JSON already in `data/processed/`. If those files are missing, build them first:
+The app serves the processed JSON already in `data/processed/`. If the 2020–2024 files are missing, build them first:
 
 ```bash
 python -m pipeline.run
+python -m pipeline.crime_time
+python -m pipeline.crime_distance
 ```
 
-Default buffer is 800 m. Pass `--radius-m` to change it. The API reloads the JSON when those files change on disk.
+Default buffer is 800 m. Pass `--radius-m` to change it on `pipeline.run`. The API reloads JSON when those files change on disk. Python changes need a server restart. Static files under `frontend/` do not.
 
-NIBRS offenses are a separate LAPD extract, starting March 7, 2024. The 2024–2025 view (`y8y3-fqfu`) stopped updating on August 18, 2026 and was merged into the current dataset (`k7nn-b2ep`), which still changes and includes 2025 through the present. Download or refresh both views with:
+When the 2024–present extract updates, refresh in this order. The scheduled task only downloads; it does not rebuild the JSON the site reads.
 
 ```bash
 python -m pipeline.nibrs
+python -m pipeline.merge_crime
+python -m pipeline.nibrs_charts
+python -m pipeline.city_baseline
 ```
 
-The command reads each view's Socrata `rowsUpdatedAt` and downloads only when that time changes. `python -m pipeline.nibrs --install-schedule` registers a daily 6:15am check that does the same thing. NIBRS keeps one row per offense, so those files stay in `data/raw/nibrs/` and are not added to the 2020–2024 incident totals. `python -m pipeline.merge_crime` writes a separate `data/processed/crime_merged.json`: reports dated before March 7, 2024, then NIBRS offenses. It does not change the other data files.
+`python -m pipeline.nibrs` reads Socrata `rowsUpdatedAt` for view `k7nn-b2ep` and downloads only when that time changes. `python -m pipeline.nibrs --install-schedule` registers a daily 6:15am download. NIBRS keeps one row per offense in `data/raw/nibrs/`. `merge_crime` writes `crime_merged.json`: reports dated before March 7, 2024, then NIBRS offenses. It does not change the 2020–2024 files. `nibrs_charts` rebuilds the NIBRS time, distance, weekday, and permit-day charts. `city_baseline` rebuilds the city rate, including the 2020–present blend. The default map heatmap stays on the 2020–2024 extract until `pipeline.run` is used again.
+
+Permit days and Ticketmaster listings are separate builds. Run them when those source files change, not as part of a NIBRS refresh. `dodger_event_risk.json` is not rebuilt by these commands.
+
+```bash
+python -m pipeline.permit_event_days
+python -m pipeline.ticketmaster_listings
+```
 
 Click a marker or a venue in the list to zoom in and open its briefing under the map. The selected venue's crime heatmap and analysis radius appear on the map. Close returns to the full venue view. Configure a referrer-restricted Google Maps JavaScript API key before starting the server:
 
@@ -91,7 +115,7 @@ Put the key in a repo-root `.env` file (`GOOGLE_MAPS_API_KEY=...`). The server r
 python -m uvicorn backend.main:app --reload
 ```
 
-Useful endpoints: `/api/health`, `/api/meta`, `/api/map`, `/api/venues`, `/api/venues/{venue_id}`, `/api/venues/{venue_id}/crime-points`.
+Useful endpoints: `/api/health`, `/api/meta`, `/api/map`, `/api/map/layers`, `/api/map/crime`, `/api/venues`, `/api/venues/{venue_id}`, `/api/venues/{venue_id}/crime-points`, `/api/venues/{venue_id}/permit-comparison`, `/api/venues/{venue_id}/home-games`.
 
 ### Prediction data collectors
 
@@ -165,9 +189,9 @@ The chatbot uses the supplied robot image in the launcher, header, messages, and
 Run the checks from the repo root:
 
 ```bash
-.venv/bin/python -m unittest tests.test_pipeline tests.test_nibrs tests.test_merge tests.test_api tests.test_chat tests.test_context_chat tests.test_claude
-node --check frontend/app.js
+python -m unittest
 node --check frontend/chat.js
+for f in frontend/js/*.js; do node --check "$f"; done
 ```
 
 The two citywide heatmap tests in `tests.test_api` also need the raw, gitignored `data/Crime_Data_from_2020_to_2024.csv`. If it is absent, those routes return HTTP 503 and those tests fail. The chatbot and per-venue endpoints use the processed JSON. Run chatbot checks alone with `.venv/bin/python -m unittest tests.test_chat tests.test_context_chat tests.test_claude`. Claude tests use a mock HTTP transport and make no external or paid API calls.
