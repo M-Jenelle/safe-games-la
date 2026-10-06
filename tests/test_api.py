@@ -58,8 +58,8 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(clock["total"], body["crime_count_nearby"])
         self.assertEqual(clock["noon_count"], 311)
         self.assertEqual(clock["unknown_count"], 0)
+        self.assertIn("800m buffer", clock["disclaimer"])
         self.assertIn("unknown hour", clock["disclaimer"])
-        self.assertIn("311 reports at 12:00", clock["disclaimer"])
         self.assertEqual(
             {period["id"]: period["count"] for period in clock["periods"]},
             {"night": 2041, "morning": 2551, "afternoon": 4432, "evening": 5146},
@@ -67,8 +67,11 @@ class ApiTests(unittest.TestCase):
         evening = next(period for period in clock["periods"] if period["id"] == "evening")
         self.assertEqual(sum(group["count"] for group in evening["groups"]), evening["count"])
         self.assertEqual(evening["groups"][0]["label"], "Vehicle")
+        self.assertEqual(sum(item["total"] for item in clock["by_month"].values()), clock["total"])
+        self.assertEqual(clock["by_month"]["2023-03"]["total"], 342)
         distance = body["crime_distance"]
         self.assertEqual(distance["total"], body["crime_count_nearby"])
+        self.assertEqual(sum(item["total"] for item in distance["by_month"].values()), distance["total"])
         self.assertIn("not a crime at the door", distance["disclaimer"])
         self.assertEqual(
             {band["id"]: band["count"] for band in distance["bands"]},
@@ -77,6 +80,23 @@ class ApiTests(unittest.TestCase):
         far = next(band for band in distance["bands"] if band["id"] == "far")
         self.assertEqual(sum(group["count"] for group in far["groups"]), far["count"])
         self.assertNotIn("ticketmaster", body)
+        nibrs_time = body["nibrs_time"]
+        self.assertEqual(nibrs_time["total"], body["nibrs"]["count"])
+        self.assertIn("NIBRS offenses", nibrs_time["disclaimer"])
+        self.assertEqual(sum(period["count"] for period in nibrs_time["periods"]), nibrs_time["total"])
+        self.assertEqual(sum(item["total"] for item in nibrs_time["by_month"].values()), nibrs_time["total"])
+        self.assertNotIn("2023-03", nibrs_time["by_month"])
+        nibrs_distance = body["nibrs_distance"]
+        self.assertEqual(nibrs_distance["total"], body["nibrs"]["count"])
+        self.assertIn("not a crime at the door", nibrs_distance["disclaimer"])
+        nibrs_permit = self.client.get("/api/venues/V04/permit-comparison?source=nibrs")
+        self.assertEqual(nibrs_permit.status_code, 200)
+        nibrs_body = nibrs_permit.json()
+        self.assertTrue(nibrs_body["available"])
+        self.assertEqual(nibrs_body["source"], "nibrs")
+        self.assertIn("NIBRS offenses", nibrs_body["source_note"])
+        self.assertIn("2025", nibrs_body["years"])
+        self.assertEqual(nibrs_body["upcoming"], [])
 
     def test_ticketmaster_listings(self):
         dodger = self.client.get("/api/venues/V01").json()["ticketmaster"]

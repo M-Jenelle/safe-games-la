@@ -68,6 +68,24 @@ def venue_distance_block(points: list[dict], latitude: float, longitude: float) 
     }
 
 
+def distance_by_month(points: list[dict], latitude: float, longitude: float) -> dict[str, dict]:
+    """Distance-band counts for each YYYY-MM that has at least one point."""
+    buckets: dict[str, list[dict]] = {}
+    for point in points:
+        month = str(point.get("date") or "")[:7]
+        if len(month) != 7 or month[4] != "-":
+            continue
+        buckets.setdefault(month, []).append(point)
+    return {
+        month: {
+            "total": block["total"],
+            "bands": block["bands"],
+        }
+        for month, rows in buckets.items()
+        for block in (venue_distance_block(rows, latitude, longitude),)
+    }
+
+
 def build_distance(points: dict, venues: list[dict]) -> dict:
     origins = {
         str(venue["venue_id"]): (float(venue["latitude"]), float(venue["longitude"]))
@@ -79,7 +97,10 @@ def build_distance(points: dict, venues: list[dict]) -> dict:
         origin = origins.get(str(venue_id))
         if origin is None:
             continue
-        built[venue_id] = venue_distance_block(block.get("points") or [], *origin)
+        rows = block.get("points") or []
+        built_block = venue_distance_block(rows, *origin)
+        built_block["by_month"] = distance_by_month(rows, *origin)
+        built[venue_id] = built_block
     return {
         "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "venues": built,

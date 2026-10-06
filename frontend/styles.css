@@ -1171,6 +1171,17 @@ select { width: 132px; }
 
 .footnote { margin-top: 20px; }
 
+.terms {
+  margin: 12px 0 0;
+  padding: 7px 10px 7px 12px;
+  border-left: 2px solid rgba(0, 133, 199, 0.55);
+  background: rgba(0, 133, 199, 0.07);
+  color: #24303a;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -1204,6 +1215,29 @@ select { width: 132px; }
   align-items: flex-start;
   gap: 16px 32px;
 }
+
+.pie-pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 20px 32px;
+}
+
+.pie-pair-slots {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.pie-column {
+  flex: 1 1 300px;
+  min-width: 260px;
+}
+
+.pie-column .pie-block { max-width: none; }
+
+.pie-drill { margin-top: 10px; }
+
+.pie-guide { margin-top: 6px; }
 
 .pie-block {
   display: flex;

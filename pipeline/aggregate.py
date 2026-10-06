@@ -241,10 +241,7 @@ def build_venue_outputs(
         "buffer_area_km2": round(area_km2, 6),
         "distance": "haversine, earth radius 6371000 m",
         "jurisdiction_method": (
-            "lapd_jurisdiction is true when the nearest municipal or sheriff "
-            "station belongs to the Los Angeles Police Department. State and "
-            "federal stations are excluded. This is a nearest-station estimate, "
-            "not an official boundary."
+            "This is a nearest-station estimate, not an official boundary."
         ),
         "crime_points_note": (
             "An incident that falls inside more than one venue buffer is listed "

@@ -35,6 +35,7 @@ PERMIT_LIFT_PATH = REPO_ROOT / "data" / "processed" / "permit_event_lift.json"
 TIME_PATH = REPO_ROOT / "data" / "processed" / "crime_time_of_day.json"
 DISTANCE_PATH = REPO_ROOT / "data" / "processed" / "crime_by_distance.json"
 LISTINGS_PATH = REPO_ROOT / "data" / "processed" / "ticketmaster_listings.json"
+NIBRS_CHARTS_PATH = REPO_ROOT / "data" / "processed" / "nibrs_charts.json"
 
 _summary: dict | None = None
 _summary_mtime: float | None = None
@@ -56,6 +57,8 @@ _crime_distance: dict | None = None
 _crime_distance_mtime: float | None = None
 _listings: dict | None = None
 _listings_mtime: float | None = None
+_nibrs_charts: dict | None = None
+_nibrs_charts_mtime: float | None = None
 
 # First matching rule wins. Descriptions are the LAPD "Crm Cd Desc" text.
 CRIME_TYPES = (
@@ -221,6 +224,10 @@ def get_venue(venue_id: str) -> dict | None:
             listings = ticketmaster_for(venue_id)
             if listings:
                 enriched["ticketmaster"] = listings
+            nibrs_charts = nibrs_charts_for(venue_id)
+            if nibrs_charts:
+                enriched["nibrs_time"] = nibrs_charts.get("time") or {}
+                enriched["nibrs_distance"] = nibrs_charts.get("distance") or {}
             return enriched
     return None
 
@@ -288,6 +295,27 @@ def ticketmaster_for(venue_id: str) -> dict | None:
     return (payload.get("venues") or {}).get(venue_id)
 
 
+def load_nibrs_charts() -> dict | None:
+    """NIBRS time, distance, and permit-day rows. Empty when that file is absent."""
+    global _nibrs_charts, _nibrs_charts_mtime
+    if not NIBRS_CHARTS_PATH.exists():
+        _nibrs_charts = None
+        _nibrs_charts_mtime = None
+        return None
+    mtime = NIBRS_CHARTS_PATH.stat().st_mtime
+    if _nibrs_charts is None or mtime != _nibrs_charts_mtime:
+        _nibrs_charts = json.loads(NIBRS_CHARTS_PATH.read_text(encoding="utf-8"))
+        _nibrs_charts_mtime = mtime
+    return _nibrs_charts
+
+
+def nibrs_charts_for(venue_id: str) -> dict | None:
+    payload = load_nibrs_charts()
+    if not payload:
+        return None
+    return (payload.get("venues") or {}).get(venue_id)
+
+
 def get_crime_points(venue_id: str) -> dict | None:
     block = load_crime_points().get("by_venue", {}).get(venue_id)
     if block is None:
@@ -347,20 +375,30 @@ def load_permit_upcoming() -> dict[str, list[dict]]:
     return _permit_upcoming
 
 
-def permit_comparison(venue_id: str, year: str = "all", month: str = "all") -> dict | None:
+def permit_comparison(venue_id: str, year: str = "all", month: str = "all", source: str = "reports") -> dict | None:
     """Permit-day versus other-day means. None when the venue id is unknown."""
     match = next((venue for venue in load_summary()["venues"] if venue["venue_id"] == venue_id), None)
     if match is None:
         return None
-    rows = load_permit_day_rows().get(venue_id) or []
+    if source == "nibrs":
+        charts = load_nibrs_charts() or {}
+        block = (charts.get("venues") or {}).get(venue_id) or {}
+        rows = block.get("permit_rows") or []
+    else:
+        rows = load_permit_day_rows().get(venue_id) or []
     if not rows:
-        return {"available": False, "venue_id": venue_id, "venue_name": match["venue_name"]}
+        return {"available": False, "venue_id": venue_id, "venue_name": match["venue_name"], "source": source}
     note = None
     if venue_id == "V01":
         note = "These figures use permit days, not the MLB home-game list."
     venue_name = rows[0].get("venue_name") or match["venue_name"]
     view = comparison_view(rows, year=year, month=month, venue_id=venue_id, venue_name=venue_name, note=note)
-    view["upcoming"] = load_permit_upcoming().get(venue_id) or []
+    view["source"] = source
+    if source == "nibrs":
+        view["source_note"] = (load_nibrs_charts() or {}).get("permit_note") or ""
+        view["upcoming"] = []
+    else:
+        view["upcoming"] = load_permit_upcoming().get(venue_id) or []
     return view
 
 

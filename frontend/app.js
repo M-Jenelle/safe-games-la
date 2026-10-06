@@ -749,11 +749,8 @@ const PERMIT_HINTS = {
   "Several permits": "Days covered by two or more permits. Those dates are still one permit day.",
   "Days": "How many dates are in this row.",
   "Reports per day": "Average reports on the dates in this row.",
+  "Offenses per day": "Average NIBRS offenses on the dates in this row. One case can include more than one offense.",
   "Difference vs other days": "This row's average minus the average on other days. Other days is the baseline, so that row has no difference.",
-  "Later permit dates": "Permit spans after 2024. The gap quoted here is the past overall pattern, not a forecast for these dates.",
-  "Dates": "Consecutive days with the same events and the same permit count are one row.",
-  "Permits": "How many permits cover this span.",
-  "Events": "The event names on the permit. A permit records that a temporary event was allowed. It does not record attendance or a start time.",
   "Listed events": "Ticketmaster listings matched to this venue. The dates are after 2024, so they are not joined to the crime reports.",
   "Month": "Calendar month of the listings. A month with no listing is still shown, so the gap stays visible.",
   "Listings": "How many Ticketmaster events fall in this month.",
@@ -1169,7 +1166,7 @@ function renderOverview() {
       stationCard("Police", venue.nearest_police_station),
       stationCard("Hospital", venue.nearest_hospital),
     ]),
-    el("p", { className: "footnote" }, [text(state.meta?.jurisdiction_method || "")]),
+    el("p", { className: "terms" }, [text(state.meta?.jurisdiction_method || "")]),
   );
 }
 
@@ -1247,8 +1244,8 @@ function groupRows(groups) {
   });
 }
 
-function permitLoadTable(rows) {
-  const labels = ["", "Days", "Reports per day", "Median", "Difference vs other days"];
+function permitLoadTable(rows, unit) {
+  const labels = ["", "Days", unit === "offenses" ? "Offenses per day" : "Reports per day", "Median", "Difference vs other days"];
   return el("div", { className: "month-table-wrap" }, [
     el("table", { className: "month-table permit-table" }, [
       el("thead", {}, [el("tr", {}, labels.map((label) => el("th", {}, [withInfo(label)])))]),
@@ -1258,20 +1255,6 @@ function permitLoadTable(rows) {
         el("td", {}, [text(formatMaybeMean(row.mean))]),
         el("td", {}, [text(row.median == null ? "—" : formatMedian(row.median))]),
         el("td", {}, [text(row.label === "Other days" ? "—" : formatGap(row))]),
-      ]))),
-    ]),
-  ]);
-}
-
-function upcomingTable(rows) {
-  const labels = ["Dates", "Permits", "Events"];
-  return el("div", { className: "month-table-wrap" }, [
-    el("table", { className: "month-table permit-upcoming" }, [
-      el("thead", {}, [el("tr", {}, labels.map((label) => el("th", {}, [withInfo(label)])))]),
-      el("tbody", {}, rows.map((row) => el("tr", {}, [
-        el("th", { scope: "row" }, [text(formatPermitSpan(row.start, row.end))]),
-        el("td", {}, [text(formatNumber(row.permit_count))]),
-        el("td", { className: "event-names" }, [text((row.event_names || []).join(" · ") || "Permit")]),
       ]))),
     ]),
   ]);
@@ -1400,24 +1383,23 @@ function mountListingSection(block, host) {
   host.replaceChildren(el("section", { className: "permit-section listing-section", "aria-label": "Listed events" }, [
     el("h3", { className: "section-title" }, [withInfo("Listed events")]),
     el("p", { className: "muted" }, [text(block.note || "")]),
-    block.busiest ? el("p", { className: "muted" }, [text(block.busiest)]) : el("span"),
-    block.clock ? el("p", { className: "muted" }, [text(block.clock)]) : el("span"),
     el("p", { className: "muted" }, [text("Click a month to see its events. Click it again to clear.")]),
     el("div", { className: "listing-split" }, [monthHost, eventHost]),
-    el("p", { className: "footnote" }, [text(block.disclaimer || "")]),
+    el("p", { className: "terms" }, [text(block.disclaimer || "")]),
   ]));
 }
 
-function mountPermitSection(venueId, host) {
+function mountPermitSection(venueId, host, source) {
   let request = 0;
   let groupsExpanded = false;
-  let upcomingExpanded = false;
+  const series = source === "nibrs" ? "nibrs" : "reports";
+  const unit = series === "nibrs" ? "offenses" : "reports";
 
   async function refresh() {
     const token = ++request;
     let body;
     try {
-      body = await fetchJson(`/api/venues/${encodeURIComponent(venueId)}/permit-comparison`);
+      body = await fetchJson(`/api/venues/${encodeURIComponent(venueId)}/permit-comparison?source=${series}`);
     } catch (error) {
       if (token === request) host.replaceChildren();
       return;
@@ -1454,57 +1436,32 @@ function mountPermitSection(venueId, host) {
     const groupBlock = groups.length
       ? [
         el("h3", { className: "section-title" }, [withInfo("Offense groups")]),
-        el("p", { className: "muted" }, [text("Groups that differ by at least 0.05 reports per day.")]),
+        el("p", { className: "muted" }, [text(`Groups that differ by at least 0.05 ${unit} per day.`)]),
         groupList,
         groupToggle,
       ]
       : (body.summary.event_day_count >= 8
-        ? [el("p", { className: "muted" }, [text("No offense group differs by at least 0.05 reports per day.")])]
+        ? [el("p", { className: "muted" }, [text(`No offense group differs by at least 0.05 ${unit} per day.`)])]
         : []);
     if (groups.length) paintGroups();
     const loadRows = body.permit_load || [];
     const loadBlock = loadRows.length ? [
       el("h3", { className: "section-title" }, [withInfo("Permits on the same day")]),
       el("p", { className: "muted" }, [text("One permit on the day, versus several. Both are compared with other days.")]),
-      permitLoadTable(loadRows),
+      permitLoadTable(loadRows, unit),
     ] : [];
-    const upcoming = body.upcoming || [];
-    const upcomingHost = el("div");
-    const upcomingNote = el("p", { className: "muted" }, [text(
-      `These dates use the overall gap of ${formatGap(body.summary)}. That is the past pattern, not a prediction of these dates.`,
-    )]);
-    const upcomingToggle = el("button", { className: "show-more", type: "button" }, [text("Show more")]);
-
-    function paintUpcoming() {
-      const visible = upcomingExpanded ? upcoming : upcoming.slice(0, 8);
-      upcomingToggle.hidden = upcoming.length <= 8;
-      upcomingToggle.textContent = upcomingExpanded ? "Show less" : "Show more";
-      upcomingHost.replaceChildren(upcomingTable(visible));
-    }
-
-    upcomingToggle.addEventListener("click", () => {
-      upcomingExpanded = !upcomingExpanded;
-      paintUpcoming();
-    });
-    const upcomingBlock = upcoming.length ? [
-      el("h3", { className: "section-title" }, [withInfo("Later permit dates")]),
-      upcomingNote,
-      upcomingHost,
-      upcomingToggle,
-    ] : [];
-    if (upcoming.length) paintUpcoming();
     host.replaceChildren(el("section", { className: "permit-section", "aria-label": "Permit days" }, [
       el("h3", { className: "section-title" }, [withInfo("Permit days vs other days")]),
       el("p", { className: "muted" }, [text(
         "A permit day is a day covered by a temporary-event permit. Other days are the rest of the months that had a permit.",
       )]),
       venueNote,
+      body.source_note ? el("p", { className: "terms" }, [text(body.source_note)]) : el("span"),
       percentNote,
       body.empty ? el("span") : permitTable(rows),
       ...groupBlock,
       ...loadBlock,
-      ...upcomingBlock,
-      el("p", { className: "footnote" }, [text(body.disclaimer || "")]),
+      el("p", { className: "terms" }, [text(body.disclaimer || "")]),
     ]));
   }
 
@@ -1590,7 +1547,7 @@ function pieBlock(entries, total, options = {}) {
     const selectedStroke = entry.color.toLowerCase() === "#000000" ? "#ffffff" : "#1a1a1a";
     path.setAttribute("stroke", selected ? selectedStroke : "#f7f6f4");
     path.setAttribute("stroke-width", selected ? "2" : "1");
-    const detailText = `${formatNumber(entry.count)} incidents · ${shareLabel(entry.count, total)}`;
+    const detailText = `${formatNumber(entry.count)} ${options.countWord || "incidents"} · ${shareLabel(entry.count, total)}`;
     const show = (event) => showSliceTip(event, entry.label, detailText);
     path.addEventListener("mouseenter", show);
     path.addEventListener("mousemove", (event) => {
@@ -1621,7 +1578,7 @@ function pieBlock(entries, total, options = {}) {
       el("span", {}, [text(entry.label)]),
       el("strong", {}, [text(`${formatNumber(entry.count)} · ${shareLabel(entry.count, total)}`)]),
     ]);
-    const detailText = `${formatNumber(entry.count)} incidents · ${shareLabel(entry.count, total)}`;
+    const detailText = `${formatNumber(entry.count)} ${options.countWord || "incidents"} · ${shareLabel(entry.count, total)}`;
     const show = (event) => showSliceTip(event, entry.label, detailText);
     row.addEventListener("mouseenter", show);
     row.addEventListener("mousemove", (event) => {
@@ -1644,10 +1601,24 @@ function groupEntries(groups) {
   }));
 }
 
+function pieSlices(block, colorFor) {
+  return (block?.periods || block?.bands || []).map((item) => ({
+    ...item,
+    color: colorFor(item.id),
+  }));
+}
+
 function mountDrillPie(host, options) {
   const slices = (options.slices || []).filter((slice) => slice.count);
   if (!slices.length) {
-    host.replaceChildren();
+    if (!options.monthLabel) {
+      host.replaceChildren();
+      return;
+    }
+    host.replaceChildren(el("section", { className: "time-section", "aria-label": options.title }, [
+      el("h3", { className: "section-title" }, [text(options.title)]),
+      el("p", { className: "muted" }, [text(`${options.monthLabel}. None in this month.`)]),
+    ]));
     return;
   }
   let selected = "";
@@ -1658,6 +1629,7 @@ function mountDrillPie(host, options) {
     const chosen = slices.find((slice) => slice.id === selected);
     const primary = pieBlock(slices, options.total, {
       selectedId: selected,
+      countWord: options.countWord,
       onPick: (id) => {
         selected = selected === id ? "" : id;
         paint();
@@ -1671,6 +1643,7 @@ function mountDrillPie(host, options) {
       primary,
       pieBlock(groupEntries(chosen.groups), chosen.count, {
         caption: `Crimes, ${chosen.label}`,
+        countWord: options.countWord,
       }),
     );
   }
@@ -1679,18 +1652,120 @@ function mountDrillPie(host, options) {
     el("h3", { className: "section-title" }, [text(options.title)]),
     el("p", { className: "muted" }, [text(options.hint)]),
     row,
-    el("p", { className: "muted" }, [text(options.disclaimer || "")]),
+    el("p", { className: "terms" }, [text(options.disclaimer || "")]),
+    options.guide ? el("p", { className: "muted pie-guide" }, [text(options.guide)]) : el("span"),
   ]));
   paint();
 }
 
-function mountTimeSection(crimeTime, host) {
+function crimePie(chosen, countWord) {
+  return pieBlock(groupEntries(chosen.groups), chosen.count, {
+    caption: `Crimes, ${chosen.label}`,
+    countWord,
+  });
+}
+
+function mountPairedPies(host, options) {
+  const panels = options.panels.map((panel) => ({
+    ...panel,
+    slices: (panel.slices || []).filter((slice) => slice.count),
+  }));
+  const blank = panels.map((panel) => !panel.slices.length);
+  const hint = blank[0] !== blank[1]
+    ? "Click a slice to see the crimes in the open space. Click it again to clear."
+    : options.hint;
+
+  if (blank[0] && blank[1]) {
+    host.replaceChildren(el("section", { className: "time-section", "aria-label": options.title }, [
+      el("h3", { className: "section-title" }, [text(options.title)]),
+      el("p", { className: "muted" }, [text(options.month ? `${options.month}. None in this month.` : "None in this range.")]),
+    ]));
+    return;
+  }
+
+  if (blank[0] !== blank[1]) {
+    const liveIndex = blank[0] ? 1 : 0;
+    const live = panels[liveIndex];
+    let selected = "";
+    const liveHost = el("div");
+    const crimeHost = el("div");
+
+    function paint() {
+      hideChartTip();
+      const chosen = live.slices.find((slice) => slice.id === selected);
+      liveHost.replaceChildren(pieBlock(live.slices, live.total, {
+        selectedId: selected,
+        countWord: live.countWord,
+        onPick: (id) => {
+          selected = selected === id ? "" : id;
+          paint();
+        },
+      }));
+      crimeHost.replaceChildren(chosen ? crimePie(chosen, live.countWord) : el("span"));
+    }
+
+    paint();
+    const liveColumn = el("div", { className: "pie-column" }, [
+      el("p", { className: "listing-caption" }, [text(live.label)]),
+      liveHost,
+      el("p", { className: "terms" }, [text(live.disclaimer || "")]),
+    ]);
+    const crimeColumn = el("div", { className: "pie-column pie-slot" }, [crimeHost]);
+    host.replaceChildren(el("section", { className: "time-section", "aria-label": options.title }, [
+      el("h3", { className: "section-title" }, [text(options.title)]),
+      el("p", { className: "muted" }, [text(options.month ? `${options.month}. ${hint}` : hint)]),
+      el("div", { className: "pie-pair pie-pair-slots" }, blank[0] ? [crimeColumn, liveColumn] : [liveColumn, crimeColumn]),
+    ]));
+    return;
+  }
+
+  const columns = panels.map((panel) => {
+    const primaryHost = el("div");
+    const drillHost = el("div", { className: "pie-drill" });
+    let selected = "";
+
+    function paint() {
+      hideChartTip();
+      const chosen = panel.slices.find((slice) => slice.id === selected);
+      primaryHost.replaceChildren(pieBlock(panel.slices, panel.total, {
+        selectedId: selected,
+        countWord: panel.countWord,
+        onPick: (id) => {
+          selected = selected === id ? "" : id;
+          paint();
+        },
+      }));
+      drillHost.replaceChildren(chosen ? crimePie(chosen, panel.countWord) : el("span"));
+    }
+
+    paint();
+    return el("div", { className: "pie-column" }, [
+      el("p", { className: "listing-caption" }, [text(panel.label)]),
+      primaryHost,
+      drillHost,
+      el("p", { className: "terms" }, [text(panel.disclaimer || "")]),
+    ]);
+  });
+
+  host.replaceChildren(el("section", { className: "time-section", "aria-label": options.title }, [
+    el("h3", { className: "section-title" }, [text(options.title)]),
+    el("p", { className: "muted" }, [text(options.month ? `${options.month}. ${hint}` : hint)]),
+    el("div", { className: "pie-pair" }, columns),
+  ]));
+}
+
+const PIE_GUIDE = "Choose “NIBRS offenses, Mar 2024–present” in Series, above, to see the 2024–present chart.";
+
+function mountTimeSection(crimeTime, host, countWord, guide, monthLabel) {
   const periods = crimeTime?.periods || [];
   mountDrillPie(host, {
     title: "Crimes by time of day",
     hint: "Click a slice to see the crimes in that part of the day. Click it again to clear.",
     disclaimer: crimeTime?.disclaimer || "",
+    guide,
+    monthLabel,
     total: crimeTime?.total || 0,
+    countWord,
     slices: periods.map((period) => ({
       ...period,
       color: TIME_COLORS[period.id] || "#4e5963",
@@ -1698,17 +1773,75 @@ function mountTimeSection(crimeTime, host) {
   });
 }
 
-function mountDistanceSection(crimeDistance, host) {
+function mountDistanceSection(crimeDistance, host, countWord, guide, monthLabel) {
   const bands = crimeDistance?.bands || [];
   mountDrillPie(host, {
     title: "Distance from the venue",
     hint: "Click a slice to see the crimes in that distance. Click it again to clear.",
     disclaimer: crimeDistance?.disclaimer || "",
+    guide,
+    monthLabel,
     total: crimeDistance?.total || 0,
+    countWord,
     slices: bands.map((band) => ({
       ...band,
       color: DISTANCE_COLORS[band.id] || "#4e5963",
     })),
+  });
+}
+
+function scopedBlock(block, month) {
+  if (!month) return block || {};
+  const scoped = block?.by_month?.[month];
+  if (!scoped) return { total: 0, periods: [], bands: [], disclaimer: block?.disclaimer || "" };
+  return { ...scoped, disclaimer: block?.disclaimer || "" };
+}
+
+function mountTimePair(host, reports, nibrs, month) {
+  mountPairedPies(host, {
+    title: "Crimes by time of day",
+    month,
+    hint: "Click a slice to see the crimes below that chart. Click it again to clear.",
+    panels: [
+      {
+        label: "2020–2024 reports",
+        slices: pieSlices(reports, (id) => TIME_COLORS[id] || "#4e5963"),
+        total: reports?.total || 0,
+        countWord: "incidents",
+        disclaimer: reports?.disclaimer || "",
+      },
+      {
+        label: "NIBRS offenses, Mar 2024–present",
+        slices: pieSlices(nibrs, (id) => TIME_COLORS[id] || "#4e5963"),
+        total: nibrs?.total || 0,
+        countWord: "offenses",
+        disclaimer: nibrs?.disclaimer || "",
+      },
+    ],
+  });
+}
+
+function mountDistancePair(host, reports, nibrs, month) {
+  mountPairedPies(host, {
+    title: "Distance from the venue",
+    month,
+    hint: "Click a slice to see the crimes below that chart. Click it again to clear.",
+    panels: [
+      {
+        label: "2020–2024 reports",
+        slices: pieSlices(reports, (id) => DISTANCE_COLORS[id] || "#4e5963"),
+        total: reports?.total || 0,
+        countWord: "incidents",
+        disclaimer: reports?.disclaimer || "",
+      },
+      {
+        label: "NIBRS offenses, Mar 2024–present",
+        slices: pieSlices(nibrs, (id) => DISTANCE_COLORS[id] || "#4e5963"),
+        total: nibrs?.total || 0,
+        countWord: "offenses",
+        disclaimer: nibrs?.disclaimer || "",
+      },
+    ],
   });
 }
 
@@ -1946,6 +2079,7 @@ function renderDetail() {
     categoriesExpanded = false;
     markMonth(selectedKey);
     paintCategories();
+    paintPies();
   }
 
   function readRange(changed) {
@@ -1965,6 +2099,7 @@ function renderDetail() {
     paintTable();
     markMonth(selectedKey);
     paintCategories();
+    paintPies();
   }
 
   function seriesNote() {
@@ -1972,9 +2107,43 @@ function renderDetail() {
       return "Each row is one NIBRS offense, so one case can count more than once. Click a bar or a table cell to filter types to that month. Click it again to clear. Red is the busiest month.";
     }
     if (seriesId === "merged") {
-      return "Reports before March 7, 2024, then NIBRS offenses. Types are shared groups. Click a bar or a table cell to filter. Click it again to clear. Red is the busiest month.";
+      return "Reports before March 7, 2024, then NIBRS offenses. Types are shared groups. Permit days in this view use 2020–2024 reports. Click a bar or a table cell to filter. Click it again to clear. Red is the busiest month.";
     }
     return "Click a bar or a table cell to filter incident types to that month. Click it again to clear. Red is the busiest month.";
+  }
+
+  function paintPies() {
+    const month = selectedKey;
+    const monthName = month ? monthTitle(month) : "";
+    const reportsTime = scopedBlock(venue.crime_time, month);
+    const nibrsTime = scopedBlock(venue.nibrs_time, month);
+    const reportsDistance = scopedBlock(venue.crime_distance, month);
+    const nibrsDistance = scopedBlock(venue.nibrs_distance, month);
+    if (seriesId === "merged") {
+      mountTimePair(timeHost, reportsTime, nibrsTime, monthName);
+      mountDistancePair(distanceHost, reportsDistance, nibrsDistance, monthName);
+      return;
+    }
+    const nibrsSeries = seriesId === "nibrs";
+    const countWord = nibrsSeries ? "offenses" : "incidents";
+    const guide = nibrsSeries || month ? "" : PIE_GUIDE;
+    const timeBlock = nibrsSeries ? nibrsTime : reportsTime;
+    const distanceBlock = nibrsSeries ? nibrsDistance : reportsDistance;
+    mountTimeSection(timeBlock, timeHost, countWord, guide, monthName);
+    mountDistanceSection(distanceBlock, distanceHost, countWord, guide, monthName);
+    if (monthName) {
+      for (const host of [timeHost, distanceHost]) {
+        const hint = host.querySelector(".time-section > .muted");
+        if (hint && !hint.textContent.startsWith(monthName)) {
+          hint.textContent = `${monthName}. ${hint.textContent}`;
+        }
+      }
+    }
+  }
+
+  function paintCharts() {
+    paintPies();
+    mountPermitSection(venue.venue_id, permitHost, seriesId === "nibrs" ? "nibrs" : "reports");
   }
 
   function applySeries() {
@@ -1998,6 +2167,7 @@ function renderDetail() {
     )));
     chartHost.replaceChildren(monthChart(entries, peakNow?.key, selectMonth, seriesData().word));
     seriesHint.textContent = seriesNote();
+    paintCharts();
     paintTable();
     markMonth(selectedKey);
     paintCategories();
@@ -2073,11 +2243,8 @@ function renderDetail() {
       stationCard("Police", venue.nearest_police_station),
       stationCard("Hospital", venue.nearest_hospital),
     ]),
-    el("p", { className: "footnote" }, [text(state.meta.jurisdiction_method)]),
+    el("p", { className: "terms" }, [text(state.meta.jurisdiction_method)]),
   ]));
-  mountTimeSection(venue.crime_time, timeHost);
-  mountDistanceSection(venue.crime_distance, distanceHost);
-  mountPermitSection(venue.venue_id, permitHost);
   mountListingSection(venue.ticketmaster, listingHost);
 }
 

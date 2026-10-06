@@ -38,8 +38,8 @@ GROUP_ORDER = (
     "other",
 )
 DISCLAIMER = (
-    "These hours come from the police report, 2020–2024, inside the 800 m buffer. "
-    "12:00 exactly is often an unknown hour, so the 12pm–6pm slice runs a little high."
+    "Uses 2020-2024 reports and is inside the 800m buffer.\n"
+    "12:00 is often used for unknown hour."
 )
 
 
@@ -65,16 +65,7 @@ def classify_time(value: object) -> tuple[str | None, bool]:
 
 
 def disclaimer_for(noon_count: int, unknown_count: int) -> str:
-    text = DISCLAIMER
-    if noon_count == 1:
-        text += " This venue has 1 report at 12:00."
-    elif noon_count:
-        text += f" This venue has {noon_count:,} reports at 12:00."
-    if unknown_count == 1:
-        text += " 1 report has no usable hour and is left off the chart."
-    elif unknown_count:
-        text += f" {unknown_count:,} reports have no usable hour and are left off the chart."
-    return text
+    return DISCLAIMER
 
 
 def venue_time_block(points: list[dict], times: dict[str, int]) -> dict:
@@ -127,10 +118,31 @@ def load_times(path: Path) -> dict[str, int]:
     return times
 
 
+def time_by_month(points: list[dict], times: dict[str, int]) -> dict[str, dict]:
+    """Part-of-day counts for each YYYY-MM that has at least one point."""
+    buckets: dict[str, list[dict]] = {}
+    for point in points:
+        month = str(point.get("date") or "")[:7]
+        if len(month) != 7 or month[4] != "-":
+            continue
+        buckets.setdefault(month, []).append(point)
+    return {
+        month: {
+            "total": block["total"],
+            "periods": block["periods"],
+        }
+        for month, rows in buckets.items()
+        for block in (venue_time_block(rows, times),)
+    }
+
+
 def build_time_of_day(points: dict, times: dict[str, int]) -> dict:
     venues = {}
     for venue_id, block in (points.get("by_venue") or {}).items():
-        venues[venue_id] = venue_time_block(block.get("points") or [], times)
+        rows = block.get("points") or []
+        built = venue_time_block(rows, times)
+        built["by_month"] = time_by_month(rows, times)
+        venues[venue_id] = built
     return {
         "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "venues": venues,

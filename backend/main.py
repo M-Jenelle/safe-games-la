@@ -177,10 +177,11 @@ def read_permit_comparison(
     venue_id: str,
     year: str = Query(default="all", pattern="^(all|20[0-9]{2})$"),
     month: str = Query(default="all", pattern="^(all|[1-9]|1[0-2])$"),
+    source: str = Query(default="reports", pattern="^(reports|nibrs)$"),
 ) -> dict:
-    """Permit-day means versus other days in the same months, 2020–2024."""
+    """Permit-day means versus other days in the same months."""
     try:
-        body = permit_comparison(venue_id, year=year, month=month)
+        body = permit_comparison(venue_id, year=year, month=month, source=source)
     except DatasetNotFound as exc:
         raise _missing(exc) from exc
     if body is None:
