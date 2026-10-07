@@ -19,7 +19,7 @@ export function renderChatContext() {
 }
 
 export function venueIdFromLocation() {
-  const match = location.hash.match(/^#\/venue\/([A-Za-z0-9_-]+)$/);
+  const match = location.hash.match(/^#\/venue\/([A-Za-z0-9_-]+)(?:\/[a-z]+)?$/);
   return match ? match[1] : null;
 }
 

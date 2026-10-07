@@ -392,6 +392,11 @@ export function renderDetail() {
     toSelect.value = "12";
     applySeries();
   });
+  const openedSection = (location.hash.match(/^#\/venue\/[^/]+\/(categories|weekday|months)/) || [])[1];
+  if (openedSection && venue.merged_by_month) {
+    seriesId = "merged";
+    seriesSelect.value = "merged";
+  }
   applySeries();
 
   detail.hidden = false;
@@ -412,7 +417,7 @@ export function renderDetail() {
     ]) : el("span"),
     flags.length ? el("div", { className: "flags" }, flags) : el("span"),
     overlapNote(venue) ? el("p", { className: "terms" }, [text(overlapNote(venue))]) : el("span"),
-    el("h3", { className: "section-title" }, [text("Incidents by month")]),
+    el("h3", { className: "section-title", id: "section-months" }, [text("Incidents by month")]),
     hasSeries ? el("div", { className: "table-filters" }, [
       el("label", {}, [text("Series"), seriesSelect]),
     ]) : el("span"),
@@ -425,7 +430,7 @@ export function renderDetail() {
       el("label", {}, [text("To"), toSelect]),
     ]),
     tableWrap,
-    el("h3", { className: "section-title" }, [text("Incident types")]),
+    el("h3", { className: "section-title", id: "section-categories" }, [text("Incident types")]),
     categoryNote,
     categoryList,
     categoryToggle,
@@ -446,6 +451,13 @@ export function renderDetail() {
     el("p", { className: "terms" }, [text(state.meta.jurisdiction_method)]),
   ]));
   mountListingSection(venue.ticketmaster, listingHost);
+  const sectionId = {
+    categories: "section-categories",
+    weekday: "section-weekday",
+    months: "section-months",
+  }[openedSection];
+  const section = sectionId && document.getElementById(sectionId);
+  if (section) section.scrollIntoView({ block: "start" });
 }
 
 export async function selectVenue(venueId, options = {}) {

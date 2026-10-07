@@ -62,7 +62,7 @@ async function init() {
   }
 }
 
-window.addEventListener("popstate", () => {
+function followLocation() {
   const compare = compareRoute();
   if (compare) {
     openCompare({ history: false, a: compare.a, b: compare.b });
@@ -73,6 +73,9 @@ window.addEventListener("popstate", () => {
   const routed = venueIdFromLocation();
   if (routed) selectVenue(routed, { expand: true, history: false });
   else closeVenuePage({ history: false });
-});
+}
+
+window.addEventListener("popstate", followLocation);
+window.addEventListener("hashchange", followLocation);
 
 init();

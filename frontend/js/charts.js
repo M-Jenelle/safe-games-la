@@ -548,7 +548,7 @@ export function mountWeekdaySection(block, host, countWord, monthLabel, placemen
   }
   if (!block.total) {
     host.replaceChildren(el("section", { className: "time-section", "aria-label": "Day of week" }, [
-      el("h3", { className: "section-title" }, [text("Day of week")]),
+      el("h3", { className: "section-title", id: "section-weekday" }, [text("Day of week")]),
       el("p", { className: "muted" }, [text(`${monthLabel}. None in this month.`)]),
     ]));
     return;
@@ -573,7 +573,7 @@ export function mountWeekdaySection(block, host, countWord, monthLabel, placemen
 
   paint();
   host.replaceChildren(el("section", { className: "time-section", "aria-label": "Day of week" }, [
-    el("h3", { className: "section-title" }, [text("Day of week")]),
+    el("h3", { className: "section-title", id: "section-weekday" }, [text("Day of week")]),
     el("p", { className: "muted" }, [text(`${when}${weekdaySummary(block)}`)]),
     clickable ? el("p", { className: "muted" }, [text(pageCopy("weekday_click"))]) : el("span"),
     row,
@@ -588,7 +588,7 @@ export function mountWeekdayPair(host, reports, nibrs, monthLabel) {
   ].filter((panel) => panel.block?.total);
   if (!panels.length) {
     host.replaceChildren(el("section", { className: "time-section", "aria-label": "Day of week" }, [
-      el("h3", { className: "section-title" }, [text("Day of week")]),
+      el("h3", { className: "section-title", id: "section-weekday" }, [text("Day of week")]),
       el("p", { className: "muted" }, [text(monthLabel ? `${monthLabel}. None in this month.` : "None in this range.")]),
     ]));
     return;
@@ -596,7 +596,7 @@ export function mountWeekdayPair(host, reports, nibrs, monthLabel) {
   const clickable = panels.some((panel) => weekdayHasGroups(panel.block));
   const note = monthLabel ? `${monthLabel}. Yellow bars are Saturday and Sunday.` : "Yellow bars are Saturday and Sunday.";
   host.replaceChildren(el("section", { className: "time-section", "aria-label": "Day of week" }, [
-    el("h3", { className: "section-title" }, [text("Day of week")]),
+    el("h3", { className: "section-title", id: "section-weekday" }, [text("Day of week")]),
     el("p", { className: "muted" }, [text(clickable ? `${note} ${pageCopy("weekday_click")}` : note)]),
     el("div", { className: "pie-pair" }, panels.map((panel) => {
       let selected = "";

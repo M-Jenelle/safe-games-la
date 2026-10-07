@@ -6,12 +6,15 @@ Unknown filters are rejected rather than ignored.
 
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
 
-from backend.claude import ClaudeUnavailable, interpret_question, settings
+from backend.claude import ClaudeUnavailable, explain_figures, explanation_uses_only, interpret_question, settings
 from backend.context import CONTEXT_INTENTS, ContextUnavailable, context_answer, source_text
-from backend.store import DatasetNotFound, load_summary
+from backend.datasets import load_city_baseline
+from backend.store import DatasetNotFound, get_venue, load_summary
+from pipeline.crime_groups import GROUP_LABELS, crime_group
 
 PERIOD = "2020–2024"
 RADIUS_M = 800
@@ -26,12 +29,49 @@ PROVENANCE = (
     f"Source: {SOURCE['name']} ({SOURCE_FILE}). "
     f"Period: {PERIOD}. Analysis: {RADIUS_M} m radius around each venue."
 )
+HEADLINE_INTENTS = {"present_total", "density", "city", "busiest_month"}
+PATTERN_INTENTS = {"top_groups", "weekend", "rose"}
+SLICE_INTENTS = {"year_count", "group_count", "nibrs_total"}
+_COUNT_YEARS = range(2020, 2027)
+_NUMBER_WORDS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+}
+_GROUP_WORDS = {
+    "robbery": "robbery", "robberies": "robbery",
+    "burglary": "burglary", "burglaries": "burglary",
+    "theft": "theft", "thefts": "theft", "shoplifting": "theft",
+    "assault": "assault", "assaults": "assault", "battery": "assault", "batteries": "assault",
+    "homicide": "homicide", "homicides": "homicide", "murder": "homicide", "murders": "homicide",
+    "vandalism": "vandalism",
+    "rape": "sexual", "rapes": "sexual", "sexual": "sexual",
+    "weapon": "weapons", "weapons": "weapons",
+    "vehicle": "vehicle", "vehicles": "vehicle",
+}
+_GROUP_ALIASES = {"battery", "batteries", "rape", "rapes", "shoplifting", "murder", "murders"}
+PRESENT_SOURCE = {
+    "name": "LAPD crime reports via the LA Open Data Portal, then LAPD NIBRS offenses",
+    "file": "crime_merged.json",
+    "period": "2020–present",
+    "radius_m": RADIUS_M,
+}
+PRESENT_PROVENANCE = (
+    "Source: LAPD crime reports via the LA Open Data Portal, then LAPD NIBRS offenses "
+    "(crime_merged.json). Period: 2020–present. Analysis: 800 m radius around the venue. "
+    "Reports dated before March 7, 2024, then one row per NIBRS offense. "
+    "This is the venue page headline, not the 2020–2024 report total."
+)
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 HELP = (
-    "I can answer full-period incident totals, the most common crime category, "
-    "and crime-count comparisons between two named venues. "
+    "I can answer a venue's 2020–present record count, a single year from 2020 through 2026, "
+    "the 2020–2024 report total when that period is named, NIBRS offense totals, and offense-group "
+    "counts such as robbery. I can also answer the most common LAPD category, comparisons between "
+    "two named venues, density, the city comparison, the busiest month, the top offense groups, "
+    "the weekend pattern, and which groups rose most from 2020 to 2024. "
+    "The citywide total is every usable LAPD record in Los Angeles, not the 14 venue circles added together. "
     "I can also show nearby rail/bus transit, nearest recorded fire/police stations "
     "and hospitals (with the recorded emergency-room flag), and listed venue sports. "
-    "This demo cannot answer other categories or filters, traffic, schedules, fares, "
+    "I cannot answer time of day, other distances, permits, Ticketmaster listings, traffic, schedules, fares, "
     "nearest emergency-room hospitals, travel/response times, crime causes, live "
     "conditions, safety assessments, or 2028 predictions."
 )
@@ -43,10 +83,13 @@ def _normalize(value: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", value))
 
 
-def _reply(status: str, answer: str, *, results=None, choices=None, intent=None, sources=None) -> dict:
-    provenance = ("Crime context only — " if intent in CONTEXT_INTENTS else "") + PROVENANCE
-    if sources:
+def _reply(status: str, answer: str, *, results=None, choices=None, intent=None, sources=None, provenance_text=None, table=None, explanation=None) -> dict:
+    if provenance_text:
+        provenance = provenance_text
+    elif sources:
         provenance = source_text(sources) + "\n\nCrime context only — " + PROVENANCE
+    else:
+        provenance = ("Crime context only — " if intent in CONTEXT_INTENTS else "") + PROVENANCE
     return {
         "status": status,
         "answer": f"{answer}\n\n{provenance}",
@@ -55,6 +98,8 @@ def _reply(status: str, answer: str, *, results=None, choices=None, intent=None,
         "question_type": intent,
         "results": results or [],
         "choices": choices or [],
+        **({"table": table} if table else {}),
+        **({"explanation": explanation} if explanation else {}),
     }
 
 
@@ -112,10 +157,182 @@ def _question_text(message: str, mentions: list) -> str:
     return residual
 
 
+def _reports_span(message: str) -> bool:
+    return bool(re.search(r"\b2020 (?:(?:to|through) )?2024\b", message))
+
+
+def _explicit_present(message: str) -> bool:
+    return bool(
+        re.search(r"\b2020(?: to| through)?(?: the)? present\b", message)
+        or re.search(r"\bpresent (?:total|count|incidents|incident|records|record)\b", message)
+    )
+
+
+def _single_year(message: str) -> str | None:
+    """One supported calendar year, ``bad`` when the year is outside the files, or None."""
+    if _reports_span(message) or _explicit_present(message):
+        return None
+    years = re.findall(r"\b(20\d\d)\b", message)
+    if not years:
+        return None
+    if len(years) != 1 or int(years[0]) not in _COUNT_YEARS:
+        return "bad"
+    return years[0]
+
+
+def _top_limit(message: str) -> int | None:
+    """1–10, ``-1`` when top-N is out of range, or None when the question has no top-N."""
+    match = re.search(r"\btop (one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b", message)
+    if not match:
+        return None
+    token = match.group(1)
+    limit = _NUMBER_WORDS[token] if token in _NUMBER_WORDS else int(token)
+    if 1 <= limit <= 10:
+        return limit
+    return -1
+
+
+def _group_id(message: str) -> str | None:
+    found = {
+        group_id for word, group_id in _GROUP_WORDS.items()
+        if re.search(rf"\b{word}\b", message)
+    }
+    if not found:
+        return None
+    if len(found) > 1:
+        return "conflict"
+    return next(iter(found))
+
+
+def _wants_nibrs(message: str) -> bool:
+    return bool(re.search(r"\bnibrs\b", message))
+
+
+def _wants_citywide(message: str) -> bool:
+    if re.search(
+        r"\b(compare|comparison|compared|versus|vs|against|above|below|higher|lower|relative|rate|rates|densit)\b",
+        message,
+    ):
+        return False
+    if re.search(r"\bcitywide\b", message):
+        return True
+    if re.search(r"\bunique\b", message) and re.search(r"\b(total|count|crime|crimes|incident|incidents)\b", message):
+        return True
+    return bool(re.search(r"\b(?:across|at|for|in) (?:all|every) (?:the )?(?:venues|venue|sites|site)\b", message))
+
+
+def _strip_answered(residual: str, message: str) -> str:
+    cleaned = residual
+    year = _single_year(message)
+    if year and year != "bad":
+        cleaned = re.sub(rf"\b{year}\b", " ", cleaned)
+        cleaned = re.sub(r"\byears?\b", " ", cleaned)
+    if _top_limit(message) not in (None, -1):
+        cleaned = re.sub(r"\btop (?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b", " ", cleaned)
+    group = _group_id(message)
+    if group and group != "conflict":
+        for word, group_id in _GROUP_WORDS.items():
+            if group_id == group:
+                cleaned = re.sub(rf"\b{word}\b", " ", cleaned)
+    if _wants_nibrs(message):
+        cleaned = re.sub(r"\bnibrs\b", " ", cleaned)
+    if _wants_citywide(message):
+        cleaned = re.sub(r"\bcitywide\b|\bunique\b|\bacross\b", " ", cleaned)
+        cleaned = re.sub(r"\b(?:at|for|in|across) (?:all|every) (?:the )?(?:venues|venue|sites|site)\b", " ", cleaned)
+        cleaned = re.sub(r"\b(?:all|every) (?:venues|venue|sites|site)\b", " ", cleaned)
+    return " ".join(cleaned.split())
+
+
+def _headline_intent(residual: str, mentions: list) -> str | None:
+    """Venue-page headline questions. Two named venues stay on the count comparison."""
+    if len(mentions) > 1:
+        return None
+    if re.search(r"\b(unique|across)\b", residual) or re.search(r"\b(all|every) (venues|venue|sites|site)\b", residual):
+        return None
+    limit = _top_limit(residual)
+    if limit == -1:
+        return None
+    if limit or re.search(r"\b(?:most common|top) (?:crime )?(?:categories|groups|types)\b", residual):
+        return "top_groups"
+    if re.search(r"\b(weekend|weekends|weekday|weekdays|day of week)\b", residual):
+        return "weekend"
+    if re.search(r"\b(rose|risen|grew|grown|increased)\b", residual) and re.search(
+        r"\b(most|crime|crimes|category|categories|group|groups|which)\b", residual
+    ):
+        return "rose"
+    if re.search(r"\bbusiest month\b", residual):
+        return "busiest_month"
+    if re.search(r"\bcity\b|\bcitywide\b", residual) and re.search(
+        r"\b(compare|comparison|compared|versus|vs|against|above|below|higher|lower|relative|rate)\b", residual
+    ):
+        return "city"
+    if re.search(r"\b(densit(?:y|ies)|dense|denser)\b", residual):
+        return "density"
+    if re.search(r"\b2020(?: to| through)?(?: the)? present\b", residual) or re.search(
+        r"\bpresent (?:total|count|incidents|incident|records|record)\b", residual
+    ):
+        return "present_total"
+    return None
+
+
+def _strip_headline_phrases(residual: str) -> str:
+    phrases = (
+        r"\b2020(?: to| through)?(?: the)? present\b",
+        r"\bpresent (?:total|count|incidents|incident|records|record)\b",
+        r"\bbusiest month\b",
+        r"\bdensit(?:y|ies)\b",
+        r"\b(?:dense|denser)\b",
+        r"\bcompared with the city\b",
+        r"\bcompared to the city\b",
+        r"\bcompare with the city\b",
+        r"\bcompare to the city\b",
+        r"\bversus the city\b",
+        r"\bvs the city\b",
+        r"\bagainst the city\b",
+        r"\bcitywide rate\b",
+        r"\bcitywide\b",
+        r"\bthe city\b",
+        r"\btop 5\b",
+        r"\btop five\b",
+        r"\bday of week\b",
+        r"\bweekdays?\b",
+        r"\bweekends?\b",
+    )
+    cleaned = residual
+    for phrase in phrases:
+        cleaned = re.sub(phrase, " ", cleaned)
+    return " ".join(cleaned.split())
+
+
 def _outside_scope(message: str, mentions: list) -> bool:
     """Code rejects explicit unsupported qualifiers even if Claude drops them."""
     residual = _question_text(message, mentions)
+    year = _single_year(message)
+    group = _group_id(residual)
+    headline = _headline_intent(residual, mentions)
+    if year == "bad" or _top_limit(residual) == -1 or group == "conflict":
+        return True
+    # A year, group, or NIBRS wording has to be the question, not a leftover filter.
+    if year and year != "bad" and headline in {"busiest_month", "density", "city", "weekend", "top_groups", "present_total", "rose"}:
+        return True
+    if group and group != "conflict" and headline:
+        return True
+    if _wants_nibrs(message) and headline:
+        return True
     context = _context_intent(residual)
+    answerable = bool(
+        headline
+        or (year and year != "bad")
+        or _top_limit(residual) not in (None, -1)
+        or (group and group != "conflict")
+        or _wants_nibrs(message)
+        or _wants_citywide(message)
+        or _reports_span(message)
+    )
+    if answerable:
+        if headline:
+            residual = _strip_headline_phrases(residual)
+        residual = _strip_answered(residual, message)
     forbidden = (
         r"\d|\b(why|cause|causes|caused|reason|reasons|predict|prediction|predictions|"
         r"forecast|forecasts|will|expect|expected|probability|chance|projection|projections|"
@@ -197,6 +414,21 @@ def _context_intent(residual: str) -> str | None:
 def _intent(message: str, mentions: list) -> str | None:
     # Local fallback rejects unknown words rather than ignoring qualifiers.
     residual = _question_text(message, mentions)
+    if _wants_citywide(message):
+        return "citywide"
+    headline = _headline_intent(residual, mentions)
+    if headline:
+        return headline
+    year = _single_year(message)
+    group = _group_id(residual)
+    if year == "bad" or _top_limit(residual) == -1 or group == "conflict":
+        return None
+    if _wants_nibrs(message):
+        return "nibrs_total"
+    if group:
+        return "group_count"
+    if year:
+        return "year_count"
     if re.search(r"\b(all|every) (venues|venue|sites|site)\b", residual):
         return None
     if re.search(r"\b(how many|number of|count of) (venues|sites)\b", residual):
@@ -241,7 +473,12 @@ def _intent(message: str, mentions: list) -> str | None:
     ):
         if category_query and not re.search(r"\ball categories\b", residual):
             return None
-        return "total"
+        if _reports_span(message) or (
+            re.search(r"\breports?\b", residual)
+            and not re.search(r"\b(incident|incidents|crime|crimes)\b", residual)
+        ):
+            return "total"
+        return "present_total"
     return None
 
 
@@ -256,6 +493,16 @@ def suggested_questions() -> dict:
             f"What transit is nearby {first}?",
             f"What is the nearest hospital to {first}?",
             f"Which sports are listed at {first}?",
+            f"What is the crime density near {first}?",
+            f"What is the busiest month near {first}?",
+            f"How does {first} compare to the city?",
+            f"What are the top five crime categories near {first}?",
+            f"Show the top 3 crime categories near {first}",
+            f"How many robberies near {first}?",
+            f"How many incidents occurred in 2020 near {first}?",
+            f"How many NIBRS offenses near {first}?",
+            f"What is the weekend pattern near {first}?",
+            f"Which crimes rose most from 2020 to 2024 near {first}?",
         ])
     if len(venues) >= 2:
         questions.insert(2, f"Compare the crime counts near {first} and {venues[1]['venue_name']}.")
@@ -296,17 +543,21 @@ def _answer_question(message: str, venue_id: str | None, engine: dict) -> dict:
         try:
             interpretation = interpret_question(message, venues, venue_id)
             engine.update(engine="claude", model=settings()["model"])
-            if not interpretation.scope_supported or interpretation.intent == "unsupported":
-                intent = None
-            elif intent is None or intent == interpretation.intent:
+            accepted = interpretation.scope_supported and interpretation.intent != "unsupported"
+            if intent is not None:
+                # A parsed question keeps its calculation. Claude only fills in wording the word list missed.
+                if not accepted or interpretation.intent != intent:
+                    engine.update(engine="fallback", model=None, engine_note="Claude's interpretation did not match the supported calculation; using the data parser.")
+            elif accepted:
                 intent = interpretation.intent
             else:
-                # A known local intent must not be changed into another metric.
-                engine.update(engine="fallback", model=None, engine_note="Claude's interpretation did not match the supported calculation; using the data parser.")
+                intent = None
         except ClaudeUnavailable:
             engine.update(engine="fallback", engine_note="Claude is unavailable; using the data parser.")
     if intent is None:
         return _reply("unsupported", f"I cannot answer that question from the supported processed-data calculations. {HELP}")
+    if intent == "citywide":
+        return _citywide_answer()
 
     for start, end, candidates in mentions:
         if len(candidates) > 1:
@@ -349,6 +600,12 @@ def _answer_question(message: str, venue_id: str | None, engine: dict) -> dict:
         return _reply("clarification", "Please name one venue for that question, or ask to compare two venue counts.", intent=intent)
 
     selected = list(resolved.values())
+    if intent in SLICE_INTENTS:
+        return _slice_answer(intent, selected[0], normalized)
+    if intent in HEADLINE_INTENTS:
+        return _headline_answer(intent, selected[0])
+    if intent in PATTERN_INTENTS:
+        return _pattern_answer(intent, selected[0], normalized)
     if intent in CONTEXT_INTENTS:
         try:
             answer, results, sources = context_answer(intent, selected[0], summary["meta"])
@@ -378,7 +635,7 @@ def _answer_question(message: str, venue_id: str | None, engine: dict) -> dict:
 
     results = [_result(venue, "All categories", venue["crime_count_nearby"]) for venue in selected]
     answer = "\n".join(
-        f"{row['venue_name']} — {row['category']}: {row['count']:,} reported incidents."
+        f"{row['venue_name']} — {row['category']}: {row['count']:,} reported incidents, 2020–2024."
         for row in results
     )
     if intent == "compare":
@@ -394,6 +651,375 @@ def _answer_question(message: str, venue_id: str | None, engine: dict) -> dict:
             "These counts are not added into a unique citywide total."
         )
     return _reply("answered", answer, results=results, intent=intent)
+
+
+def _group_label(detail: dict, group_id: str) -> str:
+    labels = detail.get("crime_groups") or {}
+    return str(labels.get(group_id) or group_id)
+
+
+def _group_totals(months: dict, year: str | None = None) -> dict[str, int]:
+    totals: dict[str, int] = {}
+    for month, groups in (months or {}).items():
+        if year and not str(month).startswith(year):
+            continue
+        if not isinstance(groups, dict):
+            continue
+        for group_id, count in groups.items():
+            totals[group_id] = totals.get(group_id, 0) + int(count or 0)
+    return totals
+
+
+def _comma(value: int) -> str:
+    return f"{int(value):,}"
+
+
+def _pattern_table(venue_id: str, section: str, label: str, columns: list[str], rows: list[list[str]]) -> dict:
+    return {
+        "columns": columns,
+        "rows": rows,
+        "href": f"#/venue/{venue_id}/{section}",
+        "link_label": label,
+    }
+
+
+def _maybe_explain(venue_name: str, caption: str, table: dict) -> str | None:
+    if not settings()["claude_configured"]:
+        return None
+    labels = [cell for row in table["rows"] for cell in row if not re.fullmatch(r"[\d,% ]+", cell)]
+    labels.append(venue_name)
+    source = " ".join([caption, *table["columns"], *(cell for row in table["rows"] for cell in row)])
+    try:
+        text = explain_figures(venue_name, caption, table["columns"], table["rows"])
+    except ClaudeUnavailable:
+        return None
+    if not explanation_uses_only(text, source, labels):
+        return None
+    return text
+
+
+def _pattern_answer(intent: str, venue: dict, message: str = "") -> dict:
+    detail = get_venue(venue["venue_id"])
+    months = (detail or {}).get("merged_by_month") or {}
+    if not months:
+        return _reply(
+            "unavailable",
+            "The 2020–present offense groups are missing. Rebuild them with `python -m pipeline.merge_crime`.",
+            intent=intent,
+            sources=[dict(PRESENT_SOURCE)],
+            provenance_text=PRESENT_PROVENANCE,
+        )
+    name = venue["venue_name"]
+    venue_id = venue["venue_id"]
+    if intent == "top_groups":
+        totals = _group_totals(months)
+        limit = _top_limit(message)
+        if limit is None or limit < 1:
+            limit = 5
+        ranked = sorted(totals.items(), key=lambda item: (-item[1], _group_label(detail, item[0])))[:limit]
+        total = sum(totals.values())
+        rows = []
+        results = []
+        for group_id, count in ranked:
+            label = _group_label(detail, group_id)
+            share = int(math.floor((count / total) * 100 + 0.5)) if total else 0
+            rows.append([label, _comma(count), f"{share}%"])
+            results.append(_result(venue, label, count))
+        caption = (
+            f"Top {len(ranked)} offense groups near {name}, 2020–present, ranked by record count. "
+            "Reports before March 7, 2024, then NIBRS offenses."
+        )
+        table = _pattern_table(venue_id, "categories", "Open incident types on the venue page", ["Group", "Records", "Share"], rows)
+    elif intent == "weekend":
+        block = (detail or {}).get("merged_weekday") or {}
+        days = [day for day in (block.get("days") or []) if day.get("label")]
+        if not days:
+            return _reply(
+                "unavailable",
+                "The 2020–present day-of-week counts are missing. Rebuild them with `python -m pipeline.merge_crime` and `python -m pipeline.nibrs_charts`.",
+                intent=intent,
+                sources=[dict(PRESENT_SOURCE)],
+                provenance_text=PRESENT_PROVENANCE,
+            )
+        rows = [[day["label"], _comma(int(day.get("count") or 0))] for day in days]
+        results = [_result(venue, day["label"], int(day.get("count") or 0)) for day in days]
+        summary = block.get("summary") or ""
+        caption = (
+            f"{summary} Counts are 2020–present: reports before March 7, 2024, plus NIBRS offenses after that. "
+            "The venue page shows those two series side by side."
+        ).strip()
+        table = _pattern_table(venue_id, "weekday", "Open day of week on the venue page", ["Day", "Records"], rows)
+    else:
+        earlier = _group_totals(months, "2020")
+        later = _group_totals(months, "2024")
+        changes = []
+        for group_id in set(earlier) | set(later):
+            change = later.get(group_id, 0) - earlier.get(group_id, 0)
+            if change > 0:
+                changes.append((change, _group_label(detail, group_id), earlier.get(group_id, 0), later.get(group_id, 0)))
+        changes.sort(key=lambda item: (-item[0], item[1]))
+        rising = changes[:5]
+        rows = [[label, _comma(before), _comma(after), f"+{_comma(change)}"] for change, label, before, after in rising]
+        results = [_result(venue, label, change) for change, label, _before, _after in rising]
+        caption = (
+            f"Offense groups near {name} that rose the most from 2020 to 2024, ranked by how many more records. "
+            "2020 is LAPD reports. 2024 is reports through March 6, then NIBRS offenses. "
+            "2020 had little or no event crowd."
+        )
+        if not rows:
+            caption = f"No offense group near {name} had more records in 2024 than in 2020."
+        table = _pattern_table(venue_id, "months", "Open incidents by month on the venue page", ["Group", "2020", "2024", "Change"], rows)
+    explanation = _maybe_explain(name, caption, table)
+    return _reply(
+        "answered",
+        caption,
+        results=results,
+        intent=intent,
+        sources=[dict(PRESENT_SOURCE)],
+        provenance_text=PRESENT_PROVENANCE,
+        table=table,
+        explanation=explanation,
+    )
+
+
+def _year_note(year: str, through: str) -> str:
+    if int(year) <= 2023:
+        return f"{year} counts LAPD reports inside the 800 m circle."
+    if year == "2024":
+        return "2024 counts LAPD reports through March 6, then NIBRS offenses."
+    if through.startswith(year):
+        return f"{year} counts NIBRS offenses through {through}, not a full year."
+    return f"{year} counts NIBRS offenses."
+
+
+def _slice_answer(intent: str, venue: dict, message: str) -> dict:
+    detail = get_venue(venue["venue_id"]) or {}
+    name = venue["venue_name"]
+    year = _single_year(message)
+    if year == "bad":
+        year = None
+    group = _group_id(message)
+    if group == "conflict":
+        group = None
+    label = _group_label(detail, group) if group else ""
+    if group and any(re.search(rf"\b{word}\b", message) for word in _GROUP_ALIASES if _GROUP_WORDS[word] == group):
+        asked = next(word for word in _GROUP_ALIASES if _GROUP_WORDS[word] == group and re.search(rf"\b{word}\b", message))
+        label = f"{label} (includes {asked})"
+    baseline = load_city_baseline() or {}
+    through = str((baseline.get("present") or {}).get("through") or (baseline.get("nibrs") or {}).get("end") or "")
+
+    if intent == "nibrs_total":
+        nibrs = detail.get("nibrs") or {}
+        if not nibrs:
+            return _reply(
+                "unavailable",
+                "The NIBRS offense counts are missing. Rebuild them with `python -m pipeline.merge_crime`.",
+                intent=intent,
+                sources=[dict(PRESENT_SOURCE)],
+                provenance_text=PRESENT_PROVENANCE,
+            )
+        if group and year:
+            count = 0
+            for month, categories in (nibrs.get("categories_by_month") or {}).items():
+                if not str(month).startswith(year):
+                    continue
+                count += sum(int(value or 0) for category, value in categories.items() if crime_group(category) == group)
+        elif group:
+            count = sum(
+                int(value or 0)
+                for category, value in (nibrs.get("by_category") or {}).items()
+                if crime_group(category) == group
+            )
+        elif year:
+            count = sum(
+                int(value or 0)
+                for month, value in (nibrs.get("by_month") or {}).items()
+                if str(month).startswith(year)
+            )
+        else:
+            count = int(nibrs.get("count") or 0)
+        end = str((baseline.get("nibrs") or {}).get("end") or through or "the latest extract")
+        subject = label or "NIBRS offenses"
+        answer = f"{name} — {subject}: {count:,} NIBRS offenses inside the 800 m circle, March 7, 2024 through {end}."
+        if year:
+            answer += f" {year} is only the offenses dated in that year."
+        elif group:
+            answer += " This is that offense group, not every NIBRS offense."
+        category = label or "NIBRS offenses"
+        provenance = (
+            "Source: LAPD NIBRS offenses via the LA Open Data Portal (crime_merged.json). "
+            f"Period: March 7, 2024 through {end}. Analysis: 800 m radius around the venue. "
+            "One case can include more than one offense. This is not the 2020–2024 report total."
+        )
+        return _reply(
+            "answered",
+            answer,
+            results=[_result(venue, category, count)],
+            intent=intent,
+            sources=[{
+                "name": "LAPD NIBRS offenses via the LA Open Data Portal",
+                "file": "crime_merged.json",
+                "period": "Mar 2024–present",
+                "radius_m": RADIUS_M,
+            }],
+            provenance_text=provenance,
+        )
+
+    months = detail.get("merged_by_month") or {}
+    if not months:
+        return _reply(
+            "unavailable",
+            "The 2020–present offense groups are missing. Rebuild them with `python -m pipeline.merge_crime`.",
+            intent=intent,
+            sources=[dict(PRESENT_SOURCE)],
+            provenance_text=PRESENT_PROVENANCE,
+        )
+    totals = _group_totals(months, year if year else None)
+    if group:
+        count = int(totals.get(group, 0))
+        subject = label
+    else:
+        count = sum(totals.values())
+        subject = year or "2020–present"
+    if year:
+        answer = f"{name} — {subject}: {count:,} records in {year}. {_year_note(year, through)}"
+        category = f"{label} {year}".strip() if group else year
+    else:
+        answer = (
+            f"{name} — {subject}: {count:,} records, 2020–present. "
+            "Reports before March 7, 2024, then NIBRS offenses."
+        )
+        category = label or "2020–present"
+    return _reply(
+        "answered",
+        answer,
+        results=[_result(venue, category, count)],
+        intent=intent,
+        sources=[dict(PRESENT_SOURCE)],
+        provenance_text=PRESENT_PROVENANCE,
+    )
+
+
+def _citywide_answer() -> dict:
+    baseline = load_city_baseline() or {}
+    present = baseline.get("present") or {}
+    if not present:
+        return _reply(
+            "unavailable",
+            "The citywide total is missing. Rebuild it with `python -m pipeline.city_baseline`.",
+            intent="citywide",
+        )
+    count = int(present["count"])
+    legacy = int(present.get("legacy_count") or 0)
+    nibrs = int(present.get("nibrs_offense_count") or 0)
+    through = present.get("through") or "the latest extract"
+    answer = (
+        f"City of Los Angeles, 2020–present: {count:,} records. "
+        f"That is {legacy:,} LAPD reports before March 7, 2024, then {nibrs:,} NIBRS offenses through {through}. "
+        "This is every usable LAPD record in the city. It is not the 14 venue circles added together. "
+        "Downtown circles overlap, so those venue counts are not a city total."
+    )
+    provenance = (
+        "Source: LAPD crime reports via the LA Open Data Portal, then LAPD NIBRS offenses (city_baseline.json). "
+        f"Period: 2020–present, through {through}. "
+        "City land area: U.S. Census Bureau 2020, 469.49 square miles. "
+        "This is not the 2020–2024 venue-report total and not an 800 m venue circle."
+    )
+    return _reply(
+        "answered",
+        answer,
+        results=[{
+            "venue_id": "",
+            "venue_name": "City of Los Angeles",
+            "category": "2020–present",
+            "count": count,
+        }],
+        intent="citywide",
+        sources=[{
+            "name": "LAPD crime reports via the LA Open Data Portal, then LAPD NIBRS offenses",
+            "file": "city_baseline.json",
+            "period": "2020–present",
+            "radius_m": None,
+        }],
+        provenance_text=provenance,
+    )
+
+
+def _ordinal(number: int) -> str:
+    if 10 <= number % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(number % 10, "th")
+    return f"{number}{suffix}"
+
+
+def _month_label(value: str) -> str:
+    text = str(value or "")
+    if len(text) >= 7 and text[4] == "-" and text[5:7].isdigit():
+        month = int(text[5:7])
+        if 1 <= month <= 12:
+            return f"{_MONTHS[month - 1]} {text[:4]}"
+    return text or "unknown"
+
+
+def _headline_answer(intent: str, venue: dict) -> dict:
+    detail = get_venue(venue["venue_id"])
+    present = (detail or {}).get("present") or None
+    if not present:
+        return _reply(
+            "unavailable",
+            "The 2020–present venue figures are missing. Rebuild them with `python -m pipeline.merge_crime` and `python -m pipeline.city_baseline`.",
+            intent=intent,
+            sources=[dict(PRESENT_SOURCE)],
+            provenance_text=PRESENT_PROVENANCE,
+        )
+    name = venue["venue_name"]
+    count = int(present["count"])
+    if intent == "present_total":
+        answer = (
+            f"{name} — 2020–present: {count:,} records inside the 800 m circle. "
+            "This blends LAPD reports before March 7, 2024 with NIBRS offenses from that date on."
+        )
+        category = "2020–present"
+    elif intent == "density":
+        rate = float(present["crime_per_km2"])
+        rank = present.get("density_rank") or {}
+        place = ""
+        if rank:
+            tied = "tied for " if rank.get("tied") else ""
+            place = f", {tied}{_ordinal(int(rank['rank']))} of {int(rank['of'])}"
+        answer = f"Crime density near {name} is {rate:,.1f} per km², 2020–present{place}."
+        category = "2020–present density"
+    elif intent == "city":
+        city = ((detail or {}).get("city_baseline") or {}).get("present")
+        if not city:
+            return _reply(
+                "unavailable",
+                "The city comparison is missing. Rebuild it with `python -m pipeline.city_baseline`.",
+                intent=intent,
+                sources=[dict(PRESENT_SOURCE)],
+                provenance_text=PRESENT_PROVENANCE,
+            )
+        answer = f"{name} — {city['summary']} Period: {city['period']}."
+        category = "2020–present vs city"
+    else:
+        label = _month_label(str(present.get("peak_month") or ""))
+        peak = int(present.get("peak_count") or 0)
+        if not present.get("peak_month"):
+            answer = f"{name} has no dated records in the 2020–present blend, so there is no busiest month."
+            count = 0
+        else:
+            answer = f"The busiest month near {name} is {label}, {peak:,} records, 2020–present."
+            count = peak
+        category = "2020–present busiest month"
+    return _reply(
+        "answered",
+        answer,
+        results=[_result(venue, category, count)],
+        intent=intent,
+        sources=[dict(PRESENT_SOURCE)],
+        provenance_text=PRESENT_PROVENANCE,
+    )
 
 
 def _result(venue: dict, category: str, count: int) -> dict:

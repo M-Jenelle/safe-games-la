@@ -1209,9 +1209,22 @@ button.weekday-col { cursor: pointer; }
 .chat-log li { margin: 4px 0; }
 
 .chat-source {
-  padding-top: 10px;
+  margin-top: 8px;
   font-size: 0.75rem;
   color: var(--muted);
+}
+
+.chat-source summary {
+  width: fit-content;
+  color: var(--blue, #0085C7);
+  cursor: pointer;
+}
+
+.chat-message .chat-source p {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
 }
 
 .chat-suggestions,
@@ -1255,6 +1268,10 @@ button.weekday-col { cursor: pointer; }
 .chat-byline .chat-author { margin-bottom: 0; }
 .chat-message-avatar { width: 26px; height: 26px; flex: none; }
 .chat-message p { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; color: var(--ink); }
+.chat-table { width: 100%; margin-top: 10px; border-collapse: collapse; font-size: 0.84rem; }
+.chat-table th, .chat-table td { text-align: left; padding: 4px 8px 4px 0; border-bottom: 1px solid #e4e1dc; }
+.chat-explanation { margin-top: 8px; }
+.chat-jump { display: inline-block; margin-top: 8px; color: var(--blue, #0085C7); }
 
 .examples-label {
   margin: 16px 0 0;

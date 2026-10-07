@@ -25,6 +25,17 @@
     queueMicrotask(renderContext);
   });
 
+  function splitSource(content) {
+    const markers = ["\n\nSource:", "\n\nCrime context only", "\n\nNo answer was calculated"];
+    let index = -1;
+    for (const marker of markers) {
+      const at = content.indexOf(marker);
+      if (at !== -1 && (index === -1 || at < index)) index = at;
+    }
+    if (index === -1) return { text: content, source: "" };
+    return { text: content.slice(0, index).trim(), source: content.slice(index).trim() };
+  }
+
   function messageNode(role, content, engine = "data") {
     const article = document.createElement("article");
     article.className = `chat-message chat-message-${role}`;
@@ -44,9 +55,20 @@
       byline.append(avatar);
     }
     byline.append(author);
+    const parts = role === "assistant" ? splitSource(content) : { text: content, source: "" };
     const body = document.createElement("p");
-    body.textContent = content;
+    body.textContent = parts.text;
     article.append(byline, body);
+    if (parts.source) {
+      const details = document.createElement("details");
+      details.className = "chat-source";
+      const summary = document.createElement("summary");
+      summary.textContent = "Source";
+      const note = document.createElement("p");
+      note.textContent = parts.source;
+      details.append(summary, note);
+      article.append(details);
+    }
     log.append(article);
     log.scrollTop = log.scrollHeight;
     return article;
@@ -101,6 +123,40 @@
         note.className = "chat-engine";
         note.textContent = body.engine_note;
         article.append(note);
+      }
+      if (body.table?.columns && body.table.rows) {
+        const table = document.createElement("table");
+        table.className = "chat-table";
+        const head = document.createElement("tr");
+        for (const column of body.table.columns) {
+          const cell = document.createElement("th");
+          cell.textContent = column;
+          head.append(cell);
+        }
+        table.append(head);
+        for (const row of body.table.rows) {
+          const line = document.createElement("tr");
+          for (const value of row) {
+            const cell = document.createElement("td");
+            cell.textContent = value;
+            line.append(cell);
+          }
+          table.append(line);
+        }
+        article.append(table);
+      }
+      if (body.explanation) {
+        const note = document.createElement("p");
+        note.className = "chat-explanation";
+        note.textContent = body.explanation;
+        article.append(note);
+      }
+      if (body.table?.href) {
+        const link = document.createElement("a");
+        link.className = "chat-jump";
+        link.href = body.table.href;
+        link.textContent = body.table.link_label || "Open this section";
+        article.append(link);
       }
       if (body.choices?.length) {
         const choices = document.createElement("div");
