@@ -92,7 +92,7 @@ select:focus-visible {
 .brand h1 {
   margin: 0;
   font-family: var(--display);
-  font-size: 1.35rem;
+  font-size: 1.6rem;
   font-weight: 560;
   letter-spacing: -0.02em;
   line-height: 1.15;
@@ -171,7 +171,7 @@ select:focus-visible {
 
 .roster-head h2,
 .panel-label h2 {
-  font-size: 0.95rem;
+  font-size: 1.15rem;
   font-weight: 600;
   line-height: 1.2;
   padding-bottom: 6px;
@@ -277,7 +277,7 @@ select { width: 132px; }
 
 .venue-card h3 {
   margin: 1px 0;
-  font-size: 0.95rem;
+  font-size: 1.12rem;
   font-weight: 650;
   line-height: 1.25;
   color: var(--ink);
@@ -607,7 +607,7 @@ select { width: 132px; }
 .detail .chart { height: 140px; }
 
 .detail-title {
-  font-size: 1.45rem;
+  font-size: 1.7rem;
   letter-spacing: -0.02em;
   line-height: 1.2;
 }
@@ -685,7 +685,7 @@ select { width: 132px; }
 
 .section-title {
   margin: 20px 0 8px;
-  font-size: 0.8rem;
+  font-size: 1.05rem;
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
@@ -1041,7 +1041,7 @@ button.weekday-col { cursor: pointer; }
 
 .station h3 {
   margin: 2px 0;
-  font-size: 0.95rem;
+  font-size: 1.12rem;
   font-weight: 600;
 }
 
@@ -1334,13 +1334,17 @@ button.weekday-col { cursor: pointer; }
 
 .terms {
   margin: 12px 0 0;
-  padding: 7px 10px 7px 12px;
-  border-left: 2px solid rgba(0, 133, 199, 0.55);
-  background: rgba(0, 133, 199, 0.07);
-  color: #24303a;
-  font-size: 0.8rem;
-  line-height: 1.45;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
   white-space: pre-line;
+}
+
+.terms::before {
+  content: "* ";
 }
 
 .visually-hidden {
@@ -1619,7 +1623,7 @@ button.pie-key { cursor: pointer; }
 
 .compare-kicker {
   margin: 16px 0 14px;
-  font-size: 1.15rem;
+  font-size: 1.4rem;
   font-weight: 600;
 }
 
@@ -1741,7 +1745,7 @@ button.pie-key { cursor: pointer; }
 }
 
 .compare-column .detail-title {
-  font-size: 1.2rem;
+  font-size: 1.45rem;
   margin: 0 0 8px;
 }
 

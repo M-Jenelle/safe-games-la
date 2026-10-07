@@ -121,7 +121,8 @@
       const article = messageNode("assistant", body.answer, body.engine);
       engineLabel.textContent = body.engine === "claude"
         ? "Claude · answers calculated from venue data"
-        : body.engine === "fallback" ? "Claude fallback · venue data mode"
+        : body.engine === "fallback"
+          ? (body.engine_note === "Verified by local rules." ? "Verified by local rules" : "Venue data mode")
         : claudeConfigured ? "Claude enabled · answers calculated from venue data" : "Venue data mode";
       if (body.engine_note) {
         const note = document.createElement("p");
