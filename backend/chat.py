@@ -6,14 +6,15 @@ Unknown filters are rejected rather than ignored.
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 import math
 import re
 import unicodedata
 
 from backend.claude import ClaudeUnavailable, explain_figures, explanation_uses_only, interpret_question, settings
 from backend.context import CONTEXT_INTENTS, ContextUnavailable, context_answer, source_text
-from backend.datasets import load_city_baseline
-from backend.store import DatasetNotFound, get_venue, load_summary
+from backend.datasets import _load_home_games, load_city_baseline, load_permit_day_rows
+from backend.store import DatasetNotFound, get_venue, home_game_comparison, load_summary, permit_comparison
 from pipeline.crime_groups import GROUP_LABELS, crime_group
 
 PERIOD = "2020–2024"
@@ -69,11 +70,12 @@ HELP = (
     "the 2020–2024 report total when that period is named, NIBRS offense totals, and offense-group "
     "counts such as robbery. I can also answer the most common LAPD category, comparisons between "
     "two named venues, density, the city comparison, the busiest month, the top offense groups, "
-    "the weekend pattern, offense groups on weekend or weekday days, and which groups rose most from 2020 to 2024. "
+    "the weekend pattern, offense groups on weekend or weekday days, and which groups rose most from 2020 to present. "
+    "I can also quote the page's permit-day comparison and, for Dodger Stadium, the home-game comparison. "
     "The citywide total is every usable LAPD record in Los Angeles, not the 14 venue circles added together. "
     "I can also show nearby rail/bus transit, nearest recorded fire/police stations "
     "and hospitals (with the recorded emergency-room flag), and listed venue sports. "
-    "I cannot answer time of day, other distances, permits, Ticketmaster listings, traffic, schedules, fares, "
+    "I cannot answer a count of permits, Ticketmaster listings, time of day, other distances, traffic, schedules, fares, "
     "nearest emergency-room hospitals, travel/response times, crime causes, live "
     "conditions, safety assessments, or 2028 predictions."
 )
@@ -330,7 +332,10 @@ def _outside_scope(message: str, mentions: list) -> bool:
     if year == "bad" or _top_limit(residual) == -1 or group == "conflict":
         return True
     # A year, group, or NIBRS wording has to be the question, not a leftover filter.
-    if year and year != "bad" and headline in {"busiest_month", "density", "city", "weekend", "weekend_groups", "top_groups", "present_total", "rose"}:
+    if year and year != "bad" and (
+        _wants_event_lift(message)
+        or headline in {"busiest_month", "density", "city", "weekend", "weekend_groups", "top_groups", "present_total", "rose"}
+    ):
         return True
     if group and group != "conflict" and headline:
         return True
@@ -344,11 +349,14 @@ def _outside_scope(message: str, mentions: list) -> bool:
         or (group and group != "conflict")
         or _wants_nibrs(message)
         or _wants_citywide(message)
+        or _wants_event_lift(message)
         or _reports_span(message)
     )
     if answerable:
         if headline:
             residual = _strip_headline_phrases(residual)
+        if _wants_event_lift(message):
+            residual = _strip_event_phrases(residual)
         residual = _strip_answered(residual, message)
     forbidden = (
         r"\d|\b(why|cause|causes|caused|reason|reasons|predict|prediction|predictions|"
@@ -428,11 +436,56 @@ def _context_intent(residual: str) -> str | None:
     return "sports" if topics == {"sports"} else "unsupported"
 
 
+def _wants_event_lift(message: str) -> bool:
+    """The page's past event-day comparison. A permit count or a forecast stays refused."""
+    if re.search(r"\b(predict|prediction|forecast|will|2028|ticketmaster|upcoming)\b", message):
+        return False
+    if re.search(r"\b(how many|number of|count of)\b", message):
+        return False
+    if re.search(r"\b(home games?|game days?|permit days?|event days?)\b", message):
+        return True
+    if re.search(r"\blift\b", message) and re.search(r"\b(permit|event|game|home)\b", message):
+        return True
+    return bool(
+        re.search(r"\bpermits?\b", message)
+        and re.search(r"\b(compare|comparison|versus|vs|difference|against)\b", message)
+    )
+
+
+def _event_focus(message: str) -> set[str]:
+    home = bool(re.search(r"\b(home games?|game days?)\b", message))
+    permit = bool(re.search(r"\bpermits?\b|\bpermit days?\b", message))
+    if home and not permit and not re.search(r"\bevent days?\b|\blift\b", message):
+        return {"home"}
+    if permit and not home and not re.search(r"\bevent days?\b|\blift\b", message):
+        return {"permit"}
+    return {"permit", "home"}
+
+
+def _strip_event_phrases(residual: str) -> str:
+    phrases = (
+        r"\bpermit day lift\b",
+        r"\bevent day lift\b",
+        r"\bhome games?\b",
+        r"\bgame days?\b",
+        r"\bpermit days?\b",
+        r"\bevent days?\b",
+        r"\bpermits?\b",
+        r"\blift\b",
+    )
+    cleaned = residual
+    for phrase in phrases:
+        cleaned = re.sub(phrase, " ", cleaned)
+    return " ".join(cleaned.split())
+
+
 def _intent(message: str, mentions: list) -> str | None:
     # Local fallback rejects unknown words rather than ignoring qualifiers.
     residual = _question_text(message, mentions)
     if _wants_citywide(message):
         return "citywide"
+    if _wants_event_lift(message):
+        return "event_lift"
     headline = _headline_intent(residual, mentions)
     if headline:
         return headline
@@ -520,7 +573,9 @@ def suggested_questions() -> dict:
             f"How many NIBRS offenses near {first}?",
             f"What is the weekend pattern near {first}?",
             f"What types of crime are most common on weekends near {first}?",
-            f"Which crimes rose most from 2020 to 2024 near {first}?",
+            f"Which crimes rose most from 2020 to present near {first}?",
+            f"How do permit days compare with other days near {first}?",
+            f"How do home games compare near {first}?",
         ])
     if len(venues) >= 2:
         questions.insert(2, f"Compare the crime counts near {first} and {venues[1]['venue_name']}.")
@@ -622,6 +677,8 @@ def _answer_question(message: str, venue_id: str | None, engine: dict) -> dict:
         return _slice_answer(intent, selected[0], normalized)
     if intent in HEADLINE_INTENTS:
         return _headline_answer(intent, selected[0])
+    if intent == "event_lift":
+        return _event_lift_answer(selected[0], normalized)
     if intent in PATTERN_INTENTS:
         return _pattern_answer(intent, selected[0], normalized)
     if intent in CONTEXT_INTENTS:
@@ -674,6 +731,15 @@ def _answer_question(message: str, venue_id: str | None, engine: dict) -> dict:
 def _group_label(detail: dict, group_id: str) -> str:
     labels = detail.get("crime_groups") or {}
     return str(labels.get(group_id) or group_id)
+
+
+def _rose_years(months: dict) -> list[str]:
+    found = {
+        str(month)[:4]
+        for month in (months or {})
+        if len(str(month)) >= 4 and str(month)[:4].isdigit() and int(str(month)[:4]) in _COUNT_YEARS
+    }
+    return sorted(found)
 
 
 def _group_totals(months: dict, year: str | None = None) -> dict[str, int]:
@@ -809,25 +875,47 @@ def _pattern_answer(intent: str, venue: dict, message: str = "") -> dict:
         )
         table = _pattern_table(venue_id, "weekday", "Open day of week on the venue page", ["Group", "Records", "Share"], rows)
     else:
-        earlier = _group_totals(months, "2020")
-        later = _group_totals(months, "2024")
+        years = _rose_years(months)
+        start = years[0] if years else "2020"
+        end = years[-1] if years else "2020"
+        earlier = _group_totals(months, start)
+        later = _group_totals(months, end)
+        yearly = {year: _group_totals(months, year) for year in years}
         changes = []
         for group_id in set(earlier) | set(later):
             change = later.get(group_id, 0) - earlier.get(group_id, 0)
             if change > 0:
-                changes.append((change, _group_label(detail, group_id), earlier.get(group_id, 0), later.get(group_id, 0)))
+                changes.append((change, _group_label(detail, group_id), group_id))
         changes.sort(key=lambda item: (-item[0], item[1]))
         rising = changes[:5]
-        rows = [[label, _comma(before), _comma(after), f"+{_comma(change)}"] for change, label, before, after in rising]
-        results = [_result(venue, label, change) for change, label, _before, _after in rising]
+        rows = []
+        for change, label, group_id in rising:
+            rows.append([
+                label,
+                *[_comma(yearly[year].get(group_id, 0)) for year in years],
+                f"+{_comma(change)}",
+            ])
+        results = [_result(venue, label, change) for change, label, _group_id in rising]
+        baseline = load_city_baseline() or {}
+        through = str((baseline.get("present") or {}).get("through") or (baseline.get("nibrs") or {}).get("end") or "")
+        partial = f" {end} runs through {through}, not a full year." if through.startswith(end) else ""
         caption = (
-            f"Offense groups near {name} that rose the most from 2020 to 2024, ranked by how many more records. "
-            "2020 is LAPD reports. 2024 is reports through March 6, then NIBRS offenses. "
+            f"Offense groups near {name} that rose the most from {start} to {end}, ranked by how many more records. "
+            "The span is 2020–present: LAPD reports before March 7, 2024, then NIBRS offenses. "
+            "2024 mixes reports through March 6 with NIBRS offenses after that, so a 2024 count can come from that counting difference."
+            f"{partial} "
+            "A group can rise from the first year to the last and still sit below a peak in between. "
             "2020 had little or no event crowd."
         )
         if not rows:
-            caption = f"No offense group near {name} had more records in 2024 than in 2020."
-        table = _pattern_table(venue_id, "months", "Open incidents by month on the venue page", ["Group", "2020", "2024", "Change"], rows)
+            caption = f"No offense group near {name} had more records in {end} than in {start}."
+        table = _pattern_table(
+            venue_id,
+            "months",
+            "Open incidents by month on the venue page",
+            ["Group", *years, "Change"],
+            rows,
+        )
     explanation = _maybe_explain(name, caption, table)
     return _reply(
         "answered",
@@ -838,6 +926,187 @@ def _pattern_answer(intent: str, venue: dict, message: str = "") -> dict:
         provenance_text=PRESENT_PROVENANCE,
         table=table,
         explanation=explanation,
+    )
+
+
+def _weekend_percent(days: list[date]) -> int:
+    if not days:
+        return 0
+    weekend = sum(1 for day in days if day.weekday() >= 5)
+    return int(math.floor(weekend / len(days) * 100 + 0.5))
+
+
+def _parse_day(value: str) -> date | None:
+    text = str(value or "")[:10]
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _permit_weekend_sentence(rows: list[dict]) -> str:
+    permit_days = []
+    other_days = []
+    for row in rows:
+        parsed = _parse_day(row.get("date"))
+        if parsed is None:
+            continue
+        if int(row.get("is_permit_event_day") or 0):
+            permit_days.append(parsed)
+        else:
+            other_days.append(parsed)
+    permit_share = _weekend_percent(permit_days)
+    other_share = _weekend_percent(other_days)
+    if permit_share > other_share:
+        mix = f"Permit days fall more often on weekends ({permit_share}% of permit days, {other_share}% of other days)."
+    else:
+        mix = f"Permit days are {permit_share}% weekend, and other days are {other_share}% weekend."
+    return f"{mix} This comparison does not hold day of week fixed."
+
+
+def _home_weekend_sentence(payload: dict) -> str:
+    meta = payload.get("meta") or {}
+    game_days = [parsed for item in payload.get("historical_home_game_days") or [] if (parsed := _parse_day(item))]
+    months = {int(month) for month in (meta.get("in_season_months") or list(range(3, 11)))}
+    game_set = set(game_days)
+    other_days = []
+    cursor = date(2020, 1, 1)
+    while cursor <= date(2024, 12, 31):
+        if cursor.month in months and cursor not in game_set:
+            other_days.append(cursor)
+        cursor += timedelta(days=1)
+    game_share = _weekend_percent(game_days)
+    other_share = _weekend_percent(other_days)
+    if game_share > other_share:
+        mix = f"Home games fall more often on weekends ({game_share}% of game days, {other_share}% of other days in those months)."
+    else:
+        mix = f"Home games are {game_share}% weekend, and other days in those months are {other_share}% weekend."
+    return f"{mix} This comparison does not hold day of week fixed."
+
+
+def _gap_phrase(summary: dict) -> str:
+    difference = float(summary["absolute_difference"])
+    phrase = f"{difference:+.2f}/day"
+    if summary.get("percent_shown") and summary.get("lift_pct") is not None:
+        phrase += f" · {float(summary['lift_pct']):+.1f}%"
+    return phrase
+
+
+def _comparison_row(label: str, summary: dict) -> list[str]:
+    return [
+        label,
+        _comma(int(summary["event_day_count"])),
+        _comma(int(summary["other_day_count"])),
+        f"{float(summary['event_day_mean']):.2f}",
+        f"{float(summary['other_day_mean']):.2f}",
+        _gap_phrase(summary),
+    ]
+
+
+def _event_lift_answer(venue: dict, message: str) -> dict:
+    focus = _event_focus(message)
+    name = venue["venue_name"]
+    group = _group_id(message)
+    if group == "conflict":
+        group = None
+    sentences = []
+    rows = []
+    results = []
+    sources = []
+    if "permit" in focus:
+        view = permit_comparison(venue["venue_id"])
+        summary = (view or {}).get("summary") or {}
+        if view and view.get("available") and int(summary.get("event_day_count") or 0):
+            rows.append(_comparison_row("Permit days", summary))
+            results.append(_result(venue, "Permit days", int(summary["event_day_count"])))
+            sentences.append(
+                f"Permit days versus other days near {name}, 2020–2024: "
+                f"{_gap_phrase(summary)}. "
+                f"{_permit_weekend_sentence(load_permit_day_rows().get(venue['venue_id']) or [])}"
+            )
+            if group:
+                match = next((item for item in (view.get("groups") or []) if item.get("group") == group), None)
+                label = _group_label(get_venue(venue["venue_id"]) or {}, group)
+                if match:
+                    rows.append(_comparison_row(label, match))
+                    sentences.append(f"{label} on permit days: {_gap_phrase(match)}.")
+                else:
+                    sentences.append(f"The page does not publish a {label} permit-day percentage for {name}.")
+            if view.get("note"):
+                sentences.append(str(view["note"]))
+            sources.append({
+                "name": "LADBS temporary special event permits and LAPD crime reports",
+                "file": "permit_event_days.csv",
+                "period": "2020–2024",
+                "radius_m": RADIUS_M,
+            })
+        elif "home" not in focus:
+            sentences.append(f"No permit-day comparison is published for {name}.")
+    if "home" in focus:
+        games = home_game_comparison(venue["venue_id"])
+        summary = (games or {}).get("summary") or {}
+        if games and games.get("available") and int(summary.get("event_day_count") or 0):
+            rows.append(_comparison_row("Home games", summary))
+            results.append(_result(venue, "Home games", int(summary["event_day_count"])))
+            payload = _load_home_games() or {}
+            sentences.append(
+                f"Home games versus other days near {name}, 2020–2024: "
+                f"{_gap_phrase(summary)}. "
+                f"{_home_weekend_sentence(payload)} "
+                "2020 games had little or no crowd."
+            )
+            if group:
+                match = next((item for item in (games.get("groups") or []) if item.get("group") == group), None)
+                label = _group_label(get_venue(venue["venue_id"]) or {}, group)
+                if match:
+                    rows.append(_comparison_row(label, match))
+                    sentences.append(f"{label} on home-game days: {_gap_phrase(match)}.")
+                else:
+                    sentences.append(f"The page does not publish a {label} home-game percentage for {name}.")
+            sources.append({
+                "name": "MLB Dodgers regular-season home games and LAPD crime reports",
+                "file": "dodger_event_risk.json",
+                "period": "2020–2024",
+                "radius_m": RADIUS_M,
+            })
+        elif focus == {"home"}:
+            sentences.append("A home-game comparison is published for Dodger Stadium only.")
+    if not sentences:
+        sentences.append(f"No permit-day or home-game comparison is published for {name}.")
+    sentences.append("This is a past association, not a forecast.")
+    table = None
+    if rows:
+        table = {
+            "columns": ["Comparison", "Event days", "Other days", "Event-day mean", "Other-day mean", "Difference"],
+            "rows": rows,
+        }
+    notes = []
+    names = []
+    if any(item.get("file") == "permit_event_days.csv" for item in sources):
+        names.append("LADBS temporary special event permits and LAPD crime reports")
+        notes.append("Permit days are compared with other days in months that had at least one permit day.")
+    if any(item.get("file") == "dodger_event_risk.json" for item in sources):
+        names.append("MLB Dodgers regular-season home games and LAPD crime reports")
+        notes.append("Dodger Stadium home games are compared with other days in March through October.")
+    if names:
+        provenance = (
+            "Source: " + "; ".join(names) + ", 2020–2024, 800 m radius. "
+            + " ".join(notes)
+            + " This is an association, not a forecast."
+        )
+    else:
+        provenance = (
+            "Source: processed venue files, 2020–2024, 800 m radius. "
+            "No permit-day or home-game comparison is published for this venue."
+        )
+    return _reply(
+        "answered",
+        " ".join(sentences),
+        results=results,
+        intent="event_lift",
+        sources=sources or [dict(SOURCE)],
+        provenance_text=provenance,
+        table=table,
     )
 
 

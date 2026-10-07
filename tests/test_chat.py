@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 
 from backend.chat import answer_question
 from backend.main import app
-from backend.store import DatasetNotFound, get_venue
+from backend.store import DatasetNotFound, get_venue, home_game_comparison, permit_comparison
 
 
 class ChatTests(unittest.TestCase):
@@ -185,8 +185,9 @@ class ChatTests(unittest.TestCase):
             [day["label"] for day in days],
         )
 
-        earlier = totals("2020")
-        later = totals("2024")
+        years = sorted({month[:4] for month in months if month[:4].isdigit() and 2020 <= int(month[:4]) <= 2026})
+        earlier = totals(years[0])
+        later = totals(years[-1])
         rising = sorted(
             (
                 (later.get(group, 0) - earlier.get(group, 0), labels.get(group, group))
@@ -195,12 +196,50 @@ class ChatTests(unittest.TestCase):
             ),
             key=lambda item: (-item[0], item[1]),
         )[:5]
-        rose = self.post("Which crimes rose most from 2020 to 2024 near Dodger Stadium?")
+        rose = self.post("Which crimes rose most from 2020 to present near Dodger Stadium?")
         self.assertEqual(rose["question_type"], "rose")
         self.assertEqual([(row["category"], row["count"]) for row in rose["results"]], [(label, change) for change, label in rising])
         self.assertEqual(rose["table"]["href"], "#/venue/V01/months")
-        self.assertIn("2020", rose["answer"])
+        self.assertEqual(rose["table"]["columns"], ["Group", *years, "Change"])
+        self.assertIn("2025", rose["table"]["columns"])
+        self.assertIn("2026", rose["table"]["columns"])
+        theft = next(row for row in rose["table"]["rows"] if row[0] == labels["theft"])
+        self.assertEqual(theft[years.index("2023") + 1], f"{totals('2023')['theft']:,}")
+        self.assertIn("2020–present", rose["answer"])
         self.assertIn("March 6", rose["answer"])
+        self.assertIn("counting difference", rose["answer"])
+        self.assertIn("not a full year", rose["answer"])
+
+    def test_event_lift_quotes_the_page_and_names_the_weekend_mix(self):
+        permit = permit_comparison("V01")["summary"]
+        home = home_game_comparison("V01")["summary"]
+        peacock = permit_comparison("V04")["summary"]
+
+        permit_answer = self.post("How do permit days compare with other days near Dodger Stadium?")
+        self.assertEqual(permit_answer["question_type"], "event_lift")
+        self.assertIn(f"{float(permit['lift_pct']):+.1f}%", permit_answer["answer"])
+        self.assertIn("fall more often on weekends", permit_answer["answer"])
+        self.assertIn("does not hold day of week fixed", permit_answer["answer"])
+        self.assertIn("not a forecast", permit_answer["answer"])
+        self.assertNotIn(f"{float(home['lift_pct']):+.1f}%", permit_answer["answer"])
+
+        games = self.post("How do home games compare near Dodger Stadium?")
+        self.assertEqual(games["question_type"], "event_lift")
+        self.assertIn(f"{float(home['lift_pct']):+.1f}%", games["answer"])
+        self.assertIn("fall more often on weekends", games["answer"])
+        self.assertIn("not a forecast", games["answer"])
+        self.assertNotIn(f"{float(permit['lift_pct']):+.1f}%", games["answer"])
+
+        park = self.post("What is the event-day lift near Peacock Theater?")
+        self.assertIn(f"{float(peacock['lift_pct']):+.1f}%", park["answer"])
+        self.assertIn("does not hold day of week fixed", park["answer"])
+        self.assertNotIn("home games", park["answer"].lower())
+
+        self.assertNotIn("permit days are compared", games["answer"].lower())
+
+        zoo = self.post("How do home games compare near LA Zoo?")
+        self.assertIn("Dodger Stadium only", zoo["answer"])
+        self.assertEqual(zoo["results"], [])
 
     def test_explanation_keeps_supplied_numbers_only(self):
         with patch("backend.chat.settings", return_value={"claude_configured": True, "model": "test"}):
