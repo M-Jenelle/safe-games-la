@@ -72,12 +72,12 @@ HELP = (
     "two named venues, density, the city comparison, the busiest month, the top offense groups, "
     "the weekend pattern, offense groups on weekend or weekday days, and which groups rose most from 2020 to present. "
     "I can also quote the page's permit-day comparison and, for Dodger Stadium, the home-game comparison. "
-    "I can compare named offense groups at two venues, rank venues by density or by the change in records, "
-    "and show the 2020–2024 part-of-day chart. "
+    "I can compare named offense groups at two venues, rank venues by one offense group, by density, or by the change in records, "
+    "and show the 2020–2024 part-of-day chart, including one part such as night or evening. "
     "The citywide total is every usable LAPD record in Los Angeles, not the 14 venue circles added together. "
     "I can also show nearby rail/bus transit, nearest recorded fire/police stations "
     "and hospitals (with the recorded emergency-room flag), and listed venue sports. "
-    "I cannot answer a count of permits, Ticketmaster listings, a night-only slice, hourly counts, other distances, traffic, schedules, fares, "
+    "I cannot answer a count of permits, Ticketmaster listings, tonight, hourly counts, other distances, traffic, schedules, fares, "
     "nearest emergency-room hospitals, travel/response times, crime causes, live "
     "conditions, safety assessments, or 2028 predictions."
 )
@@ -235,10 +235,37 @@ _FOLLOW_WORDS = {
 def _hard_block(message: str) -> bool:
     return bool(re.search(
         r"\b(why|cause|causes|caused|predict|prediction|forecast|will|2028|today|tonight|"
-        r"night|nights|ticketmaster|shooting|shootings|safe|safer|safest|safety|risk|"
+        r"ticketmaster|shooting|shootings|safe|safer|safest|safety|risk|"
         r"invent|ignore|pretend|fabricate)\b",
         message,
     )) or bool(re.search(r"\b500 ?m\b", message))
+
+
+_PERIOD_WORDS = {
+    "night": "night", "nights": "night",
+    "morning": "morning", "mornings": "morning",
+    "afternoon": "afternoon", "afternoons": "afternoon",
+    "evening": "evening", "evenings": "evening",
+}
+
+
+def _period_id(message: str) -> str | None:
+    found = []
+    for word, period in _PERIOD_WORDS.items():
+        if re.search(rf"\b{word}\b", message) and period not in found:
+            found.append(period)
+    if not found:
+        return None
+    if len(found) > 1:
+        return "conflict"
+    return found[0]
+
+
+def _period_question(message: str) -> bool:
+    """One part-of-day slice from the 2020–2024 clock file. Tonight stays refused."""
+    if _hard_block(message) or _period_id(message) in (None, "conflict"):
+        return False
+    return _single_year(message) != "bad"
 
 
 def _mentions_time_of_day(message: str) -> bool:
@@ -246,8 +273,8 @@ def _mentions_time_of_day(message: str) -> bool:
 
 
 def _wants_time_of_day(message: str) -> bool:
-    """The published four-part chart. A night-only slice, a year, or a group stays refused."""
-    if not _mentions_time_of_day(message) or _hard_block(message):
+    """The published four-part chart. A named part of day is answered on its own."""
+    if not _mentions_time_of_day(message) or _hard_block(message) or _period_id(message):
         return False
     if _group_id(message) or _single_year(message) or _reports_span(message) or _explicit_present(message):
         return False
@@ -302,6 +329,58 @@ def _rewrite_follow_up(message: str, prior: str, venues: list) -> str | None:
     if rewritten == prior:
         return None
     return rewritten
+
+
+def _rewrite_year_follow_up(message: str, prior: str, venues: list) -> str | None:
+    """Keep the one remembered question's venue when the follow-up only changes the year."""
+    if not prior or _mentions(message, venues):
+        return None
+    year = _single_year(message)
+    if not year or year == "bad":
+        return None
+    if set(message.split()) - _FOLLOW_WORDS - {year, "in", "during"}:
+        return None
+    prior_mentions = [item for item in _mentions(prior, venues) if len(item[2]) == 1]
+    if len(prior_mentions) != 1:
+        return None
+    if _single_year(prior) and _single_year(prior) != "bad":
+        rewritten = re.sub(r"\b20\d\d\b", year, prior, count=1)
+    else:
+        rewritten = f"{prior} in {year}"
+    rewritten = " ".join(rewritten.split())
+    if rewritten == prior:
+        return None
+    return rewritten
+
+
+def _split_clauses(message: str) -> list[str] | None:
+    parts = [part.strip() for part in re.split(r"\band (?=(?:what|how|which)\b)", message) if part.strip()]
+    if len(parts) != 2:
+        return None
+    return parts
+
+
+def _with_venue(clause: str, donor: str, venues: list) -> str:
+    if _mentioned_ids(_mentions(clause, venues)):
+        return clause
+    donor_ids = _mentioned_ids(_mentions(donor, venues))
+    if len(donor_ids) != 1:
+        return clause
+    venue = _roster_venue(venues, donor_ids[0])
+    if venue is None:
+        return clause
+    return f"{clause} near {_normalize(venue['venue_name'])}"
+
+
+_PARTIAL_NOTICE = "I answered the first part; ask the second separately."
+
+
+def _visible_answer(answer: str) -> tuple[str, str]:
+    for marker in ("\n\nSource:", "\n\nCrime context only", "\n\nNo answer was calculated"):
+        at = answer.find(marker)
+        if at != -1:
+            return answer[:at].strip(), answer[at:]
+    return answer.strip(), ""
 
 
 def _wants_nibrs(message: str) -> bool:
@@ -365,7 +444,7 @@ def _headline_intent(residual: str, mentions: list) -> str | None:
     limit = _top_limit(residual)
     if limit == -1:
         return None
-    if limit or re.search(r"\b(?:most common|top) (?:crime )?(?:categories|groups|types)\b", residual):
+    if limit or re.search(r"\b(?:most common|top) (?:crime )?(?:categories|groups|types)\b", residual) or re.search(r"\btop crimes?\b", residual):
         return "top_groups"
     if re.search(r"\b(weekend|weekends|weekday|weekdays|day of week)\b", residual):
         if _weekday_group_all(residual):
@@ -499,7 +578,9 @@ def _outside_scope(message: str, mentions: list) -> bool:
         return True
     if group == "conflict" and not _group_compare_shape(message):
         return True
-    if _mentions_time_of_day(message) and not _wants_time_of_day(message):
+    if _mentions_time_of_day(message) and not _wants_time_of_day(message) and not _period_question(message):
+        return True
+    if _period_id(message) == "conflict":
         return True
     if year == "bad" and not _tool_opening(message):
         return True
@@ -531,6 +612,8 @@ def _outside_scope(message: str, mentions: list) -> bool:
             residual = _strip_event_phrases(residual)
         residual = _strip_answered(residual, message)
     if _tool_opening(message):
+        return False
+    if _period_question(message) and not re.search(r"\b(rate|rates|densit)\b", message):
         return False
     forbidden = (
         r"\d|\b(why|cause|causes|caused|reason|reasons|predict|prediction|predictions|"
@@ -658,6 +741,11 @@ def _intent(message: str, mentions: list) -> str | None:
     residual = _question_text(message, mentions)
     if _wants_citywide(message):
         return "citywide"
+    if re.search(r"\bwhich venues?\b", message) and re.search(r"\b(most|highest|largest)\b", message):
+        group = _group_id(message)
+        if group == "conflict":
+            return None
+        return "rank_group" if group else "rank_group_missing"
     if _wants_event_lift(message):
         return "event_lift"
     headline = _headline_intent(residual, mentions)
@@ -665,6 +753,8 @@ def _intent(message: str, mentions: list) -> str | None:
         return headline
     if _wants_time_of_day(message):
         return "time_of_day"
+    if _period_question(message):
+        return "period"
     if _weekday_group_all(message):
         return None
     year = _single_year(message)
@@ -1291,6 +1381,110 @@ def _time_of_day_answer(venue: dict) -> dict:
     )
 
 
+def _period_count(block: dict, period_id: str, year: str | None, group: str | None) -> int | None:
+    scopes = []
+    if year:
+        months = block.get("by_month") or {}
+        if not months:
+            return None
+        scopes = [scoped for month, scoped in months.items() if str(month).startswith(year)]
+    else:
+        scopes = [block]
+    total = 0
+    found = False
+    for scope in scopes:
+        for period in scope.get("periods") or []:
+            if period.get("id") != period_id:
+                continue
+            found = True
+            if group:
+                total += sum(int(item.get("count") or 0) for item in (period.get("groups") or []) if item.get("id") == group)
+            else:
+                total += int(period.get("count") or 0)
+    if year and not found:
+        return 0
+    return total if found or year else None
+
+
+def _period_answer(venue: dict, message: str) -> dict:
+    block = crime_time_for(venue["venue_id"]) or {}
+    period_id = _period_id(message)
+    periods = [period for period in (block.get("periods") or []) if period.get("id") == period_id]
+    if not periods:
+        return _reply(
+            "unavailable",
+            "The part-of-day counts are missing. Rebuild them with `python -m pipeline.crime_time`.",
+            intent="period",
+            sources=[dict(SOURCE)],
+            provenance_text=PROVENANCE,
+        )
+    year = _single_year(message)
+    if year == "bad":
+        year = None
+    group = _group_id(message)
+    if group == "conflict":
+        group = None
+    count = _period_count(block, period_id, year, group if group else None)
+    if count is None:
+        return _reply(
+            "unavailable",
+            "The part-of-day counts are missing. Rebuild them with `python -m pipeline.crime_time`.",
+            intent="period",
+            sources=[dict(SOURCE)],
+            provenance_text=PROVENANCE,
+        )
+    label = str(periods[0].get("label") or period_id)
+    detail = get_venue(venue["venue_id"]) or {}
+    subject = _group_label(detail, group) if group else "Reports"
+    when = f" in {year}" if year else ", 2020–2024"
+    caption = (
+        f"{subject} during {label} near {venue['venue_name']}{when}: {count:,}. "
+        "These are LAPD reports. 12:00 is often an unknown hour."
+    )
+    return _reply(
+        "answered", caption, results=[_result(venue, subject if group else label, count)], intent="period",
+        sources=[dict(SOURCE)], provenance_text=PROVENANCE,
+    )
+
+
+def _rank_by_group(venues: list, group_id: str | None) -> dict:
+    if not group_id or group_id not in _TOOL_GROUPS:
+        return _reply(
+            "unsupported",
+            "I can rank the venues by one offense group, such as robbery, for 2020–present. Name the group. "
+            f"{HELP}",
+        )
+    packed = []
+    label = group_id
+    for venue in venues:
+        detail = get_venue(venue["venue_id"]) or {}
+        months = detail.get("merged_by_month") or {}
+        if not months:
+            return _reply(
+                "unavailable",
+                "The 2020–present offense groups are missing. Rebuild them with `python -m pipeline.merge_crime`.",
+                intent="rank_group",
+                sources=[dict(PRESENT_SOURCE)],
+                provenance_text=PRESENT_PROVENANCE,
+            )
+        label = _group_label(detail, group_id)
+        packed.append((venue, _group_totals(months).get(group_id, 0)))
+    packed.sort(key=lambda item: (-item[1], item[0]["venue_name"]))
+    rows, results = [], []
+    for index, (venue, count) in enumerate(packed, start=1):
+        rows.append([str(index), venue["venue_name"], _comma(count)])
+        results.append(_result(venue, label, count))
+    caption = (
+        f"Venues ranked by {label} records, 2020–present, inside the 800 m circle. "
+        "Reports before March 7, 2024, then NIBRS offenses."
+    )
+    return _reply(
+        "answered", caption, results=results, intent="rank_group",
+        sources=[dict(PRESENT_SOURCE)], provenance_text=PRESENT_PROVENANCE,
+        table={"columns": ["Rank", "Venue", "Records"], "rows": rows},
+    )
+
+
 def answer_question(message: str, venue_id: str | None = None, prior_message: str | None = None) -> dict:
     engine = {"engine": "data", "model": None, "engine_note": None}
     response = _answer_question(message, venue_id, engine, prior_message)
@@ -1299,7 +1493,40 @@ def answer_question(message: str, venue_id: str | None = None, prior_message: st
     return response
 
 
-def _answer_question(message: str, venue_id: str | None, engine: dict, prior_message: str | None = None) -> dict:
+def _join_answers(parts: list[dict]) -> dict:
+    """Show every part that was calculated. A dropped part is stated, not skipped."""
+    first = parts[0]
+    if first["status"] != "answered":
+        return first
+    visible, provenance = _visible_answer(first["answer"])
+    results = list(first.get("results") or [])
+    table = first.get("table")
+    for part in parts[1:]:
+        if part["status"] != "answered":
+            if _PARTIAL_NOTICE not in visible:
+                visible = f"{visible} {_PARTIAL_NOTICE}"
+            continue
+        more, _ignored = _visible_answer(part["answer"])
+        visible = f"{visible}\n{more}"
+        results.extend(part.get("results") or [])
+        if table is None and part.get("table"):
+            table = part["table"]
+    body = _reply(
+        "answered",
+        visible,
+        results=results,
+        intent=first.get("question_type"),
+        sources=first.get("sources"),
+        provenance_text=provenance.lstrip() or None,
+    )
+    if table:
+        body["table"] = table
+    if first.get("explanation"):
+        body["explanation"] = first["explanation"]
+    return body
+
+
+def _answer_question(message: str, venue_id: str | None, engine: dict, prior_message: str | None = None, *, skip_split: bool = False) -> dict:
     try:
         summary = load_summary()
     except DatasetNotFound:
@@ -1319,10 +1546,31 @@ def _answer_question(message: str, venue_id: str | None, engine: dict, prior_mes
 
     normalized = _normalize(message)
     mentions = _mentions(normalized, venues)
+    if not skip_split:
+        clauses = _split_clauses(normalized)
+        if clauses:
+            shared = clauses[:]
+            for index, clause in enumerate(shared):
+                donor = next((other for other in shared if other is not clause and _mentioned_ids(_mentions(other, venues))), None)
+                if donor:
+                    shared[index] = _with_venue(clause, donor, venues)
+            answered = [
+                _answer_question(clause, venue_id, engine, skip_split=True)
+                for clause in shared
+            ]
+            response = _join_answers(answered)
+            response["resolved_message"] = normalized
+            return response
+    if prior_message and not venue_id and not mentions:
+        rewritten = _rewrite_year_follow_up(normalized, _normalize(prior_message), venues)
+        if rewritten:
+            response = _answer_question(rewritten, venue_id, engine, skip_split=True)
+            response["resolved_message"] = rewritten
+            return response
     if prior_message and _intent(normalized, mentions) is None and not _tool_opening(normalized):
         rewritten = _rewrite_follow_up(normalized, _normalize(prior_message), venues)
         if rewritten:
-            response = _answer_question(rewritten, venue_id, engine)
+            response = _answer_question(rewritten, venue_id, engine, skip_split=True)
             response["resolved_message"] = rewritten
             return response
     intent = _intent(normalized, mentions)
@@ -1376,6 +1624,14 @@ def _answer_question(message: str, venue_id: str | None, engine: dict, prior_mes
         return _reply("unsupported", f"I cannot answer that question from the supported processed-data calculations. {HELP}")
     if intent == "citywide":
         return _citywide_answer()
+    if intent == "rank_group":
+        return _rank_by_group(venues, _group_id(normalized))
+    if intent == "rank_group_missing":
+        return _reply(
+            "unsupported",
+            "I can rank the venues by one offense group, such as robbery, for 2020–present. Name the group. "
+            f"{HELP}",
+        )
 
     for start, end, candidates in mentions:
         if len(candidates) > 1:
@@ -1426,6 +1682,8 @@ def _answer_question(message: str, venue_id: str | None, engine: dict, prior_mes
         return _event_lift_answer(selected[0], normalized)
     if intent == "time_of_day":
         return _time_of_day_answer(selected[0])
+    if intent == "period":
+        return _period_answer(selected[0], normalized)
     if intent in PATTERN_INTENTS:
         return _pattern_answer(intent, selected[0], normalized)
     if intent in CONTEXT_INTENTS:

@@ -419,7 +419,6 @@ class ChatTests(unittest.TestCase):
             "How many crime categories near Dodger Stadium?",
             "How many venues have crime reports near Dodger Stadium?",
             "Compare the most common crime categories near Dodger Stadium and LA Zoo",
-            "How many incidents near Dodger Stadium at night?",
             "How many incidents within 500 m of Dodger Stadium?",
             "How many incidents near SoFi Stadium?",
             "What is the crime rate near Dodger Stadium?",
@@ -586,7 +585,7 @@ class ChatTests(unittest.TestCase):
             int(row[1].replace(",", "")) for row in expected
         ))
 
-    def test_time_of_day_chart_keeps_night_only_refused(self):
+    def test_time_of_day_chart_and_named_part_of_day(self):
         body = self.post("What is the time of day pattern near Dodger Stadium?")
         self.assertEqual(body["status"], "answered")
         self.assertEqual(body["question_type"], "time_of_day")
@@ -599,9 +598,16 @@ class ChatTests(unittest.TestCase):
         self.assertIn(f"{usable:,}", body["answer"])
         self.assertIn("2020–2024", body["answer"])
         self.assert_provenance(body)
+        night_period = next(period for period in periods if period["id"] == "night")
         night = self.post("How many incidents near Dodger Stadium at night?")
-        self.assertEqual(night["status"], "unsupported")
-        self.assertEqual(night["results"], [])
+        self.assertEqual(night["status"], "answered")
+        self.assertEqual(night["question_type"], "period")
+        self.assertEqual(night["results"][0]["count"], int(night_period["count"]))
+        self.assertIn(str(night_period["label"]), night["answer"])
+        evening_period = next(period for period in periods if period["id"] == "evening")
+        evening = self.post("How many incidents near Dodger Stadium in the evening?")
+        self.assertEqual(evening["question_type"], "period")
+        self.assertEqual(evening["results"][0]["count"], int(evening_period["count"]))
 
     def test_areas_changed_ranks_venue_circles(self):
         body = self.post("Which areas changed the most?")
@@ -631,12 +637,99 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(followed["results"][0]["count"], get_venue("V05")["present"]["count"])
         self.assertIn("la memorial coliseum", followed["resolved_message"])
 
+        year_follow = self.post("What about 2022?", prior_message=first["resolved_message"])
+        self.assertNotIn("Which venue do you mean", year_follow["answer"])
+        self.assertEqual(year_follow["question_type"], "year_count")
+        self.assertEqual(year_follow["results"][0]["venue_id"], "V01")
+        dodger_2022 = sum(
+            int(count)
+            for month, groups in get_venue("V01")["merged_by_month"].items()
+            if str(month).startswith("2022")
+            for count in groups.values()
+        )
+        self.assertEqual(year_follow["results"][0]["count"], dodger_2022)
+
         standalone = self.post("How many incidents near LA Zoo?", prior_message=first["resolved_message"])
         self.assertEqual(standalone["results"][0]["venue_id"], "V08")
 
-        refused = self.post("and for the Coliseum?", prior_message="How many incidents near Dodger Stadium at night?")
-        self.assertEqual(refused["status"], "unsupported")
-        self.assertEqual(refused["results"], [])
+        followed_night = self.post("and for the Coliseum?", prior_message="How many incidents near Dodger Stadium at night?")
+        coliseum_night = next(period["count"] for period in crime_time_for("V05")["periods"] if period["id"] == "night")
+        self.assertEqual(followed_night["status"], "answered")
+        self.assertEqual(followed_night["results"][0]["venue_id"], "V05")
+        self.assertEqual(followed_night["results"][0]["count"], int(coliseum_night))
+
+        selected = self.post("What about 2022?", venue_id="V02", prior_message=first["resolved_message"])
+        self.assertEqual(selected["results"][0]["venue_id"], "V02")
+
+    def test_two_part_questions_keep_both_topics(self):
+        both = self.post("What are the top 3 crime categories near Dodger Stadium and what is the weekend share?")
+        self.assertEqual(both["status"], "answered")
+        self.assertEqual(len(both["table"]["rows"]), 3)
+        self.assertEqual(both["results"][0]["category"], "Assault")
+        self.assertIn("Weekend days are", both["answer"])
+        self.assertNotIn("I answered the first part", both["answer"])
+
+        months = get_venue("V01")["merged_by_month"]
+        counts = self.post("How many robberies and how many thefts near Dodger Stadium?")
+        self.assertEqual(counts["status"], "answered")
+        self.assertEqual(
+            [item["count"] for item in counts["results"]],
+            [
+                sum(int(groups.get("robbery") or 0) for groups in months.values()),
+                sum(int(groups.get("theft") or 0) for groups in months.values()),
+            ],
+        )
+        self.assertIn("Robbery", counts["answer"])
+        self.assertIn("Theft", counts["answer"])
+
+        dropped = self.post("What are the top 3 crime categories near Dodger Stadium and what is the crime rate?")
+        self.assertEqual(dropped["status"], "answered")
+        self.assertEqual(len(dropped["table"]["rows"]), 3)
+        self.assertIn("I answered the first part; ask the second separately.", dropped["answer"])
+        self.assertEqual(len(dropped["results"]), 3)
+
+    def test_which_venue_ranks_one_offense_group(self):
+        ranked = []
+        for venue in self.venues:
+            months = get_venue(venue["venue_id"])["merged_by_month"]
+            total = sum(int(groups.get("robbery") or 0) for groups in months.values())
+            ranked.append((total, venue["venue_name"], venue["venue_id"]))
+        ranked.sort(key=lambda item: (-item[0], item[1]))
+        body = self.post("Which venue has the most robberies?")
+        self.assertEqual(body["status"], "answered")
+        self.assertEqual(body["question_type"], "rank_group")
+        self.assertNotIn("Which venue do you mean", body["answer"])
+        self.assertEqual(body["results"][0]["venue_id"], ranked[0][2])
+        self.assertEqual(body["results"][0]["count"], ranked[0][0])
+        self.assertEqual(body["table"]["rows"][0][1], ranked[0][1])
+
+        missing = self.post("Which venue has the most crime?")
+        self.assertEqual(missing["status"], "unsupported")
+        self.assertEqual(missing["results"], [])
+        self.assertNotIn("Which venue do you mean", missing["answer"])
+        self.assertIn("Name the group", missing["answer"])
+
+    def test_top_crimes_uses_offense_groups(self):
+        body = self.post("Top crimes near Dodger Stadium")
+        named = self.post("Show the top 5 crime categories near Dodger Stadium")
+        self.assertEqual(body["status"], "answered")
+        self.assertEqual(body["question_type"], "top_groups")
+        self.assertEqual(body["table"]["rows"], named["table"]["rows"])
+        self.assertEqual(len(body["table"]["rows"]), 5)
+
+    def test_year_follow_up_keeps_the_previous_venue(self):
+        first = self.post("How many incidents near Crypto.com Arena?")
+        followed = self.post("What about 2022?", prior_message=first["resolved_message"])
+        self.assertEqual(followed["question_type"], "year_count")
+        self.assertEqual(followed["results"][0]["venue_id"], "V02")
+        expected = sum(
+            int(count)
+            for month, groups in get_venue("V02")["merged_by_month"].items()
+            if str(month).startswith("2022")
+            for count in groups.values()
+        )
+        self.assertEqual(followed["results"][0]["count"], expected)
+        self.assertNotIn("Which venue do you mean", followed["answer"])
 
 
 if __name__ == "__main__":

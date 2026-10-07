@@ -143,7 +143,6 @@ class ClaudeTests(unittest.TestCase):
             "How many Ticketmaster events near Dodger Stadium?",
             "How many LADBS permits near Dodger Stadium?",
             "How many incidents within 500m of Dodger Stadium?",
-            "How many incidents near Dodger Stadium at night?",
             "Why is crime common near Dodger Stadium?",
             "How many shootings near Dodger Stadium?",
             "How many crime categories near Dodger Stadium?",
