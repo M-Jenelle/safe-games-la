@@ -35,9 +35,10 @@ export function monthChart(entries, peakKey, onFocus, word = "incidents") {
   const peak = entries.find((entry) => entry.key === peakKey) || entries[0];
   svg.setAttribute(
     "aria-label",
-    `Monthly incidents from ${monthLabel(entries[0].key)} to ${monthLabel(entries[entries.length - 1].key)}. Peak ${monthLabel(peak.key)} with ${formatNumber(peak.count)}.`,
+    `Monthly ${word} from ${monthLabel(entries[0].key)} to ${monthLabel(entries[entries.length - 1].key)}. Peak ${monthLabel(peak.key)} with ${formatNumber(peak.count)}.`,
   );
   const width = 960 / entries.length;
+  let labeledYear = "";
   entries.forEach((entry, index) => {
     const height = Math.max((entry.count / max) * 168, entry.count ? 2 : 0);
     const x = index * width + 0.6;
@@ -59,13 +60,15 @@ export function monthChart(entries, peakKey, onFocus, word = "incidents") {
     hit.addEventListener("click", () => onFocus(entry.key));
     bindChartHover(hit, entry, word);
     svg.append(hit);
-    if (entry.key.endsWith("-01")) {
+    const year = entry.key.slice(0, 4);
+    if (year !== labeledYear) {
+      labeledYear = year;
       const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
       label.setAttribute("x", String(index * width));
       label.setAttribute("y", "194");
       label.setAttribute("fill", "#4e5963");
       label.setAttribute("font-size", "11");
-      label.textContent = entry.key.slice(0, 4);
+      label.textContent = year;
       svg.append(label);
     }
   });
@@ -143,25 +146,23 @@ export function yearTotals(entries) {
   return [...totals.entries()];
 }
 
-export function monthTable(entries, peakKey, activeKey, fromMonth, toMonth) {
-  const indexes = [];
-  for (let month = fromMonth; month <= toMonth; month += 1) indexes.push(month);
+export function monthTable(entries, peakKey, activeKey) {
+  const monthsPresent = [...new Set(entries.map((entry) => Number(entry.key.slice(5))))].sort((a, b) => a - b);
   const byYear = new Map();
   for (const entry of entries) {
     const [year, month] = entry.key.split("-");
     const monthNumber = Number(month);
-    if (monthNumber < fromMonth || monthNumber > toMonth) continue;
-    if (!byYear.has(year)) byYear.set(year, Array(12).fill(null));
-    byYear.get(year)[monthNumber - 1] = entry;
+    if (!byYear.has(year)) byYear.set(year, new Map());
+    byYear.get(year).set(monthNumber, entry);
   }
   const head = el("tr", {}, [
     el("th", {}, [text("Year")]),
-    ...indexes.map((month) => el("th", {}, [text(MONTH_NAMES[month - 1])])),
+    ...monthsPresent.map((month) => el("th", {}, [text(MONTH_NAMES[month - 1])])),
   ]);
   const rows = [...byYear.entries()].map(([year, months]) => el("tr", {}, [
     el("th", {}, [text(year)]),
-    ...indexes.map((month) => {
-      const entry = months[month - 1];
+    ...monthsPresent.map((month) => {
+      const entry = months.get(month);
       const classes = [];
       if (entry && entry.key === peakKey) classes.push("is-peak");
       if (entry && entry.key === activeKey) classes.push("is-active");
@@ -317,6 +318,27 @@ function pieSlices(block, colorFor) {
   }));
 }
 
+function chartSection(host, title, children, id) {
+  const nodes = children.filter(Boolean);
+  const heading = { className: "section-title" };
+  if (id) heading.id = id;
+  if (host.classList.contains("chart-flat")) {
+    host.replaceChildren(el("section", { className: "time-section", "aria-label": title }, [
+      el("h3", heading, [text(title)]),
+      ...nodes,
+    ]));
+    return;
+  }
+  const previous = host.querySelector("details.section-accordion");
+  const details = el("details", { className: "section-accordion time-section" });
+  details.open = Boolean(previous?.open);
+  details.append(
+    el("summary", {}, [el("h3", heading, [text(title)])]),
+    ...nodes,
+  );
+  host.replaceChildren(details);
+}
+
 function mountDrillPie(host, options) {
   const slices = (options.slices || []).filter((slice) => slice.count);
   if (!slices.length) {
@@ -324,10 +346,9 @@ function mountDrillPie(host, options) {
       host.replaceChildren();
       return;
     }
-    host.replaceChildren(el("section", { className: "time-section", "aria-label": options.title }, [
-      el("h3", { className: "section-title" }, [text(options.title)]),
+    chartSection(host, options.title, [
       el("p", { className: "muted" }, [text(`${options.monthLabel}. None in this month.`)]),
-    ]));
+    ]);
     return;
   }
   let selected = "";
@@ -357,13 +378,12 @@ function mountDrillPie(host, options) {
     );
   }
 
-  host.replaceChildren(el("section", { className: "time-section", "aria-label": options.title }, [
-    el("h3", { className: "section-title" }, [text(options.title)]),
+  chartSection(host, options.title, [
     el("p", { className: "muted" }, [text(options.hint)]),
     row,
     el("p", { className: "terms" }, [text(options.disclaimer || "")]),
     options.guide ? el("p", { className: "muted pie-guide" }, [text(options.guide)]) : el("span"),
-  ]));
+  ]);
   paint();
 }
 
@@ -385,10 +405,9 @@ function mountPairedPies(host, options) {
     : options.hint;
 
   if (blank[0] && blank[1]) {
-    host.replaceChildren(el("section", { className: "time-section", "aria-label": options.title }, [
-      el("h3", { className: "section-title" }, [text(options.title)]),
+    chartSection(host, options.title, [
       el("p", { className: "muted" }, [text(options.month ? `${options.month}. None in this month.` : "None in this range.")]),
-    ]));
+    ]);
     return;
   }
 
@@ -420,11 +439,10 @@ function mountPairedPies(host, options) {
       el("p", { className: "terms" }, [text(live.disclaimer || "")]),
     ]);
     const crimeColumn = el("div", { className: "pie-column pie-slot" }, [crimeHost]);
-    host.replaceChildren(el("section", { className: "time-section", "aria-label": options.title }, [
-      el("h3", { className: "section-title" }, [text(options.title)]),
+    chartSection(host, options.title, [
       el("p", { className: "muted" }, [text(options.month ? `${options.month}. ${hint}` : hint)]),
       el("div", { className: "pie-pair pie-pair-slots" }, blank[0] ? [crimeColumn, liveColumn] : [liveColumn, crimeColumn]),
-    ]));
+    ]);
     return;
   }
 
@@ -456,11 +474,10 @@ function mountPairedPies(host, options) {
     ]);
   });
 
-  host.replaceChildren(el("section", { className: "time-section", "aria-label": options.title }, [
-    el("h3", { className: "section-title" }, [text(options.title)]),
+  chartSection(host, options.title, [
     el("p", { className: "muted" }, [text(options.month ? `${options.month}. ${hint}` : hint)]),
     el("div", { className: "pie-pair" }, columns),
-  ]));
+  ]);
 }
 
 export function mountTimeSection(crimeTime, host, countWord, guide, monthLabel) {
@@ -547,10 +564,9 @@ export function mountWeekdaySection(block, host, countWord, monthLabel, placemen
     return;
   }
   if (!block.total) {
-    host.replaceChildren(el("section", { className: "time-section", "aria-label": "Day of week" }, [
-      el("h3", { className: "section-title", id: "section-weekday" }, [text("Day of week")]),
+    chartSection(host, "Day of week", [
       el("p", { className: "muted" }, [text(`${monthLabel}. None in this month.`)]),
-    ]));
+    ], "section-weekday");
     return;
   }
   const stacked = placement === "below";
@@ -572,13 +588,12 @@ export function mountWeekdaySection(block, host, countWord, monthLabel, placemen
   }
 
   paint();
-  host.replaceChildren(el("section", { className: "time-section", "aria-label": "Day of week" }, [
-    el("h3", { className: "section-title", id: "section-weekday" }, [text("Day of week")]),
+  chartSection(host, "Day of week", [
     el("p", { className: "muted" }, [text(`${when}${weekdaySummary(block)}`)]),
     clickable ? el("p", { className: "muted" }, [text(pageCopy("weekday_click"))]) : el("span"),
     row,
     block.disclaimer ? el("p", { className: "terms" }, [text(block.disclaimer)]) : el("span"),
-  ]));
+  ], "section-weekday");
 }
 
 export function mountWeekdayPair(host, reports, nibrs, monthLabel) {
@@ -587,16 +602,14 @@ export function mountWeekdayPair(host, reports, nibrs, monthLabel) {
     { label: "NIBRS offenses, Mar 2024–present", block: nibrs, countWord: "offenses" },
   ].filter((panel) => panel.block?.total);
   if (!panels.length) {
-    host.replaceChildren(el("section", { className: "time-section", "aria-label": "Day of week" }, [
-      el("h3", { className: "section-title", id: "section-weekday" }, [text("Day of week")]),
+    chartSection(host, "Day of week", [
       el("p", { className: "muted" }, [text(monthLabel ? `${monthLabel}. None in this month.` : "None in this range.")]),
-    ]));
+    ], "section-weekday");
     return;
   }
   const clickable = panels.some((panel) => weekdayHasGroups(panel.block));
   const note = monthLabel ? `${monthLabel}. Yellow bars are Saturday and Sunday.` : "Yellow bars are Saturday and Sunday.";
-  host.replaceChildren(el("section", { className: "time-section", "aria-label": "Day of week" }, [
-    el("h3", { className: "section-title", id: "section-weekday" }, [text("Day of week")]),
+  chartSection(host, "Day of week", [
     el("p", { className: "muted" }, [text(clickable ? `${note} ${pageCopy("weekday_click")}` : note)]),
     el("div", { className: "pie-pair" }, panels.map((panel) => {
       let selected = "";
@@ -622,7 +635,7 @@ export function mountWeekdayPair(host, reports, nibrs, monthLabel) {
         panel.block.disclaimer ? el("p", { className: "terms" }, [text(panel.block.disclaimer)]) : el("span"),
       ]);
     })),
-  ]));
+  ], "section-weekday");
 }
 
 export function mountDistanceSection(crimeDistance, host, countWord, guide, monthLabel) {

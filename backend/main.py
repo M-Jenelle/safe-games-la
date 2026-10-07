@@ -134,10 +134,17 @@ def read_map() -> dict:
 
 
 @app.get("/api/map/crime")
-def read_crime_heat(view: str = Query(default="all", max_length=40)) -> dict:
-    """One crime heatmap: all, high-amount, around venues, or one type."""
+def read_crime_heat(
+    view: str = Query(default="all", max_length=40),
+    start: str | None = Query(default=None, max_length=7),
+    end: str | None = Query(default=None, max_length=7),
+) -> dict:
+    """One crime heatmap: all, high-amount, around venues, or one type.
+
+    ``start`` and ``end`` are YYYY-MM. The points are limited to that span.
+    """
     try:
-        return crime_heat_points(view)
+        return crime_heat_points(view, start=start, end=end)
     except DatasetNotFound as exc:
         raise _missing(exc) from exc
     except ValueError as exc:

@@ -334,6 +334,10 @@ select { width: 132px; }
 
 .map-panel .panel-label h2 { padding-bottom: 0; }
 
+.map-panel .heat-range {
+  margin: 0;
+}
+
 .layer-toggles {
   display: flex;
   flex-wrap: wrap;
@@ -785,6 +789,46 @@ select { width: 132px; }
   font-weight: 500;
 }
 
+.crime-unit {
+  margin: 20px 0;
+  padding: 4px 22px 18px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(26, 26, 26, 0.08);
+}
+
+.crime-unit > .section-title:first-child {
+  margin-top: 16px;
+}
+
+.identity-unit {
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+.identity-unit .address {
+  margin-bottom: 12px;
+}
+
+.identity-unit .stats {
+  margin: 0;
+  padding: 4px 0 0;
+  border: 0;
+}
+
+.identity-unit .stat {
+  padding: 0 18px;
+}
+
+.identity-unit .stat:first-child {
+  padding-left: 0;
+}
+
+.identity-unit .stat + .stat {
+  border-left: 1px solid #d5d3ce;
+}
+
 .year-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -871,6 +915,23 @@ select { width: 132px; }
 .table-filters select {
   width: auto;
   min-width: 8.5rem;
+}
+
+.table-filters .range-pair {
+  display: flex;
+  gap: 6px;
+}
+
+.table-filters .range-pair select {
+  min-width: 0;
+}
+
+.table-filters .range-pair select:first-child {
+  min-width: 4.6rem;
+}
+
+.table-filters .range-pair select:last-child {
+  min-width: 5.2rem;
 }
 
 .show-more {
@@ -1037,6 +1098,11 @@ button.weekday-col { cursor: pointer; }
   border-radius: 0;
   padding: 0;
   background: transparent;
+}
+
+.places-unit .station + .station {
+  border-left: 1px solid #d5d3ce;
+  padding-left: 18px;
 }
 
 .station h3 {
@@ -1373,6 +1439,43 @@ button.weekday-col { cursor: pointer; }
 }
 
 .time-section { margin: 8px 0 4px; }
+
+.section-accordion {
+  border-top: 1px solid #e4e1db;
+  margin: 0;
+}
+
+.section-accordion > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.section-accordion > summary::-webkit-details-marker { display: none; }
+
+.section-accordion > summary::before {
+  content: "";
+  width: 0.42rem;
+  height: 0.42rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  flex: none;
+}
+
+.section-accordion[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.section-accordion > summary .section-title {
+  margin: 14px 0;
+}
+
+.section-accordion > :not(summary) {
+  margin-bottom: 8px;
+}
 
 .pie-row {
   display: flex;
@@ -1731,6 +1834,29 @@ button.pie-key { cursor: pointer; }
   grid-template-columns: 1fr 1fr;
 }
 
+.compare-column .identity-unit .zone {
+  text-align: left;
+}
+
+.compare-column .identity-unit .stat + .stat {
+  border-left: 0;
+}
+
+.compare-column .identity-unit .stat:nth-child(odd) {
+  padding-left: 0;
+}
+
+.compare-column .identity-unit .stat:nth-child(even) {
+  border-left: 1px solid #d5d3ce;
+  padding-left: 16px;
+}
+
+.compare-column .identity-unit .stat:nth-child(n + 3) {
+  border-top: 1px solid #d5d3ce;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
 .compare-sheet.is-permits .compare-column,
 .compare-sheet.is-permits .compare-column > :last-child,
 .compare-sheet.is-permits .compare-body,
@@ -1796,8 +1922,37 @@ button.pie-key { cursor: pointer; }
     min-height: 280px;
   }
   .stats, .station-grid, .year-row { display: grid; grid-template-columns: 1fr 1fr; }
+  .places-unit .station + .station {
+    border-left: 0;
+    padding-left: 0;
+  }
+  .places-unit .station:nth-child(even) {
+    border-left: 1px solid #d5d3ce;
+    padding-left: 14px;
+  }
+  .places-unit .station:nth-child(n + 3) {
+    border-top: 1px solid #d5d3ce;
+    margin-top: 12px;
+    padding-top: 12px;
+  }
+  .identity-unit .stat + .stat {
+    border-left: 0;
+  }
+  .identity-unit .stat:nth-child(odd) {
+    padding-left: 0;
+  }
+  .identity-unit .stat:nth-child(even) {
+    border-left: 1px solid #d5d3ce;
+    padding-left: 16px;
+  }
+  .identity-unit .stat:nth-child(n + 3) {
+    border-top: 1px solid #d5d3ce;
+    margin-top: 12px;
+    padding-top: 12px;
+  }
   .category-list { grid-template-columns: 1fr; }
   .venue-sheet, .compare-sheet { padding: 0 16px 64px; }
+  .crime-unit { padding: 4px 14px 16px; }
   .pie-row,
   .compare-column .pie-row,
   .venue-page .pie-row:not(:has(.pie-block + .pie-block)),

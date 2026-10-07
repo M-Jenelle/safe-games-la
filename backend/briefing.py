@@ -203,7 +203,7 @@ def page_copy(radius_m: float, venue_count: int, reports_through: str) -> dict:
             "Pins mark venues. This heatmap is NIBRS offenses from March 2024 through the latest extract. "
             "A case can contribute more than one point. Green is fewer and red is where they concentrate."
         ),
-        "pie_guide": "Choose “NIBRS offenses, Mar 2024–present” in Series, above, to see the 2024–present chart.",
+        "pie_guide": "",
         "weekday_click": "Click a day to see its main offense groups. Click it again to clear.",
         "permit_intro": PERMIT_INTRO,
         "permit_hints": permit_hints(),

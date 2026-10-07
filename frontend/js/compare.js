@@ -1,5 +1,5 @@
 import { mountDistancePair, mountDistanceSection, mountTimePair, mountTimeSection, mountWeekdayPair, mountWeekdaySection, weekdaySummary } from "./charts.js";
-import { el, fetchJson, formatNumber, formatSports, text } from "./dom.js";
+import { el, fetchJson, formatNumber, formatSports, monthLabel, text } from "./dom.js";
 import { closeVenuePage } from "./nav.js";
 import { mountHomeGames, mountPermitSection } from "./permits.js";
 import { resizeMap } from "./shell.js";
@@ -76,10 +76,22 @@ function compareSeriesNote() {
   return "";
 }
 
-function compareHeader(venue) {
-  return [
-    el("p", { className: "zone compare-zone" }, [text(`${venue.olympic_zone} · ${formatSports(venue.sports)}`)]),
-  ];
+function compareIdentity(venue) {
+  const peak = venue.present?.peak_month
+    ? { key: venue.present.peak_month, count: venue.present.peak_count }
+    : null;
+  return el("section", { className: "crime-unit identity-unit", "aria-label": venue.venue_name }, [
+    el("p", { className: "zone" }, [text(`${venue.olympic_zone} · ${formatSports(venue.sports)}`)]),
+    el("h2", { className: "detail-title" }, [text(venue.venue_name)]),
+    venue.address ? el("p", { className: "address" }, [text(`${venue.address}, ${venue.city}`)]) : el("span"),
+    el("div", { className: "stats" }, [
+      stat("Incidents", formatNumber(presentCount(venue)), incidentNote(venue)),
+      stat("Density", formatNumber(presentRate(venue)), densityNote(venue), densityHint(venue)),
+      ...cityStats(venue),
+      stat("Busiest month", peak?.key ? monthLabel(peak.key) : "None", peak?.count ? `${formatNumber(peak.count)} records` : "No dated records"),
+    ]),
+    ...overviewWeekdayLines(venue).map((line) => el("p", { className: "muted" }, [text(line)])),
+  ]);
 }
 
 function overviewWeekdayLines(venue) {
@@ -144,16 +156,7 @@ async function loadCompareVenue(venueId) {
 function compareColumn(venue) {
   if (compareView === "overview") {
     return el("div", { className: "compare-body" }, [
-      ...compareHeader(venue),
-      el("div", { className: "stats" }, [
-        stat("Incidents", formatNumber(presentCount(venue)), incidentNote(venue)),
-        stat("Density", formatNumber(presentRate(venue)), densityNote(venue), densityHint(venue)),
-        ...cityStats(venue),
-      ]),
-      venue.nibrs ? el("p", { className: "muted" }, [
-        text(`NIBRS offenses since Mar 2024: ${formatNumber(venue.nibrs.count)}.`),
-      ]) : el("span"),
-      ...overviewWeekdayLines(venue).map((line) => el("p", { className: "muted" }, [text(line)])),
+      compareIdentity(venue),
     ]);
   }
   if (compareView === "permits") {
@@ -163,12 +166,13 @@ function compareColumn(venue) {
     mountPermitSection(venue.venue_id, permitHost, nibrsSeries ? "nibrs" : "reports");
     if (venue.home_games_available && !nibrsSeries) mountHomeGames(homeHost, venue.venue_id);
     return el("div", { className: "compare-body" }, [
-      ...compareHeader(venue),
-      permitHost,
-      homeHost,
+      el("section", { className: "crime-unit", "aria-label": "Permit days" }, [
+        permitHost,
+        homeHost,
+      ]),
     ]);
   }
-  const host = el("div");
+  const host = el("div", { className: "chart-flat" });
   const nibrsSeries = compareSeries === "nibrs";
   const countWord = nibrsSeries ? "offenses" : "incidents";
   const merged = compareSeries === "merged";
@@ -184,8 +188,7 @@ function compareColumn(venue) {
   }
   quietCompareChart(host);
   return el("div", { className: "compare-body" }, [
-    ...compareHeader(venue),
-    host,
+    el("section", { className: "crime-unit", "aria-label": venue.venue_name }, [host]),
   ]);
 }
 

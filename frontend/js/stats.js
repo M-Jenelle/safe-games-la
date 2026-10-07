@@ -1,7 +1,7 @@
 import { categoryRows, filledMonths, overviewChart } from "./charts.js";
 import { el, formatDistance, formatNumber, formatSports, ordinal, text } from "./dom.js";
 import { jurisdictionLabel } from "./roster.js";
-import { FLAG_LABELS, mapHint, overview, state } from "./state.js";
+import { FLAG_LABELS, HIDDEN_FLAGS, mapHint, overview, state } from "./state.js";
 import { infoMark, pageCopy } from "./tips.js";
 
 export function densityNote(venue) {
@@ -106,7 +106,7 @@ export function renderOverview() {
     months[0],
   );
   const categories = categoryRows(venue.crime_by_category, venue.crime_count_nearby, { limit: 6, share: false });
-  const flags = venue.data_quality_flags.map((flag) => (
+  const flags = venue.data_quality_flags.filter((flag) => !HIDDEN_FLAGS.has(flag)).map((flag) => (
     el("span", { className: "flag" }, [text(FLAG_LABELS[flag] || flag)])
   ));
   const rail = venue.rail_stations_nearby.stations.map((station) => (
@@ -135,9 +135,6 @@ export function renderOverview() {
       ...cityStats(venue),
       stat("Jurisdiction", jurisdictionLabel(venue.lapd_jurisdiction), "nearest local station"),
     ]),
-    venue.nibrs ? el("p", { className: "muted" }, [
-      text(`NIBRS offenses since Mar 2024: ${formatNumber(venue.nibrs.count)}. A case can include more than one offense.`),
-    ]) : el("span"),
     flags.length ? el("div", { className: "flags" }, flags) : el("p", { className: "muted" }, [text("No data-quality flags.")]),
     overlapNote(venue) ? el("p", { className: "terms" }, [text(overlapNote(venue))]) : el("span"),
     el("h3", { className: "section-title" }, [text("Top categories")]),

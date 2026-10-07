@@ -1,6 +1,6 @@
 import { compareRoute, openCompare, syncCompareLink } from "./compare.js";
 import { fetchJson } from "./dom.js";
-import { bindCrimeView, bindFacilityViews, bindLayerToggles, ensureGoogleMap, fillLayerView, loadCrimeHeat, renderMap } from "./map.js";
+import { bindCrimeView, bindFacilityViews, bindHeatRange, bindLayerToggles, ensureGoogleMap, fillLayerView, loadCrimeHeat, renderMap } from "./map.js";
 import { closeVenuePage, renderChatContext, venueIdFromLocation } from "./nav.js";
 import { renderMeta, renderRoster, renderZoneOptions } from "./roster.js";
 import { comparePage, mapHint, metaStrip, state } from "./state.js";
@@ -10,6 +10,7 @@ import { selectVenue } from "./venue.js";
 async function init() {
   bindLayerToggles();
   bindCrimeView();
+  bindHeatRange();
   bindFacilityViews();
   try {
     const [metaData, list, mapData, facilities] = await Promise.all([

@@ -1,4 +1,4 @@
-import { el, escapeHtml, fetchJson, text } from "./dom.js";
+import { MONTH_NAMES, el, escapeHtml, fetchJson, monthLabel, text } from "./dom.js";
 import { resizeMap } from "./shell.js";
 import { mapHint, mapPanel, state } from "./state.js";
 import { pageCopy } from "./tips.js";
@@ -370,30 +370,178 @@ export function bindCrimeView() {
   });
 }
 
+const heatYear = document.querySelector("#heat-year");
+const heatFromMonth = document.querySelector("#heat-from-month");
+const heatFromYear = document.querySelector("#heat-from-year");
+const heatToMonth = document.querySelector("#heat-to-month");
+const heatToYear = document.querySelector("#heat-to-year");
+let heatSyncing = false;
+
+function padMonth(value) {
+  return String(value).padStart(2, "0");
+}
+
+function heatYears() {
+  return [...new Set(state.heatMonths.map((key) => key.slice(0, 4)))];
+}
+
+function heatRangeMode() {
+  const months = state.heatMonths;
+  if (!months.length || !state.heatStart || !state.heatEnd) return "all";
+  if (state.heatStart === months[0] && state.heatEnd === months[months.length - 1]) return "all";
+  const year = state.heatStart.slice(0, 4);
+  if (year === state.heatEnd.slice(0, 4)) {
+    const yearMonths = months.filter((key) => key.startsWith(`${year}-`));
+    if (yearMonths.length && state.heatStart === yearMonths[0] && state.heatEnd === yearMonths[yearMonths.length - 1]) {
+      return year;
+    }
+  }
+  return "custom";
+}
+
+function nearestHeatMonth(key, direction) {
+  const months = state.heatMonths;
+  if (!months.length) return key;
+  if (months.includes(key)) return key;
+  if (direction === "up") return months.find((month) => month >= key) || months[months.length - 1];
+  const earlier = months.filter((month) => month <= key);
+  return earlier.length ? earlier[earlier.length - 1] : months[0];
+}
+
+function syncHeatControls() {
+  if (!heatYear || !heatFromMonth || !heatFromYear || !heatToMonth || !heatToYear) return;
+  heatSyncing = true;
+  const years = heatYears();
+  const yearOptions = () => years.map((year) => el("option", { value: year }, [text(year)]));
+  heatFromYear.replaceChildren(...yearOptions());
+  heatToYear.replaceChildren(...yearOptions());
+  if (!heatFromMonth.options.length) {
+    heatFromMonth.replaceChildren(...MONTH_NAMES.map((name, index) => (
+      el("option", { value: String(index + 1) }, [text(name)])
+    )));
+    heatToMonth.replaceChildren(...MONTH_NAMES.map((name, index) => (
+      el("option", { value: String(index + 1) }, [text(name)])
+    )));
+  }
+  const mode = heatRangeMode();
+  const options = [
+    el("option", { value: "all" }, [text("All years")]),
+    ...years.map((year) => el("option", { value: year }, [text(year)])),
+  ];
+  if (mode === "custom") options.push(el("option", { value: "custom" }, [text("Custom")]));
+  heatYear.replaceChildren(...options);
+  heatYear.value = mode;
+  if (state.heatStart && state.heatEnd) {
+    heatFromMonth.value = String(Number(state.heatStart.slice(5)));
+    heatToMonth.value = String(Number(state.heatEnd.slice(5)));
+    heatFromYear.value = state.heatStart.slice(0, 4);
+    heatToYear.value = state.heatEnd.slice(0, 4);
+  }
+  heatSyncing = false;
+}
+
+function fullHeatRange() {
+  const months = state.heatMonths;
+  if (!months.length || !state.heatStart || !state.heatEnd) return true;
+  return state.heatStart === months[0] && state.heatEnd === months[months.length - 1];
+}
+
+export function bindHeatRange() {
+  if (!heatYear) return;
+  heatYear.addEventListener("change", () => {
+    if (heatSyncing) return;
+    const choice = heatYear.value;
+    if (choice === "custom") return;
+    const months = state.heatMonths;
+    if (!months.length) return;
+    if (choice === "all") {
+      state.heatStart = months[0];
+      state.heatEnd = months[months.length - 1];
+    } else {
+      const yearMonths = months.filter((key) => key.startsWith(`${choice}-`));
+      if (!yearMonths.length) return;
+      state.heatStart = yearMonths[0];
+      state.heatEnd = yearMonths[yearMonths.length - 1];
+    }
+    syncHeatControls();
+    loadCrimeHeat(state.crimeView);
+  });
+  const onEdge = (changed) => {
+    if (heatSyncing || !state.heatMonths.length) return;
+    const first = state.heatMonths[0];
+    const last = state.heatMonths[state.heatMonths.length - 1];
+    let start = nearestHeatMonth(`${heatFromYear.value}-${padMonth(heatFromMonth.value)}`, "up");
+    let end = nearestHeatMonth(`${heatToYear.value}-${padMonth(heatToMonth.value)}`, "down");
+    if (start < first) start = first;
+    if (end > last) end = last;
+    if (start > end) {
+      if (changed === "from" || changed === "fromYear") end = start;
+      else start = end;
+    }
+    state.heatStart = start;
+    state.heatEnd = end;
+    syncHeatControls();
+    loadCrimeHeat(state.crimeView);
+  };
+  heatFromMonth.addEventListener("change", () => onEdge("from"));
+  heatFromYear.addEventListener("change", () => onEdge("fromYear"));
+  heatToMonth.addEventListener("change", () => onEdge("to"));
+  heatToYear.addEventListener("change", () => onEdge("toYear"));
+}
+
 export function syncCrimeHint() {
   if (!mapHint || mapHint.hidden) return;
-  mapHint.textContent = state.crimeView === "nibrs"
+  const base = state.crimeView === "nibrs"
     ? pageCopy("nibrs_crime_hint")
     : pageCopy("default_crime_hint");
+  if (!fullHeatRange() && state.heatStart && state.heatEnd) {
+    const span = state.heatStart === state.heatEnd
+      ? monthLabel(state.heatStart)
+      : `${monthLabel(state.heatStart)}–${monthLabel(state.heatEnd)}`;
+    mapHint.textContent = `${span}. ${base}`;
+    return;
+  }
+  mapHint.textContent = base;
+}
+
+function heatCacheKey(view) {
+  if (fullHeatRange()) return view;
+  return `${view}|${state.heatStart}|${state.heatEnd}`;
+}
+
+function applyHeatWindow(crimeHeat) {
+  const months = crimeHeat.months || [];
+  state.heatMonths = months;
+  state.heatStart = crimeHeat.start || months[0] || "";
+  state.heatEnd = crimeHeat.end || months[months.length - 1] || "";
+  syncHeatControls();
 }
 
 export async function loadCrimeHeat(view = state.crimeView || "all") {
   const crimeToggle = document.querySelector('#layer-toggles input[data-layer="crime"]');
   const token = ++crimeRequest;
   state.crimeView = view;
-  const cached = state.crimeCache[view];
+  const key = heatCacheKey(view);
+  const cached = state.crimeCache[key];
   if (cached) {
     state.crimePoints = cached.points;
     state.crimeHot = Boolean(cached.hot);
     fillCrimeView(cached.options);
+    applyHeatWindow(cached);
     syncCrimeHint();
     if (state.layers.crime) refreshCrimeLayer();
     return;
   }
   try {
-    const crimeHeat = await fetchJson(`/api/map/crime?view=${encodeURIComponent(view)}`);
+    const params = new URLSearchParams({ view });
+    if (!fullHeatRange() && state.heatStart && state.heatEnd) {
+      params.set("start", state.heatStart);
+      params.set("end", state.heatEnd);
+    }
+    const crimeHeat = await fetchJson(`/api/map/crime?${params.toString()}`);
     if (token !== crimeRequest) return;
-    state.crimeCache[view] = crimeHeat;
+    applyHeatWindow(crimeHeat);
+    state.crimeCache[heatCacheKey(view)] = crimeHeat;
     state.crimePoints = crimeHeat.points;
     state.crimeHot = Boolean(crimeHeat.hot);
     fillCrimeView(crimeHeat.options);
