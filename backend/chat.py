@@ -511,7 +511,7 @@ def _intent(message: str, mentions: list) -> str | None:
         "this that these those it here two both venue venues site sites stadium "
         "crime crimes incident incidents report reports reported recorded "
         "count counts total totals number numbers all category categories type "
-        "types most common frequent frequently often occurs occurred occurrence "
+        "types most common frequent frequently often occurs occurred occurrence happened "
         "occurrences top leading highest compare comparison difference more "
         "fewer higher lower largest lapd data full period radius over during "
         "been there".split()

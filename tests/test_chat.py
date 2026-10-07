@@ -277,6 +277,11 @@ class ChatTests(unittest.TestCase):
                     total += sum(int(count) for count in groups.values())
             return total
 
+        happened = self.post("How many incidents happened near Dodger Stadium?")
+        self.assertEqual(happened["status"], "answered")
+        self.assertEqual(happened["question_type"], "present_total")
+        self.assertEqual(happened["results"][0]["count"], venue["present"]["count"])
+
         year = self.post("How many incident occurred in 2020 around Dodger Stadium?")
         self.assertEqual(year["status"], "answered")
         self.assertEqual(year["question_type"], "year_count")
