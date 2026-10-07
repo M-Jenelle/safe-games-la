@@ -13,7 +13,7 @@ import unicodedata
 
 from backend.claude import ClaudeUnavailable, Interpretation, ToolArguments, explain_figures, explanation_uses_only, interpret_question, settings
 from backend.context import CONTEXT_INTENTS, ContextUnavailable, context_answer, source_text
-from backend.datasets import _load_home_games, load_city_baseline, load_permit_day_rows
+from backend.datasets import _load_home_games, crime_time_for, load_city_baseline, load_permit_day_rows
 from backend.store import DatasetNotFound, get_venue, home_game_comparison, load_summary, permit_comparison
 from pipeline.crime_groups import GROUP_LABELS, crime_group
 
@@ -72,10 +72,12 @@ HELP = (
     "two named venues, density, the city comparison, the busiest month, the top offense groups, "
     "the weekend pattern, offense groups on weekend or weekday days, and which groups rose most from 2020 to present. "
     "I can also quote the page's permit-day comparison and, for Dodger Stadium, the home-game comparison. "
+    "I can compare named offense groups at two venues, rank venues by density or by the change in records, "
+    "and show the 2020–2024 part-of-day chart. "
     "The citywide total is every usable LAPD record in Los Angeles, not the 14 venue circles added together. "
     "I can also show nearby rail/bus transit, nearest recorded fire/police stations "
     "and hospitals (with the recorded emergency-room flag), and listed venue sports. "
-    "I cannot answer a count of permits, Ticketmaster listings, time of day, other distances, traffic, schedules, fares, "
+    "I cannot answer a count of permits, Ticketmaster listings, a night-only slice, hourly counts, other distances, traffic, schedules, fares, "
     "nearest emergency-room hospitals, travel/response times, crime causes, live "
     "conditions, safety assessments, or 2028 predictions."
 )
@@ -206,16 +208,100 @@ def _top_limit(message: str) -> int | None:
     return -1
 
 
+def _group_ids(message: str) -> list[str]:
+    found = []
+    for word in re.findall(r"\b[a-z]+\b", message):
+        group_id = _GROUP_WORDS.get(word)
+        if group_id and group_id not in found:
+            found.append(group_id)
+    return found
+
+
 def _group_id(message: str) -> str | None:
-    found = {
-        group_id for word, group_id in _GROUP_WORDS.items()
-        if re.search(rf"\b{word}\b", message)
-    }
+    found = _group_ids(message)
     if not found:
         return None
     if len(found) > 1:
         return "conflict"
-    return next(iter(found))
+    return found[0]
+
+
+_FOLLOW_WORDS = {
+    "a", "an", "also", "and", "about", "for", "how", "now", "please",
+    "question", "same", "the", "there", "too", "venue", "what",
+}
+
+
+def _hard_block(message: str) -> bool:
+    return bool(re.search(
+        r"\b(why|cause|causes|caused|predict|prediction|forecast|will|2028|today|tonight|"
+        r"night|nights|ticketmaster|shooting|shootings|safe|safer|safest|safety|risk|"
+        r"invent|ignore|pretend|fabricate)\b",
+        message,
+    )) or bool(re.search(r"\b500 ?m\b", message))
+
+
+def _mentions_time_of_day(message: str) -> bool:
+    return bool(re.search(r"\b(?:times?|part) of day\b", message))
+
+
+def _wants_time_of_day(message: str) -> bool:
+    """The published four-part chart. A night-only slice, a year, or a group stays refused."""
+    if not _mentions_time_of_day(message) or _hard_block(message):
+        return False
+    if _group_id(message) or _single_year(message) or _reports_span(message) or _explicit_present(message):
+        return False
+    return not re.search(r"\b(rate|rates|hour|hourly|density|densities)\b", message)
+
+
+def _group_compare_shape(message: str) -> bool:
+    if _hard_block(message) or _year_pair(message) or _single_year(message) == "bad":
+        return False
+    if len(_group_ids(message)) < 2 or re.search(r"\bdensit", message):
+        return False
+    if re.search(r"\b(most common|categor(?:y|ies))\b", message):
+        return False
+    return bool(re.search(r"\b(compare|compared|comparing|comparison|versus|vs|against|difference)\b", message))
+
+
+def _density_compare_shape(message: str) -> bool:
+    if _hard_block(message) or _group_id(message) or not re.search(r"\bdensit", message):
+        return False
+    return bool(re.search(r"\b(compare|compared|comparing|comparison|versus|vs|against)\b", message))
+
+
+def _weekday_group_all(message: str) -> bool:
+    if _group_id(message) in (None, "conflict"):
+        return False
+    return bool(re.search(r"\b(all days|each day|every day|day of week)\b", message))
+
+
+def _area_change_shape(message: str) -> bool:
+    if _hard_block(message) or _group_id(message) or _year_pair(message):
+        return False
+    return bool(
+        re.search(r"\b(changed|change|changes)\b", message)
+        and re.search(r"\b(areas|venues|sites)\b", message)
+    )
+
+
+def _rewrite_follow_up(message: str, prior: str, venues: list) -> str | None:
+    """Swap the venue in the previous question. A new question is left as written."""
+    if not prior:
+        return None
+    mentions = _mentions(message, venues)
+    if len(mentions) != 1 or len(mentions[0][2]) != 1:
+        return None
+    if set(_question_text(message, mentions).split()) - _FOLLOW_WORDS:
+        return None
+    prior_mentions = [item for item in _mentions(prior, venues) if len(item[2]) == 1]
+    if len(prior_mentions) != 1:
+        return None
+    start, end, _previous = prior_mentions[0]
+    rewritten = " ".join(f"{prior[:start]}{_normalize(mentions[0][2][0]['venue_name'])}{prior[end:]}".split())
+    if rewritten == prior:
+        return None
+    return rewritten
 
 
 def _wants_nibrs(message: str) -> bool:
@@ -282,6 +368,8 @@ def _headline_intent(residual: str, mentions: list) -> str | None:
     if limit or re.search(r"\b(?:most common|top) (?:crime )?(?:categories|groups|types)\b", residual):
         return "top_groups"
     if re.search(r"\b(weekend|weekends|weekday|weekdays|day of week)\b", residual):
+        if _weekday_group_all(residual):
+            return None
         if _day_type_span(residual):
             return "weekend_groups"
         return "weekend"
@@ -339,26 +427,26 @@ def _strip_headline_phrases(residual: str) -> str:
 
 def _tool_opening(message: str) -> bool:
     """A tool shape the word list does not parse. Forecasts and other hard blocks stay closed."""
-    if re.search(
-        r"\b(why|cause|causes|caused|predict|prediction|forecast|will|2028|today|tonight|"
-        r"night|nights|ticketmaster|shooting|shootings|safe|safer|safest|safety|risk|"
-        r"invent|ignore|pretend|fabricate)\b",
-        message,
-    ):
-        return False
-    if re.search(r"\b500 ?m\b", message):
+    if _hard_block(message):
         return False
     if re.search(r"\b(how many|number of|count of)\b", message) and re.search(r"\bpermits?\b", message):
         return False
     if re.search(r"\bdensit", message) and _group_id(message):
         return False
     if _year_pair(message) and re.search(r"\b(rose|risen|grew|grown|increased|increase|change|changed|trend)\b", message):
-        return True
+        return _group_id(message) != "conflict"
     if re.search(r"\brank\b", message) and re.search(r"\bvenues\b", message):
         return True
-    return bool(
+    if (
         re.search(r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", message)
         and re.search(r"\b(crime|crimes|incident|incidents|group|groups|type|types|categor)\b", message)
+    ):
+        return _group_id(message) != "conflict"
+    return bool(
+        _density_compare_shape(message)
+        or _group_compare_shape(message)
+        or _weekday_group_all(message)
+        or _area_change_shape(message)
     )
 
 
@@ -366,18 +454,37 @@ def _tool_from_question(message: str) -> Interpretation | None:
     """Arguments Python can read when the question already has a supported tool shape."""
     pair = _year_pair(message)
     if pair and re.search(r"\b(rose|risen|grew|grown|increased|increase|change|changed|trend)\b", message):
+        if _group_id(message) == "conflict":
+            return None
         return Interpretation(
             intent="tool", scope_supported=True, tool="trend",
-            arguments=ToolArguments(from_year=pair[0], to_year=pair[1]),
+            arguments=ToolArguments(from_year=pair[0], to_year=pair[1], group=_group_id(message)),
         )
+    if _area_change_shape(message):
+        return Interpretation(intent="tool", scope_supported=True, tool="rank_venues", arguments=ToolArguments(metric="change"))
     if re.search(r"\brank\b", message) and re.search(r"\bvenues\b", message):
         metric = "present_count" if re.search(r"\b(count|counts|records|incidents)\b", message) and not re.search(r"\bdensit", message) else "density"
         return Interpretation(intent="tool", scope_supported=True, tool="rank_venues", arguments=ToolArguments(metric=metric))
-    day = re.search(r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", message)
-    if day and re.search(r"\b(crime|crimes|incident|incidents|group|groups|type|types|categor)\b", message):
+    if _density_compare_shape(message):
+        return Interpretation(intent="tool", scope_supported=True, tool="compare", arguments=ToolArguments(metric="density"))
+    if _group_compare_shape(message):
+        year = _single_year(message)
+        return Interpretation(
+            intent="tool", scope_supported=True, tool="compare",
+            arguments=ToolArguments(groups=_group_ids(message), year=int(year) if year else None),
+        )
+    if _weekday_group_all(message):
         return Interpretation(
             intent="tool", scope_supported=True, tool="weekday_pattern",
-            arguments=ToolArguments(days=day.group(1)),
+            arguments=ToolArguments(days="all", group=_group_id(message)),
+        )
+    day = re.search(r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", message)
+    if day and re.search(r"\b(crime|crimes|incident|incidents|group|groups|type|types|categor)\b", message):
+        if _group_id(message) == "conflict":
+            return None
+        return Interpretation(
+            intent="tool", scope_supported=True, tool="weekday_pattern",
+            arguments=ToolArguments(days=day.group(1), group=_group_id(message)),
         )
     return None
 
@@ -388,7 +495,11 @@ def _outside_scope(message: str, mentions: list) -> bool:
     year = _single_year(message)
     group = _group_id(residual)
     headline = _headline_intent(residual, mentions)
-    if _top_limit(residual) == -1 or group == "conflict":
+    if _top_limit(residual) == -1:
+        return True
+    if group == "conflict" and not _group_compare_shape(message):
+        return True
+    if _mentions_time_of_day(message) and not _wants_time_of_day(message):
         return True
     if year == "bad" and not _tool_opening(message):
         return True
@@ -552,6 +663,10 @@ def _intent(message: str, mentions: list) -> str | None:
     headline = _headline_intent(residual, mentions)
     if headline:
         return headline
+    if _wants_time_of_day(message):
+        return "time_of_day"
+    if _weekday_group_all(message):
+        return None
     year = _single_year(message)
     group = _group_id(residual)
     if year == "bad" or _top_limit(residual) == -1 or group == "conflict":
@@ -880,18 +995,93 @@ def _tool_weekday(venue: dict, args) -> dict | None:
     )
 
 
-def _tool_compare(venues: list, args, mentions: list) -> dict | None:
+def _compare_pair(venues: list, args, mentions: list) -> list | None:
+    """The two venues named in the question. A model list cannot add a third."""
+    mentioned = _mentioned_ids(mentions)
     ids = list(args.venue_ids or [])
-    if len(ids) != 2 or len(set(ids)) != 2:
+    if len(mentioned) == 2 and len(set(mentioned)) == 2:
+        ids = mentioned
+    elif len(ids) != 2 or len(set(ids)) != 2:
         return None
-    if args.metric not in (None, "present_count", "density"):
+    elif mentioned and not set(mentioned) <= set(ids):
         return None
     pair = [_roster_venue(venues, venue_id) for venue_id in ids]
     if any(venue is None for venue in pair):
         return None
-    mentioned = set(_mentioned_ids(mentions))
-    if mentioned and not mentioned <= set(ids):
+    return pair
+
+
+def _year_count_clause(year: str | None) -> str:
+    if year is None:
+        return "Counts use the 2020–present file: LAPD reports before March 7, 2024, then NIBRS offenses."
+    if year <= "2023":
+        return f"{year} counts are LAPD reports."
+    if year == "2024":
+        return "2024 mixes reports through March 6 with NIBRS offenses after that."
+    return f"{year} counts are NIBRS offenses."
+
+
+def _tool_compare_groups(pair: list, args) -> dict | None:
+    groups = list(args.groups or [])
+    if not groups or len(groups) > 4 or len(set(groups)) != len(groups):
         return None
+    if any(group_id not in _TOOL_GROUPS for group_id in groups):
+        return None
+    if args.metric not in (None,):
+        return None
+    year = None
+    if args.year is not None:
+        if args.year not in _COUNT_YEARS:
+            return None
+        year = str(args.year)
+    packed = []
+    for venue in pair:
+        detail = get_venue(venue["venue_id"]) or {}
+        months = detail.get("merged_by_month") or {}
+        if not months:
+            return _reply(
+                "unavailable",
+                "The 2020–present offense groups are missing. Rebuild them with `python -m pipeline.merge_crime`.",
+                intent="compare",
+                sources=[dict(PRESENT_SOURCE)],
+                provenance_text=PRESENT_PROVENANCE,
+            )
+        packed.append((venue, detail, _group_totals(months, year)))
+    left, right = packed
+    rows, results = [], []
+    for group_id in groups:
+        label = _group_label(left[1], group_id)
+        counts = [totals.get(group_id, 0) for _venue, _detail, totals in packed]
+        rows.append([label, *[_comma(count) for count in counts]])
+        for venue, count in zip(pair, counts):
+            results.append(_result(venue, label, count))
+    names = f"{left[0]['venue_name']} and {right[0]['venue_name']}"
+    label_text = " and ".join(_group_label(left[1], group_id) for group_id in groups)
+    when = f" in {year}" if year else ", 2020–present"
+    caption = (
+        f"{label_text} near {names}{when}. {_year_count_clause(year)} "
+        "Venue areas can overlap, so the same incident may appear under both venues."
+    )
+    table = {
+        "columns": ["Group", left[0]["venue_name"], right[0]["venue_name"]],
+        "rows": rows,
+    }
+    return _reply(
+        "answered", caption, results=results, intent="compare",
+        sources=[dict(PRESENT_SOURCE)], provenance_text=PRESENT_PROVENANCE, table=table,
+    )
+
+
+def _tool_compare(venues: list, args, mentions: list) -> dict | None:
+    if args.metric not in (None, "present_count", "density"):
+        return None
+    pair = _compare_pair(venues, args, mentions)
+    if pair is None:
+        return None
+    if args.groups or args.year is not None:
+        if args.metric is not None:
+            return None
+        return _tool_compare_groups(pair, args)
     figures = [_present_figures(venue) for venue in pair]
     if any(item is None for item in figures):
         return _reply(
@@ -929,9 +1119,48 @@ def _tool_compare(venues: list, args, mentions: list) -> dict | None:
     )
 
 
+def _tool_rank_change(venues: list) -> dict | None:
+    baseline = load_city_baseline() or {}
+    through = str((baseline.get("present") or {}).get("through") or "")
+    end = through[:4] if len(through) >= 4 and through[:4].isdigit() else "2026"
+    packed = []
+    for venue in venues:
+        detail = get_venue(venue["venue_id"]) or {}
+        months = detail.get("merged_by_month") or {}
+        if not months:
+            return _reply(
+                "unavailable",
+                "The 2020–present offense groups are missing. Rebuild them with `python -m pipeline.merge_crime`.",
+                intent="rank_venues",
+                sources=[dict(PRESENT_SOURCE)],
+                provenance_text=PRESENT_PROVENANCE,
+            )
+        start_count = sum(_group_totals(months, "2020").values())
+        end_count = sum(_group_totals(months, end).values())
+        packed.append((venue, start_count, end_count, end_count - start_count))
+    packed.sort(key=lambda item: (-item[3], item[0]["venue_name"]))
+    partial = f" {end} runs through {through}, not a full year." if through.startswith(end) else ""
+    caption = (
+        f"Venues ranked by the change in records from 2020 to {end} inside the 800 m circle.{partial} "
+        "2024 mixes reports through March 6 with NIBRS offenses after that, so part of a change can come from that counting difference."
+    )
+    rows, results = [], []
+    for index, (venue, start_count, end_count, change) in enumerate(packed, start=1):
+        sign = "+" if change > 0 else ""
+        rows.append([str(index), venue["venue_name"], _comma(start_count), _comma(end_count), f"{sign}{_comma(change)}"])
+        results.append(_result(venue, f"{end} change", change))
+    return _reply(
+        "answered", caption, results=results, intent="rank_venues",
+        sources=[dict(PRESENT_SOURCE)], provenance_text=PRESENT_PROVENANCE,
+        table={"columns": ["Rank", "Venue", "2020", end, "Change"], "rows": rows},
+    )
+
+
 def _tool_rank(venues: list, args) -> dict | None:
-    if args.metric not in (None, "present_count", "density"):
+    if args.metric not in (None, "present_count", "density", "change"):
         return None
+    if args.metric == "change":
+        return _tool_rank_change(venues)
     metric = args.metric or "density"
     packed = []
     for venue in venues:
@@ -976,6 +1205,8 @@ def _run_tool(interpretation, venues: list, selected_id: str | None, mentions: l
         reply = _tool_rank(venues, args)
         return reply or _tool_refused()
     if name == "compare":
+        if len(set(_mentioned_ids(mentions))) > 2:
+            return _reply("clarification", "Please name exactly two venues to compare.", intent="compare")
         reply = _tool_compare(venues, args, mentions)
         return reply or _tool_refused()
     venue = _tool_venue(args, venues, selected_id, mentions)
@@ -1006,14 +1237,69 @@ def _run_tool(interpretation, venues: list, selected_id: str | None, mentions: l
     return reply or _tool_refused()
 
 
-def answer_question(message: str, venue_id: str | None = None) -> dict:
+def _align_tool(tool_call, message: str, engine: dict):
+    """A question Python can read completely keeps those arguments."""
+    parsed = _tool_from_question(message)
+    if parsed is None:
+        return tool_call
+    if tool_call is None:
+        return parsed
+    if tool_call.tool != parsed.tool:
+        engine.update(engine="fallback", model=None, engine_note="Claude's tool did not match the question; using the arguments stated in the question.")
+        return parsed
+    current = tool_call.arguments or ToolArguments()
+    incoming = parsed.arguments or ToolArguments()
+    updates = {}
+    for field in ("metric", "days", "group", "groups", "from_year", "to_year", "year"):
+        value = getattr(incoming, field)
+        if value is not None and getattr(current, field) != value:
+            updates[field] = value
+    if not updates:
+        return tool_call
+    return tool_call.model_copy(update={"arguments": current.model_copy(update=updates)})
+
+
+def _time_of_day_answer(venue: dict) -> dict:
+    block = crime_time_for(venue["venue_id"]) or {}
+    periods = [period for period in (block.get("periods") or []) if period.get("label")]
+    if not periods:
+        return _reply(
+            "unavailable",
+            "The part-of-day counts are missing. Rebuild them with `python -m pipeline.crime_time`.",
+            intent="time_of_day",
+            sources=[dict(SOURCE)],
+            provenance_text=PROVENANCE,
+        )
+    usable = sum(int(period.get("count") or 0) for period in periods)
+    rows, results = [], []
+    for period in periods:
+        count = int(period.get("count") or 0)
+        share = int(math.floor((count / usable) * 100 + 0.5)) if usable else 0
+        rows.append([str(period["label"]), _comma(count), f"{share}%"])
+        results.append(_result(venue, str(period["label"]), count))
+    noon = int(block.get("noon_count") or 0)
+    unknown = int(block.get("unknown_count") or 0)
+    caption = f"Part of day near {venue['venue_name']}: {usable:,} reports with a usable hour, 2020–2024."
+    if noon:
+        caption += f" {noon:,} of them are stamped 12:00, often an unknown hour."
+    if unknown:
+        caption += f" {unknown:,} reports have no usable hour."
+    return _reply(
+        "answered", caption, results=results, intent="time_of_day",
+        sources=[dict(SOURCE)], provenance_text=PROVENANCE,
+        table={"columns": ["Part of day", "Reports", "Share"], "rows": rows},
+    )
+
+
+def answer_question(message: str, venue_id: str | None = None, prior_message: str | None = None) -> dict:
     engine = {"engine": "data", "model": None, "engine_note": None}
-    response = _answer_question(message, venue_id, engine)
+    response = _answer_question(message, venue_id, engine, prior_message)
     response.update(engine)
+    response.setdefault("resolved_message", _normalize(message))
     return response
 
 
-def _answer_question(message: str, venue_id: str | None, engine: dict) -> dict:
+def _answer_question(message: str, venue_id: str | None, engine: dict, prior_message: str | None = None) -> dict:
     try:
         summary = load_summary()
     except DatasetNotFound:
@@ -1033,6 +1319,12 @@ def _answer_question(message: str, venue_id: str | None, engine: dict) -> dict:
 
     normalized = _normalize(message)
     mentions = _mentions(normalized, venues)
+    if prior_message and _intent(normalized, mentions) is None and not _tool_opening(normalized):
+        rewritten = _rewrite_follow_up(normalized, _normalize(prior_message), venues)
+        if rewritten:
+            response = _answer_question(rewritten, venue_id, engine)
+            response["resolved_message"] = rewritten
+            return response
     intent = _intent(normalized, mentions)
     tool_call = None
     if _outside_scope(normalized, mentions):
@@ -1058,7 +1350,12 @@ def _answer_question(message: str, venue_id: str | None, engine: dict) -> dict:
                 intent = None
         except ClaudeUnavailable:
             engine.update(engine="fallback", engine_note="Claude is unavailable; using the data parser.")
+            if intent is None and _tool_opening(normalized):
+                tool_call = _tool_from_question(normalized)
+    elif intent is None and _tool_opening(normalized):
+        tool_call = _tool_from_question(normalized)
     if tool_call is not None:
+        tool_call = _align_tool(tool_call, normalized, engine)
         for start, end, candidates in mentions:
             if len(candidates) > 1:
                 names = ", ".join(venue["venue_name"] for venue in candidates)
@@ -1127,6 +1424,8 @@ def _answer_question(message: str, venue_id: str | None, engine: dict) -> dict:
         return _headline_answer(intent, selected[0])
     if intent == "event_lift":
         return _event_lift_answer(selected[0], normalized)
+    if intent == "time_of_day":
+        return _time_of_day_answer(selected[0])
     if intent in PATTERN_INTENTS:
         return _pattern_answer(intent, selected[0], normalized)
     if intent in CONTEXT_INTENTS:

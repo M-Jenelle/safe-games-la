@@ -44,11 +44,13 @@ class ToolArguments(BaseModel):
     n: int | None = None
     period: Literal["present"] | None = None
     group: str | None = None
+    groups: list[Literal["sexual", "homicide", "robbery", "assault", "weapons", "vehicle", "burglary", "theft", "vandalism", "other"]] | None = None
     from_year: int | None = None
     to_year: int | None = None
+    year: int | None = None
     days: Literal["all", "weekend", "weekday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] | None = None
     event_type: Literal["permit", "home", "both"] | None = None
-    metric: Literal["present_count", "density"] | None = None
+    metric: Literal["present_count", "density", "change"] | None = None
     facility_type: Literal["fire", "police", "hospital"] | None = None
 
 
@@ -111,11 +113,13 @@ def interpret_question(message: str, venues: list[dict], venue_id: str | None) -
                             "n": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
                             "period": {"anyOf": [{"type": "string", "enum": ["present"]}, {"type": "null"}]},
                             "group": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                            "groups": {"anyOf": [{"type": "array", "items": {"type": "string", "enum": ["sexual", "homicide", "robbery", "assault", "weapons", "vehicle", "burglary", "theft", "vandalism", "other"]}}, {"type": "null"}]},
                             "from_year": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
                             "to_year": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+                            "year": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
                             "days": {"anyOf": [{"type": "string", "enum": ["all", "weekend", "weekday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]}, {"type": "null"}]},
                             "event_type": {"anyOf": [{"type": "string", "enum": ["permit", "home", "both"]}, {"type": "null"}]},
-                            "metric": {"anyOf": [{"type": "string", "enum": ["present_count", "density"]}, {"type": "null"}]},
+                            "metric": {"anyOf": [{"type": "string", "enum": ["present_count", "density", "change"]}, {"type": "null"}]},
                             "facility_type": {"anyOf": [{"type": "string", "enum": ["fire", "police", "hospital"]}, {"type": "null"}]},
                         },
                         "additionalProperties": False,
@@ -154,10 +158,17 @@ def interpret_question(message: str, venues: list[dict], venue_id: str | None) -
             "Otherwise set tool and every argument to null. "
             "top_groups(venue_id, n, period=present) = top offense groups, n from 1 to 10, 2020–present. "
             "trend(venue_id, group, from_year, to_year) = year columns and the change between two years inside 2020–2026. group may be null. "
-            "weekday_pattern(venue_id, days, group) = day counts when days=all, otherwise offense groups on weekend, weekday, or one named day. group may be null. "
+            "weekday_pattern(venue_id, days, group) = day counts when days=all and group is null. "
+            "days=all with a group is that group's count on every day. Otherwise offense groups on weekend, weekday, or one named day. "
             "event_lift(venue_id, event_type) = the published permit-day comparison, the Dodger home-game comparison, or both. Not a permit count and not a forecast. "
-            "compare(venue_ids, metric) = exactly two venues, metric present_count or density, 2020–present. "
-            "rank_venues(metric) = all roster venues ordered by present_count or density. "
+            "compare(venue_ids, metric, groups, year) = exactly two venues. "
+            "metric is present_count or density for the 2020–present span. "
+            "When the question names offense groups, set groups to those ids and metric to null. "
+            "year is one calendar year from 2020 through 2026, or null for the whole span. "
+            "A question that names two groups at two venues is this compare tool, not unsupported. "
+            "Do not set metric to density when groups is set. "
+            "rank_venues(metric) = all roster venues ordered by present_count, density, or change. "
+            "change is the difference in records from 2020 to the latest year, including which areas changed the most. "
             "nearest_facility(venue_id, facility_type) = nearest fire, police, or hospital, including the recorded emergency-room flag. "
             "Do not invent a venue id. Use only ids from the roster or the selected venue. "
             "event_lift = the venue page's past permit-day comparison, plus the Dodger Stadium home-game comparison when that venue is asked. "

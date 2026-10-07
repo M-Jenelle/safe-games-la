@@ -101,6 +101,7 @@ def read_meta() -> dict:
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
     venue_id: str | None = Field(default=None, min_length=1, max_length=80)
+    prior_message: str | None = Field(default=None, max_length=2000)
 
 
 @app.get("/api/chat/suggestions")
@@ -119,7 +120,7 @@ def chat_config() -> dict:
 
 @app.post("/api/chat")
 def chat(request: ChatRequest):
-    response = answer_question(request.message, request.venue_id)
+    response = answer_question(request.message, request.venue_id, request.prior_message)
     return JSONResponse(response, status_code=503 if response["status"] == "unavailable" else 200)
 
 

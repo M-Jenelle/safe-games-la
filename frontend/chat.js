@@ -11,6 +11,7 @@
   let selectedVenue = null;
   let discussedVenue = null;
   let busy = false;
+  let priorMessage = "";
 
   function renderContext() {
     const venue = selectedVenue || discussedVenue;
@@ -108,7 +109,11 @@
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, venue_id: context?.venue_id || null }),
+        body: JSON.stringify({
+          message,
+          venue_id: context?.venue_id || null,
+          prior_message: priorMessage || null,
+        }),
         signal: controller.signal,
       });
       const body = await response.json();
@@ -167,6 +172,7 @@
         }
         article.append(choices);
       }
+      priorMessage = body.resolved_message || message;
       if (body.status === "answered") {
         const venueIds = new Set(body.results.map((result) => result.venue_id));
         discussedVenue = venueIds.size === 1 ? body.results[0] : null;

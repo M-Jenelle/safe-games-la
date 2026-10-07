@@ -13,6 +13,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from backend.chat import answer_question
+from backend.datasets import crime_time_for, load_city_baseline
 from backend.main import app
 from backend.store import DatasetNotFound, get_venue, home_game_comparison, permit_comparison
 
@@ -521,6 +522,121 @@ class ChatTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 200)
         self.assertIn("POST", response.headers["access-control-allow-methods"])
+
+    def test_key_off_ranking_trend_and_density_compare(self):
+        ranking = self.post("Rank the venues by crime density")
+        self.assertEqual(ranking["question_type"], "rank_venues")
+        ranked = sorted(self.venues, key=lambda venue: (-get_venue(venue["venue_id"])["present"]["crime_per_km2"], venue["venue_name"]))
+        self.assertEqual(ranking["table"]["rows"][0][1], ranked[0]["venue_name"])
+        self.assertEqual(ranking["results"][0]["count"], get_venue(ranked[0]["venue_id"])["present"]["count"])
+
+        trend = self.post("Which groups rose from 2021 to 2025 near Dodger Stadium?")
+        self.assertEqual(trend["question_type"], "trend")
+        self.assertEqual(trend["table"]["columns"][1], "2021")
+        self.assertEqual(trend["table"]["columns"][-2], "2025")
+        self.assertNotIn("2020", trend["table"]["columns"])
+        self.assertNotIn("2026", trend["table"]["columns"])
+
+        compared = self.post("Comparing Dodger Stadium and the Coliseum by density")
+        self.assertEqual(compared["status"], "answered")
+        self.assertEqual(compared["question_type"], "compare")
+        self.assertEqual({row["venue_id"] for row in compared["results"]}, {"V01", "V05"})
+        for venue_id in ("V01", "V05"):
+            present = get_venue(venue_id)["present"]
+            self.assertIn(f"{present['crime_per_km2']:,.1f}", compared["answer"])
+            self.assertIn(present["count"], [row["count"] for row in compared["results"]])
+
+        third = self.post("Comparing Dodger Stadium, the Coliseum, and LA Zoo by density")
+        self.assertEqual(third["status"], "clarification")
+        self.assertIn("exactly two", third["answer"])
+        self.assertEqual(third["results"], [])
+
+    def test_two_groups_at_two_venues_in_one_year(self):
+        body = self.post("Compare robberies and thefts near Dodger Stadium and the Coliseum in 2023")
+        self.assertEqual(body["status"], "answered")
+        self.assertEqual(body["question_type"], "compare")
+        self.assertEqual(body["table"]["columns"], ["Group", "Dodger Stadium", "LA Memorial Coliseum"])
+        self.assertIn("2023 counts are LAPD reports.", body["answer"])
+
+        def year_group(venue_id, group_id):
+            months = get_venue(venue_id)["merged_by_month"]
+            return sum(int(counts.get(group_id) or 0) for month, counts in months.items() if str(month).startswith("2023"))
+
+        expected = {
+            ("V01", "Robbery"): year_group("V01", "robbery"),
+            ("V05", "Robbery"): year_group("V05", "robbery"),
+            ("V01", "Theft"): year_group("V01", "theft"),
+            ("V05", "Theft"): year_group("V05", "theft"),
+        }
+        self.assertEqual(
+            {(row["venue_id"], row["category"]): row["count"] for row in body["results"]},
+            expected,
+        )
+
+    def test_weekday_pattern_for_one_group_across_all_days(self):
+        body = self.post("What is the weekday pattern for robbery across all days near Dodger Stadium?")
+        self.assertEqual(body["question_type"], "weekday_pattern")
+        days = get_venue("V01")["merged_weekday"]["days"]
+        expected = []
+        for day in days:
+            count = sum(int(group["count"]) for group in day.get("groups") or [] if group.get("id") == "robbery")
+            expected.append([day["label"], f"{count:,}"])
+        self.assertEqual(body["table"]["rows"], expected)
+        self.assertEqual(body["results"][0]["count"], sum(
+            int(row[1].replace(",", "")) for row in expected
+        ))
+
+    def test_time_of_day_chart_keeps_night_only_refused(self):
+        body = self.post("What is the time of day pattern near Dodger Stadium?")
+        self.assertEqual(body["status"], "answered")
+        self.assertEqual(body["question_type"], "time_of_day")
+        periods = crime_time_for("V01")["periods"]
+        usable = sum(int(period["count"]) for period in periods)
+        self.assertEqual(
+            [(row[0], int(row[1].replace(",", ""))) for row in body["table"]["rows"]],
+            [(period["label"], int(period["count"])) for period in periods],
+        )
+        self.assertIn(f"{usable:,}", body["answer"])
+        self.assertIn("2020–2024", body["answer"])
+        self.assert_provenance(body)
+        night = self.post("How many incidents near Dodger Stadium at night?")
+        self.assertEqual(night["status"], "unsupported")
+        self.assertEqual(night["results"], [])
+
+    def test_areas_changed_ranks_venue_circles(self):
+        body = self.post("Which areas changed the most?")
+        self.assertEqual(body["status"], "answered")
+        self.assertEqual(body["question_type"], "rank_venues")
+        through = str((load_city_baseline()["present"] or {}).get("through") or "")
+        end = through[:4]
+        changes = []
+        for venue in self.venues:
+            months = get_venue(venue["venue_id"])["merged_by_month"]
+            start = sum(int(count) for month, groups in months.items() if str(month).startswith("2020") for count in groups.values())
+            later = sum(int(count) for month, groups in months.items() if str(month).startswith(end) for count in groups.values())
+            changes.append((later - start, venue["venue_name"], venue["venue_id"]))
+        changes.sort(key=lambda item: (-item[0], item[1]))
+        self.assertEqual(body["results"][0]["venue_id"], changes[0][2])
+        self.assertEqual(body["results"][0]["count"], changes[0][0])
+        self.assertIn("800 m circle", body["answer"])
+        self.assertIn("not a full year", body["answer"])
+        self.assertIn("March 6", body["answer"])
+
+    def test_follow_up_replaces_only_the_venue(self):
+        first = self.post("How many incidents near Dodger Stadium?")
+        followed = self.post("and for the Coliseum?", prior_message=first["resolved_message"])
+        self.assertEqual(followed["status"], "answered")
+        self.assertEqual(followed["question_type"], "present_total")
+        self.assertEqual(followed["results"][0]["venue_id"], "V05")
+        self.assertEqual(followed["results"][0]["count"], get_venue("V05")["present"]["count"])
+        self.assertIn("la memorial coliseum", followed["resolved_message"])
+
+        standalone = self.post("How many incidents near LA Zoo?", prior_message=first["resolved_message"])
+        self.assertEqual(standalone["results"][0]["venue_id"], "V08")
+
+        refused = self.post("and for the Coliseum?", prior_message="How many incidents near Dodger Stadium at night?")
+        self.assertEqual(refused["status"], "unsupported")
+        self.assertEqual(refused["results"], [])
 
 
 if __name__ == "__main__":

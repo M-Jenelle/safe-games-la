@@ -88,6 +88,10 @@ class ClaudeTests(unittest.TestCase):
         self.assertIn("tool", schema["properties"]["intent"]["enum"])
         self.assertIn("rank_venues", schema["properties"]["tool"]["anyOf"][0]["enum"])
         self.assertIn("density", schema["properties"]["intent"]["enum"])
+        arguments = schema["properties"]["arguments"]["anyOf"][0]["properties"]
+        self.assertIn("groups", arguments)
+        self.assertIn("year", arguments)
+        self.assertIn("change", arguments["metric"]["anyOf"][0]["enum"])
         self.assertIn("present_total", schema["properties"]["intent"]["enum"])
         self.assertIn("weekend", schema["properties"]["intent"]["enum"])
         self.assertIn("rose", schema["properties"]["intent"]["enum"])
@@ -470,12 +474,32 @@ class ClaudeTests(unittest.TestCase):
         self.assertEqual(kept["question_type"], "present_total")
         self.assertEqual(kept["results"][0]["count"], get_venue("V01")["present"]["count"])
 
-    def test_key_off_does_not_silently_answer_a_custom_year_span(self):
+    def test_key_off_answers_a_custom_year_span_from_the_question(self):
         os.environ["ANTHROPIC_API_KEY"] = ""
         body = self.client.post("/api/chat", json={"message": "Which groups rose from 2021 to 2025 near Dodger Stadium?"})
         self.assertEqual(body.status_code, 200)
-        self.assertEqual(body.json()["status"], "unsupported")
-        self.assertEqual(body.json()["results"], [])
+        payload = body.json()
+        self.assertEqual(payload["status"], "answered")
+        self.assertEqual(payload["question_type"], "trend")
+        self.assertEqual(payload["table"]["columns"][1], "2021")
+        self.assertEqual(payload["table"]["columns"][-2], "2025")
+        self.assertEqual(payload["engine"], "data")
+
+    def test_timeout_still_ranks_and_a_third_venue_id_does_not_change_the_pair(self):
+        with self.api(error=httpx.ConnectError("timed out")):
+            ranking = self.post("Rank the venues by crime density")
+        self.assertEqual(ranking["engine"], "fallback")
+        self.assertEqual(ranking["question_type"], "rank_venues")
+        ranked = sorted(self.venues, key=lambda venue: (-get_venue(venue["venue_id"])["present"]["crime_per_km2"], venue["venue_name"]))
+        self.assertEqual(ranking["table"]["rows"][0][1], ranked[0]["venue_name"])
+
+        with self.api({
+            "intent": "tool", "scope_supported": True, "tool": "compare",
+            "arguments": {"venue_ids": ["V01", "V05", "V08"], "metric": "density"},
+        }):
+            compared = self.post("Comparing Dodger Stadium and the Coliseum by density")
+        self.assertEqual(compared["question_type"], "compare")
+        self.assertEqual({row["venue_id"] for row in compared["results"]}, {"V01", "V05"})
 
 
 if __name__ == "__main__":
