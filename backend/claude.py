@@ -26,7 +26,7 @@ class ClaudeUnavailable(Exception):
 
 class Interpretation(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    intent: Literal["total", "top_category", "compare", "present_total", "density", "city", "busiest_month", "top_groups", "weekend", "rose", "year_count", "group_count", "nibrs_total", "citywide", "rail", "bus", "transit", "fire", "police", "hospital", "services", "sports", "unsupported"]
+    intent: Literal["total", "top_category", "compare", "present_total", "density", "city", "busiest_month", "top_groups", "weekend", "weekend_groups", "rose", "year_count", "group_count", "nibrs_total", "citywide", "rail", "bus", "transit", "fire", "police", "hospital", "services", "sports", "unsupported"]
     scope_supported: bool
 
 
@@ -68,7 +68,7 @@ def interpret_question(message: str, venues: list[dict], venue_id: str | None) -
     schema = {
         "type": "object",
         "properties": {
-            "intent": {"type": "string", "enum": ["total", "top_category", "compare", "present_total", "density", "city", "busiest_month", "top_groups", "weekend", "rose", "year_count", "group_count", "nibrs_total", "citywide", "rail", "bus", "transit", "fire", "police", "hospital", "services", "sports", "unsupported"]},
+            "intent": {"type": "string", "enum": ["total", "top_category", "compare", "present_total", "density", "city", "busiest_month", "top_groups", "weekend", "weekend_groups", "rose", "year_count", "group_count", "nibrs_total", "citywide", "rail", "bus", "transit", "fire", "police", "hospital", "services", "sports", "unsupported"]},
             "scope_supported": {"type": "boolean"},
         },
         "required": ["intent", "scope_supported"],
@@ -94,6 +94,7 @@ def interpret_question(message: str, venues: list[dict], venue_id: str | None) -
             "busiest_month = the peak month in the 2020–present span. "
             "top_groups = the top offense groups by 2020–present record count; the question may ask for a number from 1 to 10. "
             "weekend = Monday–Sunday counts for that same span, including the weekend share. "
+            "weekend_groups = which offense groups are most common on Saturday and Sunday, or on Monday through Friday, when the question asks for types, categories, or groups on those days. "
             "rose = offense groups with the largest increase in record count from 2020 to 2024. "
             "Supporting static-snapshot questions: rail = recorded rail stations/lines within 800 m; "
             "bus = recorded bus-stop count and serving routes within 800 m; transit = both. "

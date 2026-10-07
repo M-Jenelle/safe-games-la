@@ -30,7 +30,9 @@ PROVENANCE = (
     f"Period: {PERIOD}. Analysis: {RADIUS_M} m radius around each venue."
 )
 HEADLINE_INTENTS = {"present_total", "density", "city", "busiest_month"}
-PATTERN_INTENTS = {"top_groups", "weekend", "rose"}
+PATTERN_INTENTS = {"top_groups", "weekend", "weekend_groups", "rose"}
+_WEEKEND_DAYS = {"Saturday", "Sunday"}
+_WEEKDAY_DAYS = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday"}
 SLICE_INTENTS = {"year_count", "group_count", "nibrs_total"}
 _COUNT_YEARS = range(2020, 2027)
 _NUMBER_WORDS = {
@@ -67,7 +69,7 @@ HELP = (
     "the 2020–2024 report total when that period is named, NIBRS offense totals, and offense-group "
     "counts such as robbery. I can also answer the most common LAPD category, comparisons between "
     "two named venues, density, the city comparison, the busiest month, the top offense groups, "
-    "the weekend pattern, and which groups rose most from 2020 to 2024. "
+    "the weekend pattern, offense groups on weekend or weekday days, and which groups rose most from 2020 to 2024. "
     "The citywide total is every usable LAPD record in Los Angeles, not the 14 venue circles added together. "
     "I can also show nearby rail/bus transit, nearest recorded fire/police stations "
     "and hospitals (with the recorded emergency-room flag), and listed venue sports. "
@@ -243,6 +245,19 @@ def _strip_answered(residual: str, message: str) -> str:
     return " ".join(cleaned.split())
 
 
+def _day_type_span(message: str) -> str | None:
+    """Weekend or weekday offense groups. A plain day-of-week question stays on day counts."""
+    if not re.search(r"\b(types?|categories|groups|kinds)\b|\bmost common\b", message):
+        return None
+    weekend = re.search(r"\bweekends?\b", message)
+    weekday = re.search(r"\bweekdays?\b", message)
+    if weekend and not weekday:
+        return "weekend"
+    if weekday and not weekend:
+        return "weekday"
+    return None
+
+
 def _headline_intent(residual: str, mentions: list) -> str | None:
     """Venue-page headline questions. Two named venues stay on the count comparison."""
     if len(mentions) > 1:
@@ -255,6 +270,8 @@ def _headline_intent(residual: str, mentions: list) -> str | None:
     if limit or re.search(r"\b(?:most common|top) (?:crime )?(?:categories|groups|types)\b", residual):
         return "top_groups"
     if re.search(r"\b(weekend|weekends|weekday|weekdays|day of week)\b", residual):
+        if _day_type_span(residual):
+            return "weekend_groups"
         return "weekend"
     if re.search(r"\b(rose|risen|grew|grown|increased)\b", residual) and re.search(
         r"\b(most|crime|crimes|category|categories|group|groups|which)\b", residual
@@ -313,7 +330,7 @@ def _outside_scope(message: str, mentions: list) -> bool:
     if year == "bad" or _top_limit(residual) == -1 or group == "conflict":
         return True
     # A year, group, or NIBRS wording has to be the question, not a leftover filter.
-    if year and year != "bad" and headline in {"busiest_month", "density", "city", "weekend", "top_groups", "present_total", "rose"}:
+    if year and year != "bad" and headline in {"busiest_month", "density", "city", "weekend", "weekend_groups", "top_groups", "present_total", "rose"}:
         return True
     if group and group != "conflict" and headline:
         return True
@@ -502,6 +519,7 @@ def suggested_questions() -> dict:
             f"How many incidents occurred in 2020 near {first}?",
             f"How many NIBRS offenses near {first}?",
             f"What is the weekend pattern near {first}?",
+            f"What types of crime are most common on weekends near {first}?",
             f"Which crimes rose most from 2020 to 2024 near {first}?",
         ])
     if len(venues) >= 2:
@@ -749,6 +767,47 @@ def _pattern_answer(intent: str, venue: dict, message: str = "") -> dict:
             "The venue page shows those two series side by side."
         ).strip()
         table = _pattern_table(venue_id, "weekday", "Open day of week on the venue page", ["Day", "Records"], rows)
+    elif intent == "weekend_groups":
+        block = (detail or {}).get("merged_weekday") or {}
+        days = [day for day in (block.get("days") or []) if day.get("label")]
+        span = _day_type_span(message) or "weekend"
+        wanted = _WEEKEND_DAYS if span == "weekend" else _WEEKDAY_DAYS
+        totals: dict[str, int] = {}
+        for day in days:
+            if day.get("label") not in wanted:
+                continue
+            for group in day.get("groups") or []:
+                group_id = str(group.get("id") or "")
+                if not group_id:
+                    continue
+                totals[group_id] = totals.get(group_id, 0) + int(group.get("count") or 0)
+        if not totals:
+            return _reply(
+                "unavailable",
+                "The day-of-week offense groups are missing. Rebuild them with `python -m pipeline.merge_crime` and `python -m pipeline.nibrs_charts`.",
+                intent=intent,
+                sources=[dict(PRESENT_SOURCE)],
+                provenance_text=PRESENT_PROVENANCE,
+            )
+        limit = _top_limit(message)
+        if limit is None or limit < 1:
+            limit = 5
+        ranked = sorted(totals.items(), key=lambda item: (-item[1], _group_label(detail, item[0])))[:limit]
+        total = sum(totals.values())
+        rows = []
+        results = []
+        for group_id, count in ranked:
+            label = _group_label(detail, group_id)
+            share = int(math.floor((count / total) * 100 + 0.5)) if total else 0
+            rows.append([label, _comma(count), f"{share}%"])
+            results.append(_result(venue, label, count))
+        when = "Saturday and Sunday" if span == "weekend" else "Monday through Friday"
+        caption = (
+            f"Offense groups on {when} near {name}, 2020–present, ranked by record count. "
+            "Shares are of those days only. "
+            "Reports before March 7, 2024, then NIBRS offenses."
+        )
+        table = _pattern_table(venue_id, "weekday", "Open day of week on the venue page", ["Group", "Records", "Share"], rows)
     else:
         earlier = _group_totals(months, "2020")
         later = _group_totals(months, "2024")

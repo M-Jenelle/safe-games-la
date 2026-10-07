@@ -158,6 +158,33 @@ class ChatTests(unittest.TestCase):
         self.assertIn(venue["merged_weekday"]["summary"], weekend["answer"])
         self.assertEqual(weekend["table"]["href"], "#/venue/V01/weekday")
 
+        def day_groups(names):
+            summed = {}
+            for day in days:
+                if day["label"] not in names:
+                    continue
+                for group in day.get("groups") or []:
+                    summed[group["id"]] = summed.get(group["id"], 0) + int(group["count"])
+            return summed
+
+        weekend_totals = day_groups({"Saturday", "Sunday"})
+        weekend_ranked = sorted(
+            weekend_totals.items(),
+            key=lambda item: (-item[1], labels.get(item[0], item[0])),
+        )[:5]
+        types = self.post("What types of crime are most common on weekends near Dodger Stadium?")
+        self.assertEqual(types["question_type"], "weekend_groups")
+        self.assertEqual(
+            [(row["category"], row["count"]) for row in types["results"]],
+            [(labels[group], count) for group, count in weekend_ranked],
+        )
+        self.assertEqual(types["table"]["columns"], ["Group", "Records", "Share"])
+        self.assertIn("Saturday and Sunday", types["answer"])
+        self.assertNotEqual(
+            [row["category"] for row in types["results"]],
+            [day["label"] for day in days],
+        )
+
         earlier = totals("2020")
         later = totals("2024")
         rising = sorted(
