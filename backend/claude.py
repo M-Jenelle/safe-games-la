@@ -1,7 +1,7 @@
 """Optional Claude question interpretation; credentials stay on the server.
 
-Claude returns only an intent and scope flag, never figures or answer prose.
-The existing venue resolver and processed-data calculations provide answers.
+Claude returns an intent, or a tool name and arguments, never figures or answer prose.
+Python validates the arguments and calculates from processed data.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Literal
 
 import httpx
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 API_URL = "https://api.anthropic.com/v1/messages"
 DEFAULT_MODEL = "claude-haiku-4-5"
@@ -24,10 +24,40 @@ class ClaudeUnavailable(Exception):
     """The caller should use the local parser without exposing API errors."""
 
 
+_INTENTS = (
+    "total", "top_category", "compare", "present_total", "density", "city", "busiest_month",
+    "top_groups", "weekend", "weekend_groups", "rose", "year_count", "group_count", "nibrs_total",
+    "citywide", "event_lift", "rail", "bus", "transit", "fire", "police", "hospital", "services",
+    "sports", "tool", "unsupported",
+)
+_TOOLS = (
+    "top_groups", "trend", "weekday_pattern", "event_lift", "compare", "rank_venues", "nearest_facility",
+)
+
+
+class ToolArguments(BaseModel):
+    """Closed argument list. Unknown keys are rejected before any calculation."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    venue_id: str | None = None
+    venue_ids: list[str] | None = None
+    n: int | None = None
+    period: Literal["present"] | None = None
+    group: str | None = None
+    from_year: int | None = None
+    to_year: int | None = None
+    days: Literal["all", "weekend", "weekday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] | None = None
+    event_type: Literal["permit", "home", "both"] | None = None
+    metric: Literal["present_count", "density"] | None = None
+    facility_type: Literal["fire", "police", "hospital"] | None = None
+
+
 class Interpretation(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    intent: Literal["total", "top_category", "compare", "present_total", "density", "city", "busiest_month", "top_groups", "weekend", "weekend_groups", "rose", "year_count", "group_count", "nibrs_total", "citywide", "event_lift", "rail", "bus", "transit", "fire", "police", "hospital", "services", "sports", "unsupported"]
+    intent: Literal["total", "top_category", "compare", "present_total", "density", "city", "busiest_month", "top_groups", "weekend", "weekend_groups", "rose", "year_count", "group_count", "nibrs_total", "citywide", "event_lift", "rail", "bus", "transit", "fire", "police", "hospital", "services", "sports", "tool", "unsupported"]
     scope_supported: bool
+    tool: Literal["top_groups", "trend", "weekday_pattern", "event_lift", "compare", "rank_venues", "nearest_facility"] | None = None
+    arguments: ToolArguments | None = None
 
 
 class Explanation(BaseModel):
@@ -68,10 +98,33 @@ def interpret_question(message: str, venues: list[dict], venue_id: str | None) -
     schema = {
         "type": "object",
         "properties": {
-            "intent": {"type": "string", "enum": ["total", "top_category", "compare", "present_total", "density", "city", "busiest_month", "top_groups", "weekend", "weekend_groups", "rose", "year_count", "group_count", "nibrs_total", "citywide", "event_lift", "rail", "bus", "transit", "fire", "police", "hospital", "services", "sports", "unsupported"]},
+            "intent": {"type": "string", "enum": list(_INTENTS)},
             "scope_supported": {"type": "boolean"},
+            "tool": {"anyOf": [{"type": "string", "enum": list(_TOOLS)}, {"type": "null"}]},
+            "arguments": {
+                "anyOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "venue_id": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                            "venue_ids": {"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]},
+                            "n": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+                            "period": {"anyOf": [{"type": "string", "enum": ["present"]}, {"type": "null"}]},
+                            "group": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                            "from_year": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+                            "to_year": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+                            "days": {"anyOf": [{"type": "string", "enum": ["all", "weekend", "weekday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]}, {"type": "null"}]},
+                            "event_type": {"anyOf": [{"type": "string", "enum": ["permit", "home", "both"]}, {"type": "null"}]},
+                            "metric": {"anyOf": [{"type": "string", "enum": ["present_count", "density"]}, {"type": "null"}]},
+                            "facility_type": {"anyOf": [{"type": "string", "enum": ["fire", "police", "hospital"]}, {"type": "null"}]},
+                        },
+                        "additionalProperties": False,
+                    },
+                    {"type": "null"},
+                ],
+            },
         },
-        "required": ["intent", "scope_supported"],
+        "required": ["intent", "scope_supported", "tool", "arguments"],
         "additionalProperties": False,
     }
     payload = {
@@ -96,6 +149,17 @@ def interpret_question(message: str, venues: list[dict], venue_id: str | None) -
             "weekend = Monday–Sunday counts for that same span, including the weekend share. "
             "weekend_groups = which offense groups are most common on Saturday and Sunday, or on Monday through Friday, when the question asks for types, categories, or groups on those days. "
             "rose = offense groups with the largest increase in record count from 2020 through the latest year in the 2020–present file, with every intervening year shown. "
+            "When the question needs arguments the intent list cannot carry, set intent=tool, set tool to one name, and fill arguments. "
+            "A rise between two named years is trend, not rose. rose is only the full 2020-through-latest span. "
+            "Otherwise set tool and every argument to null. "
+            "top_groups(venue_id, n, period=present) = top offense groups, n from 1 to 10, 2020–present. "
+            "trend(venue_id, group, from_year, to_year) = year columns and the change between two years inside 2020–2026. group may be null. "
+            "weekday_pattern(venue_id, days, group) = day counts when days=all, otherwise offense groups on weekend, weekday, or one named day. group may be null. "
+            "event_lift(venue_id, event_type) = the published permit-day comparison, the Dodger home-game comparison, or both. Not a permit count and not a forecast. "
+            "compare(venue_ids, metric) = exactly two venues, metric present_count or density, 2020–present. "
+            "rank_venues(metric) = all roster venues ordered by present_count or density. "
+            "nearest_facility(venue_id, facility_type) = nearest fire, police, or hospital, including the recorded emergency-room flag. "
+            "Do not invent a venue id. Use only ids from the roster or the selected venue. "
             "event_lift = the venue page's past permit-day comparison, plus the Dodger Stadium home-game comparison when that venue is asked. "
             "It is not a count of permits, not a Ticketmaster listing, and not a forecast. "
             "Supporting static-snapshot questions: rail = recorded rail stations/lines within 800 m; "
@@ -145,7 +209,7 @@ def interpret_question(message: str, venues: list[dict], venue_id: str | None) -
             raise ValueError("Incomplete or refused interpretation")
         output = "".join(block["text"] for block in body["content"] if block.get("type") == "text")
         return Interpretation.model_validate_json(output)
-    except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError) as exc:
+    except (httpx.HTTPError, ValidationError, ValueError, KeyError, TypeError, AttributeError) as exc:
         # Do not return upstream errors, response bodies, or credentials.
         raise ClaudeUnavailable("Claude interpretation unavailable") from exc
 

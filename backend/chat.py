@@ -11,7 +11,7 @@ import math
 import re
 import unicodedata
 
-from backend.claude import ClaudeUnavailable, explain_figures, explanation_uses_only, interpret_question, settings
+from backend.claude import ClaudeUnavailable, Interpretation, ToolArguments, explain_figures, explanation_uses_only, interpret_question, settings
 from backend.context import CONTEXT_INTENTS, ContextUnavailable, context_answer, source_text
 from backend.datasets import _load_home_games, load_city_baseline, load_permit_day_rows
 from backend.store import DatasetNotFound, get_venue, home_game_comparison, load_summary, permit_comparison
@@ -184,6 +184,16 @@ def _single_year(message: str) -> str | None:
     return years[0]
 
 
+def _year_pair(message: str) -> tuple[int, int] | None:
+    years = [int(year) for year in re.findall(r"\b(20\d\d)\b", message)]
+    if len(years) != 2:
+        return None
+    start, end = years
+    if start > end or start not in _COUNT_YEARS or end not in _COUNT_YEARS:
+        return None
+    return start, end
+
+
 def _top_limit(message: str) -> int | None:
     """1–10, ``-1`` when top-N is out of range, or None when the question has no top-N."""
     match = re.search(r"\btop (one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b", message)
@@ -278,6 +288,8 @@ def _headline_intent(residual: str, mentions: list) -> str | None:
     if re.search(r"\b(rose|risen|grew|grown|increased)\b", residual) and re.search(
         r"\b(most|crime|crimes|category|categories|group|groups|which)\b", residual
     ):
+        if _year_pair(residual):
+            return None
         return "rose"
     if re.search(r"\bbusiest month\b", residual):
         return "busiest_month"
@@ -286,6 +298,8 @@ def _headline_intent(residual: str, mentions: list) -> str | None:
     ):
         return "city"
     if re.search(r"\b(densit(?:y|ies)|dense|denser)\b", residual):
+        if re.search(r"\brank\b", residual) and re.search(r"\bvenues\b", residual):
+            return None
         return "density"
     if re.search(r"\b2020(?: to| through)?(?: the)? present\b", residual) or re.search(
         r"\bpresent (?:total|count|incidents|incident|records|record)\b", residual
@@ -323,13 +337,60 @@ def _strip_headline_phrases(residual: str) -> str:
     return " ".join(cleaned.split())
 
 
+def _tool_opening(message: str) -> bool:
+    """A tool shape the word list does not parse. Forecasts and other hard blocks stay closed."""
+    if re.search(
+        r"\b(why|cause|causes|caused|predict|prediction|forecast|will|2028|today|tonight|"
+        r"night|nights|ticketmaster|shooting|shootings|safe|safer|safest|safety|risk|"
+        r"invent|ignore|pretend|fabricate)\b",
+        message,
+    ):
+        return False
+    if re.search(r"\b500 ?m\b", message):
+        return False
+    if re.search(r"\b(how many|number of|count of)\b", message) and re.search(r"\bpermits?\b", message):
+        return False
+    if re.search(r"\bdensit", message) and _group_id(message):
+        return False
+    if _year_pair(message) and re.search(r"\b(rose|risen|grew|grown|increased|increase|change|changed|trend)\b", message):
+        return True
+    if re.search(r"\brank\b", message) and re.search(r"\bvenues\b", message):
+        return True
+    return bool(
+        re.search(r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", message)
+        and re.search(r"\b(crime|crimes|incident|incidents|group|groups|type|types|categor)\b", message)
+    )
+
+
+def _tool_from_question(message: str) -> Interpretation | None:
+    """Arguments Python can read when the question already has a supported tool shape."""
+    pair = _year_pair(message)
+    if pair and re.search(r"\b(rose|risen|grew|grown|increased|increase|change|changed|trend)\b", message):
+        return Interpretation(
+            intent="tool", scope_supported=True, tool="trend",
+            arguments=ToolArguments(from_year=pair[0], to_year=pair[1]),
+        )
+    if re.search(r"\brank\b", message) and re.search(r"\bvenues\b", message):
+        metric = "present_count" if re.search(r"\b(count|counts|records|incidents)\b", message) and not re.search(r"\bdensit", message) else "density"
+        return Interpretation(intent="tool", scope_supported=True, tool="rank_venues", arguments=ToolArguments(metric=metric))
+    day = re.search(r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", message)
+    if day and re.search(r"\b(crime|crimes|incident|incidents|group|groups|type|types|categor)\b", message):
+        return Interpretation(
+            intent="tool", scope_supported=True, tool="weekday_pattern",
+            arguments=ToolArguments(days=day.group(1)),
+        )
+    return None
+
+
 def _outside_scope(message: str, mentions: list) -> bool:
     """Code rejects explicit unsupported qualifiers even if Claude drops them."""
     residual = _question_text(message, mentions)
     year = _single_year(message)
     group = _group_id(residual)
     headline = _headline_intent(residual, mentions)
-    if year == "bad" or _top_limit(residual) == -1 or group == "conflict":
+    if _top_limit(residual) == -1 or group == "conflict":
+        return True
+    if year == "bad" and not _tool_opening(message):
         return True
     # A year, group, or NIBRS wording has to be the question, not a leftover filter.
     if year and year != "bad" and (
@@ -358,6 +419,8 @@ def _outside_scope(message: str, mentions: list) -> bool:
         if _wants_event_lift(message):
             residual = _strip_event_phrases(residual)
         residual = _strip_answered(residual, message)
+    if _tool_opening(message):
+        return False
     forbidden = (
         r"\d|\b(why|cause|causes|caused|reason|reasons|predict|prediction|predictions|"
         r"forecast|forecasts|will|expect|expected|probability|chance|projection|projections|"
@@ -582,6 +645,367 @@ def suggested_questions() -> dict:
     return {"questions": questions}
 
 
+_TOOL_GROUPS = set(_GROUP_WORDS.values()) | {"other"}
+_DAY_LABELS = {
+    "monday": "Monday", "tuesday": "Tuesday", "wednesday": "Wednesday", "thursday": "Thursday",
+    "friday": "Friday", "saturday": "Saturday", "sunday": "Sunday",
+}
+
+
+def _mentioned_ids(mentions: list) -> list[str]:
+    return [candidates[0]["venue_id"] for _, _, candidates in mentions if len(candidates) == 1]
+
+
+def _roster_venue(venues: list, venue_id: str | None) -> dict | None:
+    if not venue_id:
+        return None
+    return next((venue for venue in venues if venue["venue_id"] == venue_id), None)
+
+
+def _tool_venue(args, venues: list, selected_id: str | None, mentions: list) -> dict | None:
+    mentioned = _mentioned_ids(mentions)
+    if len(mentioned) > 1:
+        return None
+    target = args.venue_id
+    if mentioned:
+        if target and target != mentioned[0]:
+            return None
+        target = mentioned[0]
+    elif selected_id:
+        if target and target != selected_id:
+            return None
+        target = target or selected_id
+    return _roster_venue(venues, target)
+
+
+def _tool_refused() -> dict:
+    return _reply("unsupported", f"I cannot answer that question from the supported processed-data calculations. {HELP}")
+
+
+def _present_figures(venue: dict) -> tuple[int, float] | None:
+    present = (get_venue(venue["venue_id"]) or {}).get("present")
+    if not present or "count" not in present or "crime_per_km2" not in present:
+        return None
+    return int(present["count"]), float(present["crime_per_km2"])
+
+
+def _tool_top_groups(venue: dict, args) -> dict | None:
+    if args.period not in (None, "present"):
+        return None
+    if args.n is not None and not 1 <= args.n <= 10:
+        return None
+    if args.group is not None:
+        return None
+    detail = get_venue(venue["venue_id"]) or {}
+    months = detail.get("merged_by_month") or {}
+    if not months:
+        return _reply(
+            "unavailable",
+            "The 2020–present offense groups are missing. Rebuild them with `python -m pipeline.merge_crime`.",
+            intent="top_groups",
+            sources=[dict(PRESENT_SOURCE)],
+            provenance_text=PRESENT_PROVENANCE,
+        )
+    limit = args.n or 5
+    totals = _group_totals(months)
+    ranked = sorted(totals.items(), key=lambda item: (-item[1], _group_label(detail, item[0])))[:limit]
+    total = sum(totals.values())
+    rows, results = [], []
+    for group_id, count in ranked:
+        label = _group_label(detail, group_id)
+        share = int(math.floor((count / total) * 100 + 0.5)) if total else 0
+        rows.append([label, _comma(count), f"{share}%"])
+        results.append(_result(venue, label, count))
+    caption = (
+        f"Top {len(ranked)} offense groups near {venue['venue_name']}, 2020–present, ranked by record count. "
+        "Reports before March 7, 2024, then NIBRS offenses."
+    )
+    table = _pattern_table(venue["venue_id"], "categories", "Open incident types on the venue page", ["Group", "Records", "Share"], rows)
+    return _reply(
+        "answered", caption, results=results, intent="top_groups",
+        sources=[dict(PRESENT_SOURCE)], provenance_text=PRESENT_PROVENANCE, table=table,
+    )
+
+
+def _bounded_trend(tool_call, message: str):
+    """Keep a named year span. The model cannot swap in a different pair."""
+    if tool_call.tool != "trend":
+        return tool_call
+    pair = _year_pair(message)
+    args = tool_call.arguments or ToolArguments()
+    if pair and (args.from_year, args.to_year) not in {pair, (None, None)}:
+        return None
+    if pair and args.from_year is None:
+        args = args.model_copy(update={"from_year": pair[0], "to_year": pair[1]})
+        return tool_call.model_copy(update={"arguments": args})
+    return tool_call
+
+
+def _tool_trend(venue: dict, args) -> dict | None:
+    if args.from_year is None or args.to_year is None:
+        return None
+    if not (2020 <= args.from_year <= args.to_year <= 2026):
+        return None
+    if args.group is not None and args.group not in _TOOL_GROUPS:
+        return None
+    detail = get_venue(venue["venue_id"]) or {}
+    months = detail.get("merged_by_month") or {}
+    if not months:
+        return _reply(
+            "unavailable",
+            "The 2020–present offense groups are missing. Rebuild them with `python -m pipeline.merge_crime`.",
+            intent="trend",
+            sources=[dict(PRESENT_SOURCE)],
+            provenance_text=PRESENT_PROVENANCE,
+        )
+    years = [str(year) for year in range(args.from_year, args.to_year + 1)]
+    yearly = {year: _group_totals(months, year) for year in years}
+    start, end = years[0], years[-1]
+    earlier, later = yearly[start], yearly[end]
+    group_ids = [args.group] if args.group else sorted(set(earlier) | set(later))
+    changes = []
+    for group_id in group_ids:
+        change = later.get(group_id, 0) - earlier.get(group_id, 0)
+        if args.group or change > 0:
+            changes.append((change, _group_label(detail, group_id), group_id))
+    changes.sort(key=lambda item: (-item[0], item[1]))
+    rising = changes if args.group else changes[:5]
+    rows = []
+    for change, label, group_id in rising:
+        sign = "+" if change > 0 else ""
+        rows.append([label, *[_comma(yearly[year].get(group_id, 0)) for year in years], f"{sign}{_comma(change)}"])
+    results = [_result(venue, label, change) for change, label, _group_id in rising]
+    baseline = load_city_baseline() or {}
+    through = str((baseline.get("present") or {}).get("through") or "")
+    partial = f" {end} runs through {through}, not a full year." if through.startswith(end) else ""
+    mix = ""
+    if "2024" in years:
+        mix = " 2024 mixes reports through March 6 with NIBRS offenses after that, so a 2024 count can come from that counting difference."
+    name = venue["venue_name"]
+    if rows:
+        caption = (
+            f"Offense groups near {name} from {start} to {end}, ranked by the change in records. "
+            f"The span uses the 2020–present file: LAPD reports before March 7, 2024, then NIBRS offenses.{mix}{partial}"
+        )
+    else:
+        caption = f"No offense group near {name} had more records in {end} than in {start}."
+    table = _pattern_table(
+        venue["venue_id"], "months", "Open incidents by month on the venue page",
+        ["Group", *years, "Change"], rows,
+    )
+    return _reply(
+        "answered", caption, results=results, intent="trend",
+        sources=[dict(PRESENT_SOURCE)], provenance_text=PRESENT_PROVENANCE, table=table,
+    )
+
+
+def _tool_weekday(venue: dict, args) -> dict | None:
+    if args.days is None:
+        return None
+    if args.group is not None and args.group not in _TOOL_GROUPS:
+        return None
+    detail = get_venue(venue["venue_id"]) or {}
+    block = detail.get("merged_weekday") or {}
+    days = [day for day in (block.get("days") or []) if day.get("label")]
+    if not days:
+        return _reply(
+            "unavailable",
+            "The 2020–present day-of-week counts are missing. Rebuild them with `python -m pipeline.merge_crime` and `python -m pipeline.nibrs_charts`.",
+            intent="weekday_pattern",
+            sources=[dict(PRESENT_SOURCE)],
+            provenance_text=PRESENT_PROVENANCE,
+        )
+    if args.days == "weekend":
+        wanted = _WEEKEND_DAYS
+        when = "Saturday and Sunday"
+    elif args.days == "weekday":
+        wanted = _WEEKDAY_DAYS
+        when = "Monday through Friday"
+    elif args.days == "all":
+        wanted = {day["label"] for day in days}
+        when = "each day of the week"
+    else:
+        wanted = {_DAY_LABELS[args.days]}
+        when = _DAY_LABELS[args.days]
+    selected_days = [day for day in days if day.get("label") in wanted]
+    name = venue["venue_name"]
+    if args.days == "all" and args.group is None:
+        rows = [[day["label"], _comma(int(day.get("count") or 0))] for day in selected_days]
+        results = [_result(venue, day["label"], int(day.get("count") or 0)) for day in selected_days]
+        caption = f"Day counts near {name}, 2020–present. Reports before March 7, 2024, then NIBRS offenses."
+        columns = ["Day", "Records"]
+    elif args.group:
+        label = _group_label(detail, args.group)
+        total = 0
+        rows = []
+        for day in selected_days:
+            count = sum(int(group.get("count") or 0) for group in (day.get("groups") or []) if group.get("id") == args.group)
+            total += count
+            rows.append([day["label"], _comma(count)])
+        results = [_result(venue, label, total)]
+        caption = f"{label} on {when} near {name}, 2020–present: {total:,} records. Reports before March 7, 2024, then NIBRS offenses."
+        columns = ["Day", "Records"]
+    else:
+        totals: dict[str, int] = {}
+        for day in selected_days:
+            for group in day.get("groups") or []:
+                group_id = str(group.get("id") or "")
+                if group_id:
+                    totals[group_id] = totals.get(group_id, 0) + int(group.get("count") or 0)
+        if not totals:
+            return _reply(
+                "unavailable",
+                "The day-of-week offense groups are missing. Rebuild them with `python -m pipeline.merge_crime` and `python -m pipeline.nibrs_charts`.",
+                intent="weekday_pattern",
+                sources=[dict(PRESENT_SOURCE)],
+                provenance_text=PRESENT_PROVENANCE,
+            )
+        ranked = sorted(totals.items(), key=lambda item: (-item[1], _group_label(detail, item[0])))[:5]
+        total = sum(totals.values())
+        rows, results = [], []
+        for group_id, count in ranked:
+            label = _group_label(detail, group_id)
+            share = int(math.floor((count / total) * 100 + 0.5)) if total else 0
+            rows.append([label, _comma(count), f"{share}%"])
+            results.append(_result(venue, label, count))
+        caption = (
+            f"Offense groups on {when} near {name}, 2020–present, ranked by record count. "
+            "Shares are of those days only. Reports before March 7, 2024, then NIBRS offenses."
+        )
+        columns = ["Group", "Records", "Share"]
+    table = _pattern_table(venue["venue_id"], "weekday", "Open day of week on the venue page", columns, rows)
+    return _reply(
+        "answered", caption, results=results, intent="weekday_pattern",
+        sources=[dict(PRESENT_SOURCE)], provenance_text=PRESENT_PROVENANCE, table=table,
+    )
+
+
+def _tool_compare(venues: list, args, mentions: list) -> dict | None:
+    ids = list(args.venue_ids or [])
+    if len(ids) != 2 or len(set(ids)) != 2:
+        return None
+    if args.metric not in (None, "present_count", "density"):
+        return None
+    pair = [_roster_venue(venues, venue_id) for venue_id in ids]
+    if any(venue is None for venue in pair):
+        return None
+    mentioned = set(_mentioned_ids(mentions))
+    if mentioned and not mentioned <= set(ids):
+        return None
+    figures = [_present_figures(venue) for venue in pair]
+    if any(item is None for item in figures):
+        return _reply(
+            "unavailable",
+            "The 2020–present venue figures are missing. Rebuild them with `python -m pipeline.merge_crime` and `python -m pipeline.city_baseline`.",
+            intent="compare",
+            sources=[dict(PRESENT_SOURCE)],
+            provenance_text=PRESENT_PROVENANCE,
+        )
+    metric = args.metric or "present_count"
+    lines = []
+    results = []
+    for venue, (count, rate) in zip(pair, figures):
+        results.append(_result(venue, "2020–present", count))
+        if metric == "density":
+            lines.append(f"{venue['venue_name']} — {rate:,.1f} per km², {count:,} records, 2020–present.")
+        else:
+            lines.append(f"{venue['venue_name']} — {count:,} records, 2020–present.")
+    if metric == "density":
+        left_rate, right_rate = figures[0][1], figures[1][1]
+        difference = abs(left_rate - right_rate)
+        larger = pair[0] if left_rate >= right_rate else pair[1]
+        gap = f"\n{larger['venue_name']} is higher by {difference:,.1f} per km²." if difference else "\nThe densities are equal."
+    else:
+        difference = abs(figures[0][0] - figures[1][0])
+        larger = max(zip(pair, figures), key=lambda item: item[1][0])[0]
+        gap = f"\n{larger['venue_name']} has {difference:,} more records." if difference else "\nThe counts are equal."
+    answer = "\n".join(lines) + gap + (
+        "\nVenue areas can overlap, so the same incident may appear under both venues. "
+        "These counts are not added into a unique citywide total."
+    )
+    return _reply(
+        "answered", answer, results=results, intent="compare",
+        sources=[dict(PRESENT_SOURCE)], provenance_text=PRESENT_PROVENANCE,
+    )
+
+
+def _tool_rank(venues: list, args) -> dict | None:
+    if args.metric not in (None, "present_count", "density"):
+        return None
+    metric = args.metric or "density"
+    packed = []
+    for venue in venues:
+        figures = _present_figures(venue)
+        if figures is None:
+            return _reply(
+                "unavailable",
+                "The 2020–present venue figures are missing. Rebuild them with `python -m pipeline.merge_crime` and `python -m pipeline.city_baseline`.",
+                intent="rank_venues",
+                sources=[dict(PRESENT_SOURCE)],
+                provenance_text=PRESENT_PROVENANCE,
+            )
+        packed.append((venue, figures[0], figures[1]))
+    if metric == "density":
+        packed.sort(key=lambda item: (-item[2], item[0]["venue_name"]))
+        caption = "Venues ranked by 2020–present crime density inside the 800 m circle."
+    else:
+        packed.sort(key=lambda item: (-item[1], item[0]["venue_name"]))
+        caption = "Venues ranked by 2020–present record count inside the 800 m circle."
+    rows, results = [], []
+    for index, (venue, count, rate) in enumerate(packed, start=1):
+        rows.append([str(index), venue["venue_name"], _comma(count), f"{rate:,.1f}"])
+        results.append(_result(venue, "2020–present", count))
+    table = {
+        "columns": ["Rank", "Venue", "Records", "Per km²"],
+        "rows": rows,
+    }
+    return _reply(
+        "answered", caption, results=results, intent="rank_venues",
+        sources=[dict(PRESENT_SOURCE)], provenance_text=PRESENT_PROVENANCE, table=table,
+    )
+
+
+def _run_tool(interpretation, venues: list, selected_id: str | None, mentions: list, summary: dict, message: str) -> dict:
+    if interpretation.tool == "trend":
+        interpretation = _bounded_trend(interpretation, message)
+        if interpretation is None:
+            return _tool_refused()
+    args = interpretation.arguments or ToolArguments()
+    name = interpretation.tool
+    if name == "rank_venues":
+        reply = _tool_rank(venues, args)
+        return reply or _tool_refused()
+    if name == "compare":
+        reply = _tool_compare(venues, args, mentions)
+        return reply or _tool_refused()
+    venue = _tool_venue(args, venues, selected_id, mentions)
+    if venue is None:
+        return _tool_refused()
+    if name == "top_groups":
+        reply = _tool_top_groups(venue, args)
+    elif name == "trend":
+        reply = _tool_trend(venue, args)
+    elif name == "weekday_pattern":
+        reply = _tool_weekday(venue, args)
+    elif name == "event_lift":
+        event_type = (args.event_type or "both")
+        if event_type not in {"permit", "home", "both"}:
+            return _tool_refused()
+        phrase = {"permit": "permit days", "home": "home games", "both": "event day lift"}[event_type]
+        return _event_lift_answer(venue, phrase)
+    elif name == "nearest_facility":
+        if args.facility_type not in {"fire", "police", "hospital"}:
+            return _tool_refused()
+        try:
+            answer, results, sources = context_answer(args.facility_type, venue, summary["meta"])
+        except ContextUnavailable as exc:
+            return _reply("unavailable", f"{exc} I cannot calculate a reliable answer until the data is rebuilt.", intent=args.facility_type)
+        return _reply("answered", answer, results=results, intent=args.facility_type, sources=sources)
+    else:
+        return _tool_refused()
+    return reply or _tool_refused()
+
+
 def answer_question(message: str, venue_id: str | None = None) -> dict:
     engine = {"engine": "data", "model": None, "engine_note": None}
     response = _answer_question(message, venue_id, engine)
@@ -610,6 +1034,7 @@ def _answer_question(message: str, venue_id: str | None, engine: dict) -> dict:
     normalized = _normalize(message)
     mentions = _mentions(normalized, venues)
     intent = _intent(normalized, mentions)
+    tool_call = None
     if _outside_scope(normalized, mentions):
         intent = None
     elif settings()["claude_configured"]:
@@ -621,12 +1046,35 @@ def _answer_question(message: str, venue_id: str | None, engine: dict) -> dict:
                 # A parsed question keeps its calculation. Claude only fills in wording the word list missed.
                 if not accepted or interpretation.intent != intent:
                     engine.update(engine="fallback", model=None, engine_note="Claude's interpretation did not match the supported calculation; using the data parser.")
+            elif accepted and interpretation.intent == "tool" and interpretation.tool:
+                tool_call = interpretation
+            elif _tool_opening(normalized):
+                tool_call = _tool_from_question(normalized)
+                if tool_call is not None:
+                    engine.update(engine="fallback", model=None, engine_note="Claude did not return a usable tool; using the arguments stated in the question.")
             elif accepted:
                 intent = interpretation.intent
             else:
                 intent = None
         except ClaudeUnavailable:
             engine.update(engine="fallback", engine_note="Claude is unavailable; using the data parser.")
+    if tool_call is not None:
+        for start, end, candidates in mentions:
+            if len(candidates) > 1:
+                names = ", ".join(venue["venue_name"] for venue in candidates)
+                return _reply(
+                    "clarification", f"Which venue do you mean by “{normalized[start:end]}”? {names}.",
+                    choices=[
+                        {
+                            "venue_id": venue["venue_id"],
+                            "venue_name": venue["venue_name"],
+                            "message": normalized[:start] + _normalize(venue["venue_name"]) + normalized[end:],
+                        }
+                        for venue in candidates
+                    ],
+                    intent=tool_call.tool,
+                )
+        return _run_tool(tool_call, venues, venue_id, mentions, summary, normalized)
     if intent is None:
         return _reply("unsupported", f"I cannot answer that question from the supported processed-data calculations. {HELP}")
     if intent == "citywide":

@@ -84,7 +84,9 @@ class ClaudeTests(unittest.TestCase):
         self.assertEqual(payload["model"], "test-model-choice")
         self.assertEqual(payload["max_tokens"], 256)
         schema = payload["output_config"]["format"]["schema"]
-        self.assertEqual(set(schema["properties"]), {"intent", "scope_supported"})
+        self.assertEqual(set(schema["properties"]), {"intent", "scope_supported", "tool", "arguments"})
+        self.assertIn("tool", schema["properties"]["intent"]["enum"])
+        self.assertIn("rank_venues", schema["properties"]["tool"]["anyOf"][0]["enum"])
         self.assertIn("density", schema["properties"]["intent"]["enum"])
         self.assertIn("present_total", schema["properties"]["intent"]["enum"])
         self.assertIn("weekend", schema["properties"]["intent"]["enum"])
@@ -335,6 +337,145 @@ class ClaudeTests(unittest.TestCase):
                 body = self.post("How many incidents near Dodger Stadium?")
         self.assertEqual(body["model"], "test-process-model")
         self.assertEqual(requests[0].headers["x-api-key"], FAKE_KEY)
+
+    def test_tools_use_validated_arguments_and_processed_numbers(self):
+        detail = get_venue("V01")
+        months = detail["merged_by_month"]
+
+        def year_counts(year):
+            totals = {}
+            for month, groups in months.items():
+                if str(month).startswith(year):
+                    for group_id, count in groups.items():
+                        totals[group_id] = totals.get(group_id, 0) + int(count)
+            return totals
+
+        with self.api({
+            "intent": "tool", "scope_supported": True, "tool": "top_groups",
+            "arguments": {"venue_id": "V01", "n": 4, "period": "present"},
+        }):
+            listed = self.post("Could you list the leading offence groups around Dodger Stadium?")
+        self.assertEqual(listed["engine"], "claude")
+        self.assertEqual(listed["question_type"], "top_groups")
+        self.assertEqual(len(listed["results"]), 4)
+        overall = {}
+        for groups in months.values():
+            for group_id, count in groups.items():
+                overall[group_id] = overall.get(group_id, 0) + int(count)
+        labels = detail["crime_groups"]
+        expected = sorted(overall.items(), key=lambda item: (-item[1], labels.get(item[0], item[0])))[:4]
+        self.assertEqual(
+            [(row["category"], row["count"]) for row in listed["results"]],
+            [(labels[group], count) for group, count in expected],
+        )
+
+        with self.api({
+            "intent": "tool", "scope_supported": True, "tool": "top_groups",
+            "arguments": {"venue_id": "V01", "n": 20, "period": "present"},
+        }):
+            rejected = self.post("Could you list the leading offence groups around Dodger Stadium?")
+        self.assertEqual(rejected["status"], "unsupported")
+        self.assertEqual(rejected["results"], [])
+
+        start, end = year_counts("2021"), year_counts("2025")
+        rising = sorted(
+            (
+                (end.get(group, 0) - start.get(group, 0), labels.get(group, group))
+                for group in set(start) | set(end)
+                if end.get(group, 0) > start.get(group, 0)
+            ),
+            key=lambda item: (-item[0], item[1]),
+        )[:5]
+        with self.api({"intent": "unsupported", "scope_supported": False}):
+            coerced = self.post("Which groups rose from 2021 to 2025 near Dodger Stadium?")
+        self.assertEqual(coerced["question_type"], "trend")
+        self.assertEqual(coerced["table"]["columns"][1], "2021")
+        self.assertEqual(coerced["table"]["columns"][-2], "2025")
+        self.assertNotIn("2020", coerced["table"]["columns"])
+        self.assertNotIn("2026", coerced["table"]["columns"])
+
+        with self.api({
+            "intent": "tool", "scope_supported": True, "tool": "trend",
+            "arguments": {"venue_id": "V01", "from_year": 2021, "to_year": 2025},
+        }):
+            trend = self.post("Which groups rose from 2021 to 2025 near Dodger Stadium?")
+        self.assertEqual(trend["question_type"], "trend")
+        self.assertEqual(trend["table"]["columns"], ["Group", "2021", "2022", "2023", "2024", "2025", "Change"])
+        self.assertEqual(
+            [(row["category"], row["count"]) for row in trend["results"]],
+            [(label, change) for change, label in rising],
+        )
+        self.assertIn("March 6", trend["answer"])
+
+        saturday = {}
+        for day in detail["merged_weekday"]["days"]:
+            if day["label"] != "Saturday":
+                continue
+            for group in day["groups"]:
+                saturday[group["id"]] = saturday.get(group["id"], 0) + int(group["count"])
+        saturday_top = sorted(saturday.items(), key=lambda item: (-item[1], labels.get(item[0], item[0])))[:5]
+        with self.api({
+            "intent": "tool", "scope_supported": True, "tool": "weekday_pattern",
+            "arguments": {"venue_id": "V01", "days": "saturday"},
+        }):
+            day = self.post("What types of crime are most common on Saturday near Dodger Stadium?")
+        self.assertEqual(day["question_type"], "weekday_pattern")
+        self.assertEqual(
+            [(row["category"], row["count"]) for row in day["results"]],
+            [(labels[group], count) for group, count in saturday_top],
+        )
+
+        ranked = sorted(
+            ((get_venue(venue["venue_id"])["present"]["crime_per_km2"], venue["venue_name"], venue["venue_id"]) for venue in self.venues),
+            key=lambda item: (-item[0], item[1]),
+        )
+        with self.api({
+            "intent": "tool", "scope_supported": True, "tool": "rank_venues",
+            "arguments": {"metric": "density"},
+        }):
+            ranking = self.post("Rank the venues by crime density")
+        self.assertEqual(ranking["question_type"], "rank_venues")
+        self.assertEqual(ranking["results"][0]["venue_id"], ranked[0][2])
+        self.assertEqual(len(ranking["results"]), len(self.venues))
+
+        dodger = next(venue for venue in self.venues if venue["venue_id"] == "V01")
+        zoo = next(venue for venue in self.venues if venue["venue_id"] == "V08")
+        with self.api({
+            "intent": "tool", "scope_supported": True, "tool": "compare",
+            "arguments": {"venue_ids": ["V01", "V08"], "metric": "present_count"},
+        }):
+            compared = self.post("How does the present volume around Dodger Stadium stack up against LA Zoo?")
+        self.assertEqual(
+            {row["venue_id"]: row["count"] for row in compared["results"]},
+            {"V01": get_venue("V01")["present"]["count"], "V08": get_venue("V08")["present"]["count"]},
+        )
+        self.assertIn("2020–present", compared["answer"])
+        self.assertNotEqual(compared["results"][0]["count"], dodger["crime_count_nearby"])
+        self.assertIn(zoo["venue_name"], compared["answer"])
+
+        with self.api({
+            "intent": "tool", "scope_supported": True, "tool": "nearest_facility",
+            "arguments": {"venue_id": "V01", "facility_type": "fire"},
+        }):
+            station = self.post("Could you point me toward the nearest firehouse for Dodger Stadium?")
+        self.assertEqual(station["question_type"], "fire")
+        self.assertEqual(station["results"][0]["facility"], dodger["nearest_fire_station"])
+
+        with self.api({
+            "intent": "tool", "scope_supported": True, "tool": "top_groups",
+            "arguments": {"venue_id": "V01", "n": 1, "period": "present"},
+        }):
+            kept = self.post("How many incidents near Dodger Stadium?")
+        self.assertEqual(kept["engine"], "fallback")
+        self.assertEqual(kept["question_type"], "present_total")
+        self.assertEqual(kept["results"][0]["count"], get_venue("V01")["present"]["count"])
+
+    def test_key_off_does_not_silently_answer_a_custom_year_span(self):
+        os.environ["ANTHROPIC_API_KEY"] = ""
+        body = self.client.post("/api/chat", json={"message": "Which groups rose from 2021 to 2025 near Dodger Stadium?"})
+        self.assertEqual(body.status_code, 200)
+        self.assertEqual(body.json()["status"], "unsupported")
+        self.assertEqual(body.json()["results"], [])
 
 
 if __name__ == "__main__":
