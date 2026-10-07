@@ -136,6 +136,19 @@ function listingMonthTable(months, selected, onPick) {
   ]);
 }
 
+function sectionClass(boxed, extra) {
+  return [extra, boxed ? "crime-unit" : ""].filter(Boolean).join(" ");
+}
+
+function loadAccordion(title, children) {
+  const details = el("details", { className: "section-accordion" });
+  details.append(
+    el("summary", {}, [el("h3", { className: "section-title" }, [title])]),
+    ...children,
+  );
+  return details;
+}
+
 function listingEventTable(events) {
   const columns = [
     { label: "Date", className: "" },
@@ -158,7 +171,7 @@ function listingEventTable(events) {
   ]);
 }
 
-export function mountListingSection(block, host) {
+export function mountListingSection(block, host, boxed) {
   if (!block || !(block.events || []).length) {
     host.replaceChildren();
     return;
@@ -211,7 +224,10 @@ export function mountListingSection(block, host) {
   }
 
   paint();
-  host.replaceChildren(el("section", { className: "permit-section listing-section", "aria-label": "Listed events" }, [
+  host.replaceChildren(el("section", {
+    className: sectionClass(boxed, "permit-section listing-section"),
+    "aria-label": "Listed events",
+  }, [
     el("h3", { className: "section-title" }, [withInfo("Listed events")]),
     el("p", { className: "muted" }, [text(block.note || "")]),
     el("p", { className: "muted" }, [text("Click a month to see its events. Click it again to clear.")]),
@@ -220,7 +236,7 @@ export function mountListingSection(block, host) {
   ]));
 }
 
-export function mountPermitSection(venueId, host, source) {
+export function mountPermitSection(venueId, host, source, boxed) {
   let request = 0;
   let groupsExpanded = false;
   const series = source === "nibrs" ? "nibrs" : "reports";
@@ -276,12 +292,19 @@ export function mountPermitSection(venueId, host, source) {
         : []);
     if (groups.length) paintGroups();
     const loadRows = body.permit_load || [];
-    const loadBlock = loadRows.length ? [
-      el("h3", { className: "section-title" }, [withInfo("Permits on the same day")]),
-      el("p", { className: "muted" }, [text(body.load_intro || "")]),
-      permitLoadTable(loadRows, unit),
-    ] : [];
-    host.replaceChildren(el("section", { className: "permit-section", "aria-label": "Permit days" }, [
+    const loadIntro = el("p", { className: "muted" }, [text(body.load_intro || "")]);
+    const loadTable = permitLoadTable(loadRows, unit);
+    const loadBlock = !loadRows.length ? [] : boxed
+      ? [loadAccordion(withInfo("Permits on the same day"), [loadIntro, loadTable])]
+      : [
+        el("h3", { className: "section-title" }, [withInfo("Permits on the same day")]),
+        loadIntro,
+        loadTable,
+      ];
+    host.replaceChildren(el("section", {
+      className: sectionClass(boxed, "permit-section"),
+      "aria-label": "Permit days",
+    }, [
       el("h3", { className: "section-title" }, [withInfo("Permit days vs other days")]),
       el("p", { className: "muted" }, [text(body.intro || "")]),
       venueNote,
@@ -317,7 +340,7 @@ function gameTable(summary) {
   ]);
 }
 
-export function mountHomeGames(host, venueId) {
+export function mountHomeGames(host, venueId, boxed) {
   host.replaceChildren();
   fetchJson(`/api/venues/${encodeURIComponent(venueId)}/home-games`).then((body) => {
     if (!body.available) {
@@ -325,7 +348,10 @@ export function mountHomeGames(host, venueId) {
       return;
     }
     const groups = body.groups || [];
-    host.replaceChildren(el("section", { className: "permit-section", "aria-label": "Home games" }, [
+    host.replaceChildren(el("section", {
+      className: sectionClass(boxed, "permit-section"),
+      "aria-label": "Home games",
+    }, [
       el("h3", { className: "section-title" }, [withInfo("Home games vs other days")]),
       el("p", { className: "muted" }, [text(body.note || "")]),
       gameTable(body.summary),

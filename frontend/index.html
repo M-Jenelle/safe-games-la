@@ -66,6 +66,11 @@
             <h2 id="map-heading">Los Angeles</h2>
             <button type="button" class="compare-link" id="compare-open">Compare</button>
           </div>
+          <div class="table-filters heat-range" id="heat-range">
+            <label>Year <select id="heat-year" aria-label="Year"></select></label>
+            <label>From <span class="range-pair"><select id="heat-from-month" aria-label="From month"></select><select id="heat-from-year" aria-label="From year"></select></span></label>
+            <label>To <span class="range-pair"><select id="heat-to-month" aria-label="To month"></select><select id="heat-to-year" aria-label="To year"></select></span></label>
+          </div>
           <fieldset class="layer-toggles" id="layer-toggles">
             <legend>Map layers</legend>
             <label><input type="checkbox" data-layer="venues" checked> Venues</label>

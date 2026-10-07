@@ -1,12 +1,11 @@
-import { categoryRows, filledMonths, monthChart, monthTable, mountDistancePair, mountDistanceSection, mountTimePair, mountTimeSection, mountWeekdayPair, mountWeekdaySection, scopedBlock, scopedWeekday, yearTotals } from "./charts.js";
+import { categoryRows, filledMonths, monthChart, monthTable, mountDistanceSection, mountTimeSection, mountWeekdaySection, scopedBlock, scopedWeekday, yearTotals } from "./charts.js";
 import { MONTH_NAMES, el, fetchJson, formatDistance, formatNumber, formatSports, monthLabel, monthTitle, text } from "./dom.js";
 import { renderMap } from "./map.js";
 import { closeVenuePage, openVenuePage, renderChatContext, venueToolbar } from "./nav.js";
 import { mountHomeGames, mountListingSection, mountPermitSection } from "./permits.js";
 import { renderRoster } from "./roster.js";
-import { FLAG_LABELS, detail, overview, requests, state, zoneFilter } from "./state.js";
+import { FLAG_LABELS, HIDDEN_FLAGS, detail, overview, requests, state, zoneFilter } from "./state.js";
 import { careStations, cityStats, densityHint, densityNote, incidentNote, overlapNote, presentCount, presentRate, renderOverview, stat } from "./stats.js";
-import { pageCopy } from "./tips.js";
 
 export function renderDetail() {
   const venue = state.detail;
@@ -23,7 +22,7 @@ export function renderDetail() {
       reportMonths[0],
     );
   const total = presentCount(venue);
-  const flags = venue.data_quality_flags.map((flag) => (
+  const flags = venue.data_quality_flags.filter((flag) => !HIDDEN_FLAGS.has(flag)).map((flag) => (
     el("span", { className: "flag" }, [text(FLAG_LABELS[flag] || flag)])
   ));
   const rail = venue.rail_stations_nearby.stations.map((station) => (
@@ -35,9 +34,8 @@ export function renderDetail() {
   const buses = venue.bus_stops_nearby.lines.map((line) => (
     el("span", { className: "pill" }, [text(line)])
   ));
-  let tableYear = "all";
-  let fromMonth = 1;
-  let toMonth = 12;
+  let fromKey = "";
+  let toKey = "";
   let selectedKey = "";
   let categoriesExpanded = false;
 
@@ -54,8 +52,9 @@ export function renderDetail() {
   const toSelect = el("select", { "aria-label": "To month" }, MONTH_NAMES.map((name, index) => (
     el("option", { value: String(index + 1) }, [text(name)])
   )));
+  const fromYearSelect = el("select", { "aria-label": "From year" });
+  const toYearSelect = el("select", { "aria-label": "To year" });
   toSelect.value = "12";
-  let seriesId = "reports";
   const permitHost = el("div");
   const homeHost = el("div");
   const listingHost = el("div");
@@ -65,30 +64,9 @@ export function renderDetail() {
   const chartHost = el("div", { className: "chart-host" });
   const yearHost = el("div", { className: "year-row" });
   const seriesHint = el("p", { className: "muted" });
-  const seriesSelect = el("select", { "aria-label": "Crime series" }, [
-    el("option", { value: "reports" }, [text("2020–2024 reports")]),
-  ]);
-  if (venue.nibrs) {
-    seriesSelect.append(el("option", { value: "nibrs" }, [text("NIBRS offenses, Mar 2024–present")]));
-  }
-  if (venue.merged_by_month) {
-    seriesSelect.append(el("option", { value: "merged" }, [text("Merged groups, 2020–present")]));
-  }
-  const hasSeries = Boolean(venue.nibrs || venue.merged_by_month);
 
   function seriesData() {
-    if (seriesId === "nibrs" && venue.nibrs) {
-      return {
-        byMonth: venue.nibrs.by_month || {},
-        byCategory: venue.nibrs.by_category || {},
-        categoriesByMonth: venue.nibrs.categories_by_month || {},
-        total: venue.nibrs.count || 0,
-        word: "offenses",
-        allLabel: "All offenses",
-        empty: "No offenses in this range.",
-      };
-    }
-    if (seriesId === "merged" && venue.merged_by_month) {
+    if (venue.merged_by_month) {
       const labels = venue.crime_groups || {};
       const byMonth = {};
       const byCategory = {};
@@ -131,32 +109,43 @@ export function renderDetail() {
     return filledMonths(seriesData().byMonth);
   }
 
-  function seriesPeak() {
-    const entries = seriesMonths();
+  function padMonth(value) {
+    return String(value).padStart(2, "0");
+  }
+
+  function filteredMonths() {
+    return seriesMonths().filter((entry) => entry.key >= fromKey && entry.key <= toKey);
+  }
+
+  function rangePeak() {
+    const entries = filteredMonths();
     if (!entries.length) return null;
     return entries.reduce((best, entry) => (entry.count > best.count ? entry : best), entries[0]);
   }
 
   function rangeKeys() {
-    return seriesMonths().filter((entry) => {
-      const [year, month] = entry.key.split("-");
-      const monthNumber = Number(month);
-      if (tableYear !== "all" && year !== tableYear) return false;
-      return monthNumber >= fromMonth && monthNumber <= toMonth;
-    }).map((entry) => entry.key);
+    return filteredMonths().map((entry) => entry.key);
   }
 
   function isFullRange() {
-    return tableYear === "all" && fromMonth === 1 && toMonth === 12;
+    const entries = seriesMonths();
+    if (!entries.length) return true;
+    return fromKey === entries[0].key && toKey === entries[entries.length - 1].key;
   }
 
   function rangeCaption() {
-    const fromName = MONTH_NAMES[fromMonth - 1];
-    const toName = MONTH_NAMES[toMonth - 1];
-    const span = fromMonth === toMonth ? fromName : `${fromName}–${toName}`;
-    if (tableYear === "all") return span;
-    if (fromMonth === 1 && toMonth === 12) return tableYear;
-    return `${span} ${tableYear}`;
+    if (!fromKey || !toKey) return "";
+    if (fromKey === toKey) return monthLabel(fromKey);
+    const fromYear = fromKey.slice(0, 4);
+    const toYear = toKey.slice(0, 4);
+    if (fromYear === toYear) {
+      const yearEntries = seriesMonths().filter((entry) => entry.key.startsWith(`${fromYear}-`));
+      if (yearEntries.length && fromKey === yearEntries[0].key && toKey === yearEntries[yearEntries.length - 1].key) {
+        return fromYear;
+      }
+      return `${MONTH_NAMES[Number(fromKey.slice(5)) - 1]}–${MONTH_NAMES[Number(toKey.slice(5)) - 1]} ${fromYear}`;
+    }
+    return `${monthLabel(fromKey)}–${monthLabel(toKey)}`;
   }
 
   function summedCategories(keys) {
@@ -210,7 +199,7 @@ export function renderDetail() {
   }
 
   function markMonth(key) {
-    const peakKey = seriesPeak()?.key;
+    const peakKey = rangePeak()?.key;
     detail.querySelectorAll("[data-month]").forEach((node) => {
       const active = node.dataset.month === key;
       node.classList.toggle("is-active", active);
@@ -222,19 +211,13 @@ export function renderDetail() {
 
   function paintTable() {
     const bundle = seriesData();
-    const entries = seriesMonths();
-    const peakKey = seriesPeak()?.key;
-    const filtered = entries.filter((entry) => {
-      const [year, month] = entry.key.split("-");
-      const monthNumber = Number(month);
-      if (tableYear !== "all" && year !== tableYear) return false;
-      return monthNumber >= fromMonth && monthNumber <= toMonth;
-    });
+    const filtered = filteredMonths();
+    const peakKey = rangePeak()?.key;
     if (!filtered.length) {
       tableWrap.replaceChildren(el("p", { className: "muted" }, [text(bundle.empty)]));
       return;
     }
-    const table = monthTable(filtered, peakKey, selectedKey, fromMonth, toMonth);
+    const table = monthTable(filtered, peakKey, selectedKey);
     table.addEventListener("click", (event) => {
       const cell = event.target.closest("td[data-month]");
       if (cell?.dataset.month) selectMonth(cell.dataset.month);
@@ -251,20 +234,62 @@ export function renderDetail() {
     paintWeekday();
   }
 
-  function readRange(changed) {
-    let nextFrom = Number(fromSelect.value);
-    let nextTo = Number(toSelect.value);
-    if (nextFrom > nextTo) {
-      if (changed === "from") nextTo = nextFrom;
-      else nextFrom = nextTo;
-      fromSelect.value = String(nextFrom);
-      toSelect.value = String(nextTo);
+  function yearChoices() {
+    return [...new Set(seriesMonths().map((entry) => entry.key.slice(0, 4)))];
+  }
+
+  function rangeMode() {
+    const entries = seriesMonths();
+    if (!entries.length || !fromKey || !toKey) return "all";
+    if (fromKey === entries[0].key && toKey === entries[entries.length - 1].key) return "all";
+    const fromYear = fromKey.slice(0, 4);
+    if (fromYear === toKey.slice(0, 4)) {
+      const yearEntries = entries.filter((entry) => entry.key.startsWith(`${fromYear}-`));
+      if (yearEntries.length && fromKey === yearEntries[0].key && toKey === yearEntries[yearEntries.length - 1].key) {
+        return fromYear;
+      }
     }
-    tableYear = yearSelect.value;
-    fromMonth = nextFrom;
-    toMonth = nextTo;
-    selectedKey = "";
-    categoriesExpanded = false;
+    return "custom";
+  }
+
+  function syncYearSelect() {
+    const mode = rangeMode();
+    const options = [
+      el("option", { value: "all" }, [text("All years")]),
+      ...yearChoices().map((year) => el("option", { value: year }, [text(year)])),
+    ];
+    if (mode === "custom") options.push(el("option", { value: "custom" }, [text("Custom")]));
+    yearSelect.replaceChildren(...options);
+    yearSelect.value = mode;
+  }
+
+  function setBoundsOnSelects() {
+    if (!fromKey || !toKey) return;
+    fromSelect.value = String(Number(fromKey.slice(5)));
+    toSelect.value = String(Number(toKey.slice(5)));
+    fromYearSelect.value = fromKey.slice(0, 4);
+    toYearSelect.value = toKey.slice(0, 4);
+    syncYearSelect();
+  }
+
+  function paintSpan() {
+    const bundle = seriesData();
+    const entries = filteredMonths();
+    const yearsNow = yearTotals(entries);
+    const peakNow = rangePeak();
+    const peakYearNow = yearsNow.reduce(
+      (best, entry) => (entry[1] > best[1] ? entry : best),
+      yearsNow[0] || ["", 0],
+    );
+    yearHost.replaceChildren(...yearsNow.map(([year, count]) => (
+      el("article", { className: year === peakYearNow[0] ? "year-card is-peak" : "year-card" }, [
+        el("span", {}, [text(year)]),
+        el("strong", {}, [text(formatNumber(count))]),
+      ])
+    )));
+    chartHost.replaceChildren(entries.length
+      ? monthChart(entries, peakNow?.key, selectMonth, bundle.word)
+      : el("p", { className: "muted" }, [text(bundle.empty)]));
     paintTable();
     markMonth(selectedKey);
     paintCategories();
@@ -272,35 +297,73 @@ export function renderDetail() {
     paintWeekday();
   }
 
+  function readRange(changed) {
+    const entries = seriesMonths();
+    if (!entries.length) return;
+    const first = entries[0].key;
+    const last = entries[entries.length - 1].key;
+    let start = `${fromYearSelect.value}-${padMonth(fromSelect.value)}`;
+    let end = `${toYearSelect.value}-${padMonth(toSelect.value)}`;
+    if (start < first) start = first;
+    if (start > last) start = last;
+    if (end < first) end = first;
+    if (end > last) end = last;
+    if (start > end) {
+      if (changed === "from" || changed === "fromYear") end = start;
+      else start = end;
+    }
+    fromKey = start;
+    toKey = end;
+    selectedKey = "";
+    categoriesExpanded = false;
+    setBoundsOnSelects();
+    paintSpan();
+  }
+
+  function applyYearChoice() {
+    const choice = yearSelect.value;
+    if (choice === "custom") return;
+    const entries = seriesMonths();
+    if (!entries.length) return;
+    if (choice === "all") {
+      fromKey = entries[0].key;
+      toKey = entries[entries.length - 1].key;
+    } else {
+      const yearEntries = entries.filter((entry) => entry.key.startsWith(`${choice}-`));
+      if (!yearEntries.length) return;
+      fromKey = yearEntries[0].key;
+      toKey = yearEntries[yearEntries.length - 1].key;
+    }
+    selectedKey = "";
+    categoriesExpanded = false;
+    setBoundsOnSelects();
+    paintSpan();
+  }
+
   function seriesNote() {
-    if (seriesId === "nibrs") {
-      return "Each row is one NIBRS offense, so one case can count more than once. Click a bar or a table cell to filter types to that month. Click it again to clear. Red is the busiest month.";
+    const hint = "Click a bar or a table cell to filter incident types to that month. Click it again to clear. Red is the busiest month.";
+    if (venue.merged_by_month) {
+      return `Reports before March 7, 2024, then NIBRS offenses. ${hint}`;
     }
-    if (seriesId === "merged") {
-      return "Reports before March 7, 2024, then NIBRS offenses. Types are shared groups. Permit days in this view use 2020–2024 reports. Click a bar or a table cell to filter. Click it again to clear. Red is the busiest month.";
-    }
-    return "Click a bar or a table cell to filter incident types to that month. Click it again to clear. Red is the busiest month.";
+    return hint;
+  }
+
+  function scopedSeries(reportsBlock, nibrsBlock, scope) {
+    if (!selectedKey) return { block: scope(reportsBlock, ""), word: "incidents" };
+    const reports = scope(reportsBlock, selectedKey);
+    if (reports?.total) return { block: reports, word: "incidents" };
+    const nibrs = scope(nibrsBlock, selectedKey);
+    if (nibrs?.total) return { block: nibrs, word: "offenses" };
+    return { block: reports, word: "incidents" };
   }
 
   function paintPies() {
-    const month = selectedKey;
-    const monthName = month ? monthTitle(month) : "";
-    const reportsTime = scopedBlock(venue.crime_time, month);
-    const nibrsTime = scopedBlock(venue.nibrs_time, month);
-    const reportsDistance = scopedBlock(venue.crime_distance, month);
-    const nibrsDistance = scopedBlock(venue.nibrs_distance, month);
-    if (seriesId === "merged") {
-      mountTimePair(timeHost, reportsTime, nibrsTime, monthName);
-      mountDistancePair(distanceHost, reportsDistance, nibrsDistance, monthName);
-      return;
-    }
-    const nibrsSeries = seriesId === "nibrs";
-    const countWord = nibrsSeries ? "offenses" : "incidents";
-    const guide = nibrsSeries || month ? "" : pageCopy("pie_guide");
-    const timeBlock = nibrsSeries ? nibrsTime : reportsTime;
-    const distanceBlock = nibrsSeries ? nibrsDistance : reportsDistance;
-    mountTimeSection(timeBlock, timeHost, countWord, guide, monthName);
-    mountDistanceSection(distanceBlock, distanceHost, countWord, guide, monthName);
+    const monthName = selectedKey ? monthTitle(selectedKey) : "";
+    const time = scopedSeries(venue.crime_time, venue.nibrs_time, scopedBlock);
+    const distance = scopedSeries(venue.crime_distance, venue.nibrs_distance, scopedBlock);
+    const guide = "";
+    mountTimeSection(time.block, timeHost, time.word, guide, monthName);
+    mountDistanceSection(distance.block, distanceHost, distance.word, guide, monthName);
     if (monthName) {
       for (const host of [timeHost, distanceHost]) {
         const hint = host.querySelector(".time-section > .muted");
@@ -313,139 +376,114 @@ export function renderDetail() {
 
   function paintWeekday() {
     const monthName = selectedKey ? monthTitle(selectedKey) : "";
-    if (seriesId === "merged") {
-      mountWeekdayPair(
-        weekdayHost,
-        scopedWeekday(venue.crime_weekday, selectedKey),
-        scopedWeekday(venue.nibrs_weekday, selectedKey),
-        monthName,
-      );
-      return;
-    }
-    const nibrsSeries = seriesId === "nibrs";
-    mountWeekdaySection(
-      scopedWeekday(nibrsSeries ? venue.nibrs_weekday : venue.crime_weekday, selectedKey),
-      weekdayHost,
-      nibrsSeries ? "offenses" : "incidents",
-      monthName,
-    );
+    const picked = scopedSeries(venue.crime_weekday, venue.nibrs_weekday, scopedWeekday);
+    mountWeekdaySection(picked.block, weekdayHost, picked.word, monthName);
   }
 
   function paintHomeGames() {
-    const show = venue.home_games_available && seriesId !== "nibrs";
+    const show = Boolean(venue.home_games_available);
     homeHost.hidden = !show;
     if (show && !homeHost.dataset.loaded) {
       homeHost.dataset.loaded = "true";
-      mountHomeGames(homeHost, venue.venue_id);
+      mountHomeGames(homeHost, venue.venue_id, true);
     }
-  }
-
-  function paintCharts() {
-    paintPies();
-    paintWeekday();
-    mountPermitSection(venue.venue_id, permitHost, seriesId === "nibrs" ? "nibrs" : "reports");
-    paintHomeGames();
   }
 
   function applySeries() {
     const entries = seriesMonths();
-    const yearsNow = yearTotals(entries);
-    const peakNow = seriesPeak();
-    const peakYearNow = yearsNow.reduce(
-      (best, entry) => (entry[1] > best[1] ? entry : best),
-      yearsNow[0] || ["", 0],
-    );
-    yearSelect.replaceChildren(
-      el("option", { value: "all" }, [text("All years")]),
-      ...yearsNow.map(([year]) => el("option", { value: year }, [text(year)])),
-    );
-    yearSelect.value = tableYear;
-    yearHost.replaceChildren(...yearsNow.map(([year, count]) => (
-      el("article", { className: year === peakYearNow[0] ? "year-card is-peak" : "year-card" }, [
-        el("span", {}, [text(year)]),
-        el("strong", {}, [text(formatNumber(count))]),
-      ])
-    )));
-    chartHost.replaceChildren(monthChart(entries, peakNow?.key, selectMonth, seriesData().word));
+    const options = () => yearChoices().map((year) => el("option", { value: year }, [text(year)]));
+    fromYearSelect.replaceChildren(...options());
+    toYearSelect.replaceChildren(...options());
+    fromKey = entries[0]?.key || "";
+    toKey = entries[entries.length - 1]?.key || "";
     seriesHint.textContent = seriesNote();
-    paintCharts();
-    paintTable();
-    markMonth(selectedKey);
-    paintCategories();
+    setBoundsOnSelects();
+    mountPermitSection(venue.venue_id, permitHost, "reports", true);
+    paintHomeGames();
+    paintSpan();
   }
 
   categoryToggle.addEventListener("click", () => {
     categoriesExpanded = !categoriesExpanded;
     paintCategories();
   });
-  yearSelect.addEventListener("change", () => readRange("year"));
+  yearSelect.addEventListener("change", applyYearChoice);
   fromSelect.addEventListener("change", () => readRange("from"));
   toSelect.addEventListener("change", () => readRange("to"));
-  seriesSelect.addEventListener("change", () => {
-    seriesId = seriesSelect.value;
-    selectedKey = "";
-    categoriesExpanded = false;
-    tableYear = "all";
-    fromMonth = 1;
-    toMonth = 12;
-    fromSelect.value = "1";
-    toSelect.value = "12";
-    applySeries();
-  });
+  fromYearSelect.addEventListener("change", () => readRange("fromYear"));
+  toYearSelect.addEventListener("change", () => readRange("toYear"));
+  const openedSection = (location.hash.match(/^#\/venue\/[^/]+\/(categories|weekday|months)/) || [])[1];
   applySeries();
 
   detail.hidden = false;
   detail.scrollTop = 0;
   detail.replaceChildren(el("div", { className: "venue-sheet" }, [
     venueToolbar(),
-    el("p", { className: "zone" }, [text(`${venue.olympic_zone} · ${formatSports(venue.sports)}`)]),
-    el("h2", { className: "detail-title", id: "detail-heading" }, [text(venue.venue_name)]),
-    el("p", { className: "address" }, [text(`${venue.address}, ${venue.city}`)]),
-    el("div", { className: "stats" }, [
-      stat("Incidents", formatNumber(total), incidentNote(venue)),
-      stat("Density", formatNumber(presentRate(venue)), densityNote(venue), densityHint(venue)),
-      ...cityStats(venue),
-      stat("Busiest month", peak?.key ? monthLabel(peak.key) : "None", peak?.count ? `${formatNumber(peak.count)} records` : "No dated records"),
+    el("section", { className: "crime-unit identity-unit", "aria-label": venue.venue_name }, [
+      el("p", { className: "zone" }, [text(`${venue.olympic_zone} · ${formatSports(venue.sports)}`)]),
+      el("h2", { className: "detail-title", id: "detail-heading" }, [text(venue.venue_name)]),
+      el("p", { className: "address" }, [text(`${venue.address}, ${venue.city}`)]),
+      el("div", { className: "stats" }, [
+        stat("Incidents", formatNumber(total), incidentNote(venue)),
+        stat("Density", formatNumber(presentRate(venue)), densityNote(venue), densityHint(venue)),
+        ...cityStats(venue),
+        stat("Busiest month", peak?.key ? monthLabel(peak.key) : "None", peak?.count ? `${formatNumber(peak.count)} records` : "No dated records"),
+      ]),
     ]),
-    venue.nibrs ? el("p", { className: "muted" }, [
-      text(`NIBRS offenses since Mar 2024: ${formatNumber(venue.nibrs.count)}. A case can include more than one offense.`),
-    ]) : el("span"),
     flags.length ? el("div", { className: "flags" }, flags) : el("span"),
     overlapNote(venue) ? el("p", { className: "terms" }, [text(overlapNote(venue))]) : el("span"),
-    el("h3", { className: "section-title" }, [text("Incidents by month")]),
-    hasSeries ? el("div", { className: "table-filters" }, [
-      el("label", {}, [text("Series"), seriesSelect]),
-    ]) : el("span"),
-    seriesHint,
-    yearHost,
-    chartHost,
-    el("div", { className: "table-filters" }, [
-      el("label", {}, [text("Year"), yearSelect]),
-      el("label", {}, [text("From"), fromSelect]),
-      el("label", {}, [text("To"), toSelect]),
+    el("section", { className: "crime-unit", "aria-label": "Crime patterns" }, [
+      el("h3", { className: "section-title", id: "section-months" }, [text("Incidents by month")]),
+      el("div", { className: "table-filters" }, [
+        el("label", {}, [text("Year"), yearSelect]),
+        el("label", {}, [
+          text("From"),
+          el("span", { className: "range-pair" }, [fromSelect, fromYearSelect]),
+        ]),
+        el("label", {}, [
+          text("To"),
+          el("span", { className: "range-pair" }, [toSelect, toYearSelect]),
+        ]),
+      ]),
+      seriesHint,
+      yearHost,
+      chartHost,
+      tableWrap,
+      el("h3", { className: "section-title", id: "section-categories" }, [text("Incident types")]),
+      categoryNote,
+      categoryList,
+      categoryToggle,
+      timeHost,
+      distanceHost,
+      weekdayHost,
     ]),
-    tableWrap,
-    el("h3", { className: "section-title" }, [text("Incident types")]),
-    categoryNote,
-    categoryList,
-    categoryToggle,
-    timeHost,
-    distanceHost,
-    weekdayHost,
     permitHost,
     homeHost,
     listingHost,
-    el("h3", { className: "section-title" }, [text(`Rail · ${formatNumber(venue.rail_stations_nearby.count)} ${venue.rail_stations_nearby.count === 1 ? "station" : "stations"}`)]),
-    rail.length ? el("ul", { className: "place-list" }, rail) : el("p", { className: "muted" }, [text("None in the buffer.")]),
-    el("h3", { className: "section-title" }, [
-      text(`Bus · ${formatNumber(venue.bus_stops_nearby.count)} stops · ${venue.bus_stops_nearby.lines.length} lines`),
+    el("section", { className: "crime-unit places-unit", "aria-label": "Transit and nearest care" }, [
+      el("h3", { className: "section-title" }, [text(`Rail · ${formatNumber(venue.rail_stations_nearby.count)} ${venue.rail_stations_nearby.count === 1 ? "station" : "stations"}`)]),
+      rail.length ? el("ul", { className: "place-list" }, rail) : el("p", { className: "muted" }, [text("None in the buffer.")]),
+      el("h3", { className: "section-title" }, [
+        text(`Bus · ${formatNumber(venue.bus_stops_nearby.count)} stops · ${venue.bus_stops_nearby.lines.length} lines`),
+      ]),
+      el("div", { className: "pills" }, buses.length ? buses : [el("span", { className: "muted" }, [text("None in the buffer.")])]),
+      el("h3", { className: "section-title" }, [text("Nearest response and care")]),
+      el("div", { className: "station-grid" }, careStations(venue)),
+      el("p", { className: "terms" }, [text(state.meta.jurisdiction_method)]),
     ]),
-    el("div", { className: "pills" }, buses.length ? buses : [el("span", { className: "muted" }, [text("None in the buffer.")])]),
-    el("h3", { className: "section-title" }, [text("Nearest response and care")]),
-    el("div", { className: "station-grid" }, careStations(venue)),
-    el("p", { className: "terms" }, [text(state.meta.jurisdiction_method)]),
   ]));
-  mountListingSection(venue.ticketmaster, listingHost);
+  mountListingSection(venue.ticketmaster, listingHost, true);
+  const sectionId = {
+    categories: "section-categories",
+    weekday: "section-weekday",
+    months: "section-months",
+  }[openedSection];
+  const section = sectionId && document.getElementById(sectionId);
+  if (section) {
+    const panel = section.closest("details");
+    if (panel) panel.open = true;
+    section.scrollIntoView({ block: "start" });
+  }
 }
 
 export async function selectVenue(venueId, options = {}) {

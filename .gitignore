@@ -7,3 +7,4 @@ data/raw/nibrs/*.csv.partial
 !.env.example
 .venv/
 __pycache__/
+*.pyc

@@ -1,3 +1,8 @@
+export const HIDDEN_FLAGS = new Set([
+  "no_rail_stations_within_radius",
+  "geocode_mismatch",
+]);
+
 export const FLAG_LABELS = {
   no_crime_within_radius: "No crime reports in the buffer",
   no_rail_stations_within_radius: "No rail stations in the buffer",
@@ -22,6 +27,9 @@ export const state = {
   crimeView: "all",
   crimeHot: false,
   crimeCache: {},
+  heatStart: "",
+  heatEnd: "",
+  heatMonths: [],
   layerViews: {
     fire: "all",
     hospitals: "all",

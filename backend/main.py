@@ -101,6 +101,7 @@ def read_meta() -> dict:
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
     venue_id: str | None = Field(default=None, min_length=1, max_length=80)
+    prior_message: str | None = Field(default=None, max_length=2000)
 
 
 @app.get("/api/chat/suggestions")
@@ -119,7 +120,7 @@ def chat_config() -> dict:
 
 @app.post("/api/chat")
 def chat(request: ChatRequest):
-    response = answer_question(request.message, request.venue_id)
+    response = answer_question(request.message, request.venue_id, request.prior_message)
     return JSONResponse(response, status_code=503 if response["status"] == "unavailable" else 200)
 
 
@@ -133,10 +134,17 @@ def read_map() -> dict:
 
 
 @app.get("/api/map/crime")
-def read_crime_heat(view: str = Query(default="all", max_length=40)) -> dict:
-    """One crime heatmap: all, high-amount, around venues, or one type."""
+def read_crime_heat(
+    view: str = Query(default="all", max_length=40),
+    start: str | None = Query(default=None, max_length=7),
+    end: str | None = Query(default=None, max_length=7),
+) -> dict:
+    """One crime heatmap: all, high-amount, around venues, or one type.
+
+    ``start`` and ``end`` are YYYY-MM. The points are limited to that span.
+    """
     try:
-        return crime_heat_points(view)
+        return crime_heat_points(view, start=start, end=end)
     except DatasetNotFound as exc:
         raise _missing(exc) from exc
     except ValueError as exc:
