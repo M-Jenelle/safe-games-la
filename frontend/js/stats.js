@@ -41,7 +41,7 @@ export function presentRate(venue) {
 export function cityStats(venue) {
   const series = venue?.city_baseline?.present;
   if (!series?.value) return [];
-  return [stat("Vs city", series.value, series.caption, series.hint)];
+  return [stat("vs City", series.value, series.caption, series.hint)];
 }
 
 export function overlapNote(venue) {
@@ -50,6 +50,37 @@ export function overlapNote(venue) {
 
 function hospitalHasEmergencyRoom(station) {
   return String(station?.emergency_room || "").toLowerCase() === "yes";
+}
+
+function countLabel(count, singular, plural) {
+  return `${formatNumber(count)} ${count === 1 ? singular : plural}`;
+}
+
+export function transitStations(venue) {
+  const rail = venue.rail_stations_nearby || { count: 0, stations: [] };
+  const bus = venue.bus_stops_nearby || { count: 0, lines: [] };
+  const stations = rail.stations || [];
+  const railCount = rail.count ?? stations.length;
+  const cards = stations.length
+    ? stations.map((station, index) => el("article", { className: "station" }, [
+      el("span", { className: "zone" }, [text(index === 0 ? `Rail · ${countLabel(railCount, "Station", "Stations")}` : "Rail")]),
+      el("h3", {}, [text(station.station_name)]),
+      el("p", { className: "muted" }, [text(`${station.lines} · ${formatDistance(station.distance_m)}`)]),
+    ]))
+    : [el("article", { className: "station" }, [
+      el("span", { className: "zone" }, [text(`Rail · ${countLabel(0, "Station", "Stations")}`)]),
+      el("h3", {}, [text("None in the buffer.")]),
+    ])];
+  const lines = bus.lines || [];
+  const lineNodes = lines.map((line) => el("span", { className: "pill" }, [text(line)]));
+  cards.push(el("article", { className: "station" }, [
+    el("span", { className: "zone" }, [text("Bus")]),
+    el("h3", {}, [text(`${countLabel(bus.count || 0, "Stop", "Stops")} · ${countLabel(lines.length, "Line", "Lines")}`)]),
+    lineNodes.length
+      ? el("div", { className: "pills" }, lineNodes)
+      : el("p", { className: "muted" }, [text("None in the buffer.")]),
+  ]));
+  return cards;
 }
 
 export function careStations(venue) {
@@ -109,14 +140,6 @@ export function renderOverview() {
   const flags = venue.data_quality_flags.filter((flag) => !HIDDEN_FLAGS.has(flag)).map((flag) => (
     el("span", { className: "flag" }, [text(FLAG_LABELS[flag] || flag)])
   ));
-  const rail = venue.rail_stations_nearby.stations.map((station) => (
-    el("span", { className: "pill" }, [
-      text(`${station.station_name} · ${station.lines} · ${formatDistance(station.distance_m)}`),
-    ])
-  ));
-  const buses = venue.bus_stops_nearby.lines.map((line) => (
-    el("span", { className: "pill" }, [text(line)])
-  ));
   overview.replaceChildren(
     el("div", { className: "detail-head" }, [
       el("div", {}, [
@@ -135,25 +158,25 @@ export function renderOverview() {
       ...cityStats(venue),
       stat("Jurisdiction", jurisdictionLabel(venue.lapd_jurisdiction), "nearest local station"),
     ]),
-    flags.length ? el("div", { className: "flags" }, flags) : el("p", { className: "muted" }, [text("No data-quality flags.")]),
+    flags.length ? el("div", { className: "flags" }, flags) : el("span"),
     overlapNote(venue) ? el("p", { className: "terms" }, [text(overlapNote(venue))]) : el("span"),
-    el("h3", { className: "section-title" }, [text("Top categories")]),
+    el("h3", { className: "section-title" }, [text("Top Categories")]),
     ...(categories.length
       ? categories
       : [el("p", { className: "muted" }, [text("No incidents in this buffer.")])]),
-    el("h3", { className: "section-title" }, [text("Incidents by month")]),
+    el("h3", { className: "section-title" }, [text("Incidents by Month")]),
     overviewChart(venue.crime_by_month),
     el("p", { className: "chart-caption muted" }, [
       text(peak ? `Peak ${peak.key}: ${formatNumber(peak.count)} incidents.` : "No dated incidents."),
     ]),
-    el("h3", { className: "section-title" }, [text(`Rail · ${venue.rail_stations_nearby.count}`)]),
-    el("div", { className: "pills" }, rail.length ? rail : [el("span", { className: "muted" }, [text("None in the buffer.")])]),
-    el("h3", { className: "section-title" }, [
-      text(`Bus · ${formatNumber(venue.bus_stops_nearby.count)} stops · ${venue.bus_stops_nearby.lines.length} lines`),
+    el("section", { className: "crime-unit places-unit", "aria-label": "Transportation" }, [
+      el("h3", { className: "section-title" }, [text("Transportation")]),
+      el("div", { className: "station-grid" }, transitStations(venue)),
     ]),
-    el("div", { className: "pills" }, buses.length ? buses : [el("span", { className: "muted" }, [text("None in the buffer.")])]),
-    el("h3", { className: "section-title" }, [text("Nearest response and care")]),
-    el("div", { className: "station-grid" }, careStations(venue)),
-    el("p", { className: "terms" }, [text(state.meta?.jurisdiction_method || "")]),
+    el("section", { className: "crime-unit places-unit", "aria-label": "Nearest Response and Care" }, [
+      el("h3", { className: "section-title" }, [text("Nearest Response and Care")]),
+      el("div", { className: "station-grid" }, careStations(venue)),
+      el("p", { className: "terms" }, [text(state.meta?.jurisdiction_method || "")]),
+    ]),
   );
 }

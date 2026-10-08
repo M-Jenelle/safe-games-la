@@ -21,7 +21,7 @@ export function filledMonths(byMonth) {
   return entries;
 }
 
-export function monthChart(entries, peakKey, onFocus, word = "incidents") {
+export function monthChart(entries, peakKey, onFocus, word = "incidents", estimates = []) {
   hideChartTip();
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("class", "chart");
@@ -31,15 +31,22 @@ export function monthChart(entries, peakKey, onFocus, word = "incidents") {
     svg.setAttribute("aria-label", "No dated incidents in this buffer");
     return svg;
   }
-  const max = Math.max(...entries.map((entry) => entry.count), 1);
+  const bars = [
+    ...entries.map((entry) => ({ ...entry, estimate: false })),
+    ...estimates.map((entry) => ({ ...entry, estimate: true })),
+  ];
+  const max = Math.max(...bars.map((entry) => entry.count), 1);
   const peak = entries.find((entry) => entry.key === peakKey) || entries[0];
+  const estimateNote = estimates.length
+    ? ` Estimates for ${monthLabel(estimates[0].key)} to ${monthLabel(estimates[estimates.length - 1].key)} are seasonal averages, not recorded crime.`
+    : "";
   svg.setAttribute(
     "aria-label",
-    `Monthly ${word} from ${monthLabel(entries[0].key)} to ${monthLabel(entries[entries.length - 1].key)}. Peak ${monthLabel(peak.key)} with ${formatNumber(peak.count)}.`,
+    `Monthly ${word} from ${monthLabel(entries[0].key)} to ${monthLabel(entries[entries.length - 1].key)}. Peak ${monthLabel(peak.key)} with ${formatNumber(peak.count)}.${estimateNote}`,
   );
-  const width = 960 / entries.length;
+  const width = 960 / bars.length;
   let labeledYear = "";
-  entries.forEach((entry, index) => {
+  bars.forEach((entry, index) => {
     const height = Math.max((entry.count / max) * 168, entry.count ? 2 : 0);
     const x = index * width + 0.6;
     const barWidth = Math.max(width - 1.2, 0.6);
@@ -48,8 +55,13 @@ export function monthChart(entries, peakKey, onFocus, word = "incidents") {
     rect.setAttribute("y", String(176 - height));
     rect.setAttribute("width", String(barWidth));
     rect.setAttribute("height", String(height));
-    rect.setAttribute("fill", entry.key === peakKey ? "#DF0024" : "#0085C7");
-    rect.dataset.month = entry.key;
+    if (entry.estimate) {
+      rect.setAttribute("class", "is-estimate");
+      rect.setAttribute("fill", "#b9b6b0");
+    } else {
+      rect.setAttribute("fill", entry.key === peakKey ? "#DF0024" : "#0085C7");
+      rect.dataset.month = entry.key;
+    }
     svg.append(rect);
     const hit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
     hit.setAttribute("x", String(x));
@@ -57,8 +69,9 @@ export function monthChart(entries, peakKey, onFocus, word = "incidents") {
     hit.setAttribute("width", String(barWidth));
     hit.setAttribute("height", "176");
     hit.setAttribute("fill", "transparent");
-    hit.addEventListener("click", () => onFocus(entry.key));
-    bindChartHover(hit, entry, word);
+    if (entry.estimate) hit.setAttribute("class", "is-estimate");
+    else hit.addEventListener("click", () => onFocus(entry.key));
+    bindChartHover(hit, entry, entry.estimate ? "estimated records" : word);
     svg.append(hit);
     const year = entry.key.slice(0, 4);
     if (year !== labeledYear) {
@@ -146,14 +159,25 @@ export function yearTotals(entries) {
   return [...totals.entries()];
 }
 
-export function monthTable(entries, peakKey, activeKey) {
-  const monthsPresent = [...new Set(entries.map((entry) => Number(entry.key.slice(5))))].sort((a, b) => a - b);
+export function monthTable(entries, peakKey, activeKey, estimates = []) {
+  const monthsPresent = [...new Set([
+    ...entries.map((entry) => Number(entry.key.slice(5))),
+    ...estimates.map((entry) => Number(entry.key.slice(5))),
+  ])].sort((a, b) => a - b);
   const byYear = new Map();
   for (const entry of entries) {
     const [year, month] = entry.key.split("-");
     const monthNumber = Number(month);
     if (!byYear.has(year)) byYear.set(year, new Map());
-    byYear.get(year).set(monthNumber, entry);
+    byYear.get(year).set(monthNumber, { ...entry, estimate: false });
+  }
+  for (const entry of estimates) {
+    const [year, month] = entry.key.split("-");
+    const monthNumber = Number(month);
+    if (!byYear.has(year)) byYear.set(year, new Map());
+    if (!byYear.get(year).has(monthNumber)) {
+      byYear.get(year).set(monthNumber, { ...entry, estimate: true });
+    }
   }
   const head = el("tr", {}, [
     el("th", {}, [text("Year")]),
@@ -163,6 +187,9 @@ export function monthTable(entries, peakKey, activeKey) {
     el("th", {}, [text(year)]),
     ...monthsPresent.map((month) => {
       const entry = months.get(month);
+      if (entry?.estimate) {
+        return el("td", { className: "is-estimate" }, [text(formatNumber(entry.count))]);
+      }
       const classes = [];
       if (entry && entry.key === peakKey) classes.push("is-peak");
       if (entry && entry.key === activeKey) classes.push("is-active");
@@ -483,7 +510,7 @@ function mountPairedPies(host, options) {
 export function mountTimeSection(crimeTime, host, countWord, guide, monthLabel) {
   const periods = crimeTime?.periods || [];
   mountDrillPie(host, {
-    title: "Crimes by time of day",
+    title: "Crimes by Time of Day",
     hint: "Click a slice to see the crimes in that part of the day. Click it again to clear.",
     disclaimer: crimeTime?.disclaimer || "",
     guide,
@@ -503,6 +530,111 @@ export function scopedWeekday(block, month) {
   const scoped = block.by_month?.[month];
   if (!scoped || !scoped.total) return { total: 0, days: [], disclaimer: block.disclaimer || "" };
   return { ...scoped, disclaimer: block.disclaimer || "" };
+}
+
+const WEEKDAY_ORDER = [
+  ["mon", "Monday"],
+  ["tue", "Tuesday"],
+  ["wed", "Wednesday"],
+  ["thu", "Thursday"],
+  ["fri", "Friday"],
+  ["sat", "Saturday"],
+  ["sun", "Sunday"],
+];
+
+function addGroups(lists) {
+  const counts = new Map();
+  for (const groups of lists) {
+    for (const group of groups || []) {
+      const prev = counts.get(group.id) || { id: group.id, label: group.label, count: 0 };
+      prev.count += group.count || 0;
+      if (group.label) prev.label = group.label;
+      counts.set(group.id, prev);
+    }
+  }
+  return [...counts.values()].filter((group) => group.count).sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+}
+
+function addSlices(blocks, key, order) {
+  return order.map(([id, label]) => {
+    const matches = blocks.map((block) => (block?.[key] || []).find((item) => item.id === id)).filter(Boolean);
+    const groups = addGroups(matches.map((item) => item.groups));
+    return {
+      id,
+      label: matches.find((item) => item.label)?.label || label,
+      count: groups.reduce((sum, group) => sum + group.count, 0),
+      groups,
+    };
+  });
+}
+
+function weekdaySummaryText(block) {
+  if (!block?.total || !(block.days || []).length) return "";
+  let busiest = block.days[0];
+  for (const day of block.days.slice(1)) {
+    if ((day.count || 0) > (busiest.count || 0)) busiest = day;
+  }
+  const weekend = block.weekend_count || 0;
+  const share = block.total ? Math.floor((weekend / block.total) * 100 + 0.5) : 0;
+  return `${busiest.label} is the busiest day, ${busiest.count.toLocaleString("en-US")} records. Weekend days are ${weekend.toLocaleString("en-US")} (${share}%).`;
+}
+
+export function blockForRange(block, start, end) {
+  if (!block) return null;
+  const months = Object.keys(block.by_month || {}).sort();
+  const chosen = months.filter((key) => (!start || key >= start) && (!end || key <= end));
+  if (!chosen.length) {
+    return { total: 0, periods: [], bands: [], days: [], disclaimer: block.disclaimer || "" };
+  }
+  if (chosen.length === months.length && chosen[0] === months[0] && chosen[chosen.length - 1] === months[months.length - 1]) {
+    return block;
+  }
+  const parts = chosen.map((key) => block.by_month[key]).filter(Boolean);
+  const disclaimer = block.disclaimer || "";
+  if (block.periods || parts.some((part) => part.periods)) {
+    const periods = addSlices(parts, "periods", [
+      ["night", "12am–6am"],
+      ["morning", "6am–12pm"],
+      ["afternoon", "12pm–6pm"],
+      ["evening", "6pm–12am"],
+    ]);
+    return {
+      total: parts.reduce((sum, part) => sum + (part.total || 0), 0),
+      periods,
+      disclaimer,
+    };
+  }
+  if (block.bands || parts.some((part) => part.bands)) {
+    const bands = addSlices(parts, "bands", [
+      ["near", "Within 200 m"],
+      ["mid", "200–400 m"],
+      ["far", "400–800 m"],
+    ]);
+    return {
+      total: parts.reduce((sum, part) => sum + (part.total || 0), 0),
+      bands,
+      disclaimer,
+    };
+  }
+  const days = WEEKDAY_ORDER.map(([id, label]) => {
+    const matches = parts.map((part) => (part.days || []).find((day) => day.id === id)).filter(Boolean);
+    const groups = addGroups(matches.map((day) => day.groups));
+    const count = matches.reduce((sum, day) => sum + (day.count || 0), 0);
+    const row = { id, label: matches.find((day) => day.label)?.label || label, count };
+    if (groups.length) row.groups = groups;
+    return row;
+  });
+  const total = days.reduce((sum, day) => sum + day.count, 0);
+  const weekend = days.filter((day) => day.id === "sat" || day.id === "sun").reduce((sum, day) => sum + day.count, 0);
+  const ranged = {
+    total,
+    weekday_count: total - weekend,
+    weekend_count: weekend,
+    days,
+    disclaimer,
+  };
+  ranged.summary = weekdaySummaryText(ranged);
+  return ranged;
 }
 
 function weekdayBars(block, selectedId, onPick) {
@@ -564,7 +696,7 @@ export function mountWeekdaySection(block, host, countWord, monthLabel, placemen
     return;
   }
   if (!block.total) {
-    chartSection(host, "Day of week", [
+    chartSection(host, "Day of Week", [
       el("p", { className: "muted" }, [text(`${monthLabel}. None in this month.`)]),
     ], "section-weekday");
     return;
@@ -588,7 +720,7 @@ export function mountWeekdaySection(block, host, countWord, monthLabel, placemen
   }
 
   paint();
-  chartSection(host, "Day of week", [
+  chartSection(host, "Day of Week", [
     el("p", { className: "muted" }, [text(`${when}${weekdaySummary(block)}`)]),
     clickable ? el("p", { className: "muted" }, [text(pageCopy("weekday_click"))]) : el("span"),
     row,
@@ -602,14 +734,14 @@ export function mountWeekdayPair(host, reports, nibrs, monthLabel) {
     { label: "NIBRS offenses, Mar 2024–present", block: nibrs, countWord: "offenses" },
   ].filter((panel) => panel.block?.total);
   if (!panels.length) {
-    chartSection(host, "Day of week", [
+    chartSection(host, "Day of Week", [
       el("p", { className: "muted" }, [text(monthLabel ? `${monthLabel}. None in this month.` : "None in this range.")]),
     ], "section-weekday");
     return;
   }
   const clickable = panels.some((panel) => weekdayHasGroups(panel.block));
   const note = monthLabel ? `${monthLabel}. Yellow bars are Saturday and Sunday.` : "Yellow bars are Saturday and Sunday.";
-  chartSection(host, "Day of week", [
+  chartSection(host, "Day of Week", [
     el("p", { className: "muted" }, [text(clickable ? `${note} ${pageCopy("weekday_click")}` : note)]),
     el("div", { className: "pie-pair" }, panels.map((panel) => {
       let selected = "";
@@ -641,7 +773,7 @@ export function mountWeekdayPair(host, reports, nibrs, monthLabel) {
 export function mountDistanceSection(crimeDistance, host, countWord, guide, monthLabel) {
   const bands = crimeDistance?.bands || [];
   mountDrillPie(host, {
-    title: "Distance from the venue",
+    title: "Distance from the Venue",
     hint: "Click a slice to see the crimes in that distance. Click it again to clear.",
     disclaimer: crimeDistance?.disclaimer || "",
     guide,
@@ -664,7 +796,7 @@ export function scopedBlock(block, month) {
 
 export function mountTimePair(host, reports, nibrs, month) {
   mountPairedPies(host, {
-    title: "Crimes by time of day",
+    title: "Crimes by Time of Day",
     month,
     hint: "Click a slice to see the crimes below that chart. Click it again to clear.",
     panels: [
@@ -688,7 +820,7 @@ export function mountTimePair(host, reports, nibrs, month) {
 
 export function mountDistancePair(host, reports, nibrs, month) {
   mountPairedPies(host, {
-    title: "Distance from the venue",
+    title: "Distance from the Venue",
     month,
     hint: "Click a slice to see the crimes below that chart. Click it again to clear.",
     panels: [

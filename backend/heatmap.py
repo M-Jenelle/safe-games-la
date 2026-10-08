@@ -53,10 +53,12 @@ from backend.datasets import REPO_ROOT, DatasetNotFound, load_merged, load_summa
 _crime_views: dict | None = None
 _crime_months: list[str] = []
 _crime_monthly: dict | None = None
+_crime_grids: dict | None = None
 _crime_heat_mtime: float | None = None
 _nibrs_monthly: dict | None = None
 _nibrs_monthly_mtime: float | None = None
 _MONTH_RE = re.compile(r"^20\d{2}-(0[1-9]|1[0-2])$")
+_NIBRS_CUTOFF = pd.Timestamp("2024-03-07")
 
 
 def _crime_source_path() -> Path:
@@ -127,7 +129,7 @@ def _check_month(value: str | None, name: str) -> str | None:
 
 
 def _build_crime_views() -> dict[str, dict]:
-    global _crime_months, _crime_monthly
+    global _crime_months, _crime_monthly, _crime_grids
     path = _crime_source_path()
     raw = pd.read_csv(path, usecols=["LAT", "LON", "DATE OCC", "Crm Cd Desc"], low_memory=False)
     latitude = pd.to_numeric(raw["LAT"], errors="coerce")
@@ -135,15 +137,18 @@ def _build_crime_views() -> dict[str, dict]:
     valid = latitude.between(LAT_MIN, LAT_MAX) & longitude.between(LON_MIN, LON_MAX)
     descriptions = raw.loc[valid, "Crm Cd Desc"].fillna("").astype(str)
     type_by_label = {label: _crime_type_id(label) for label in descriptions.str.upper().unique()}
+    occurred = _parse_occurred(raw.loc[valid, "DATE OCC"])
+    # Reports on or after March 7, 2024 are replaced by NIBRS. Undated rows stay.
+    legacy = occurred.isna() | (occurred < _NIBRS_CUTOFF)
     frame = pd.DataFrame(
         {
             "latitude": latitude[valid].round(4),
             "longitude": longitude[valid].round(4),
             "crime_type": descriptions.str.upper().map(type_by_label).to_numpy(),
-            "month": _parse_occurred(raw.loc[valid, "DATE OCC"]).dt.strftime("%Y-%m").to_numpy(),
+            "month": occurred.dt.strftime("%Y-%m").to_numpy(),
             "near": _venue_mask(latitude[valid], longitude[valid]).to_numpy(),
         }
-    )
+    ).loc[legacy.to_numpy()]
     all_counts = frame.groupby(["latitude", "longitude"]).size()
     hot_cutoff = max(int(all_counts.quantile(0.9)), 1)
     high_counts = all_counts[all_counts >= hot_cutoff]
@@ -207,6 +212,14 @@ def _build_crime_views() -> dict[str, dict]:
         ),
         "types": type_monthly,
     }
+    _crime_grids = {
+        "all": all_counts,
+        "venues": venue_counts,
+        "types": {
+            type_id: type_counts.xs(type_id)
+            for type_id in (type_counts.index.get_level_values(0).unique() if len(typed) else [])
+        },
+    }
     return views
 
 def _nibrs_heat_view() -> dict | None:
@@ -255,58 +268,178 @@ def _nibrs_month_index() -> dict:
         kept["latitude"] = pd.to_numeric(kept["latitude"], errors="coerce").round(4)
         kept["longitude"] = pd.to_numeric(kept["longitude"], errors="coerce").round(4)
         counts = kept.groupby(["month", "latitude", "longitude"]).size()
+        kept = kept.copy()
+        kept["crime_type"] = kept["category"].map(_crime_type_id)
+        typed = kept.dropna(subset=["crime_type"])
+        type_counts: dict[str, pd.Series] = {}
+        if len(typed):
+            grouped = typed.groupby(["crime_type", "month", "latitude", "longitude"]).size()
+            for type_id in grouped.index.get_level_values(0).unique():
+                type_counts[str(type_id)] = grouped.xs(type_id)
+        near = _venue_mask(kept["latitude"], kept["longitude"])
+        venue_rows = kept.loc[near.to_numpy()]
+        venue_counts = (
+            venue_rows.groupby(["month", "latitude", "longitude"]).size()
+            if len(venue_rows)
+            else pd.Series(dtype="int64")
+        )
         cache = {
             "months": sorted(counts.index.get_level_values(0).unique()),
             "counts": counts,
+            "venues": venue_counts,
+            "types": type_counts,
         }
     _nibrs_monthly = cache
     _nibrs_monthly_mtime = mtime
     return cache
 
 
+def _drop_month(counts: pd.Series | None) -> pd.Series:
+    if counts is None or len(counts) == 0:
+        return pd.Series(dtype="int64")
+    return counts.groupby(level=[1, 2]).sum()
+
+
+def _add_grids(left: pd.Series | None, right: pd.Series | None) -> pd.Series:
+    if left is None or len(left) == 0:
+        return right if right is not None else pd.Series(dtype="int64")
+    if right is None or len(right) == 0:
+        return left
+    return left.add(right, fill_value=0).astype("int64")
+
+
+def _high_from(counts: pd.Series | None) -> pd.Series:
+    if counts is None or len(counts) == 0:
+        return pd.Series(dtype="int64")
+    cutoff = max(int(counts.quantile(0.9)), 1)
+    return counts[counts >= cutoff]
+
+
+def _report_months(view: str) -> list[str]:
+    if _crime_monthly is None:
+        return []
+    if view in {"all", "high"}:
+        return list(_crime_months)
+    if view == "venues":
+        series = _crime_monthly["venues"]
+    elif view.startswith("type:"):
+        series = _crime_monthly["types"].get(view.split(":", 1)[1])
+    else:
+        return list(_crime_months)
+    if series is None or len(series) == 0:
+        return []
+    return sorted(series.index.get_level_values(0).unique())
+
+
+def _nibrs_months_for(view: str) -> list[str]:
+    index = _nibrs_month_index()
+    if view in {"all", "high"}:
+        return list(index["months"])
+    if view == "venues":
+        series = index.get("venues")
+    elif view.startswith("type:"):
+        series = (index.get("types") or {}).get(view.split(":", 1)[1])
+    else:
+        return []
+    if series is None or len(series) == 0:
+        return []
+    return sorted(series.index.get_level_values(0).unique())
+
+
+def _nibrs_grid(view: str) -> pd.Series:
+    index = _nibrs_month_index()
+    if view in {"all", "high"}:
+        return _drop_month(index.get("counts"))
+    if view == "venues":
+        return _drop_month(index.get("venues"))
+    if view.startswith("type:"):
+        return _drop_month((index.get("types") or {}).get(view.split(":", 1)[1]))
+    return pd.Series(dtype="int64")
+
+
+def _series_or_empty(series: pd.Series | None) -> pd.Series:
+    if series is None or len(series) == 0:
+        return pd.Series(dtype="int64")
+    return series
+
+
+def _report_grid(view: str) -> pd.Series:
+    grids = _crime_grids or {}
+    if view in {"all", "high"}:
+        return _series_or_empty(grids.get("all"))
+    if view == "venues":
+        return _series_or_empty(grids.get("venues"))
+    if view.startswith("type:"):
+        return _series_or_empty((grids.get("types") or {}).get(view.split(":", 1)[1]))
+    return pd.Series(dtype="int64")
+
+
+def _report_monthly(view: str) -> pd.Series | None:
+    if _crime_monthly is None:
+        return None
+    if view in {"all", "high"}:
+        return _crime_monthly["all"]
+    if view == "venues":
+        return _crime_monthly["venues"]
+    if view.startswith("type:"):
+        return _crime_monthly["types"].get(view.split(":", 1)[1])
+    return None
+
+
+def _nibrs_monthly_series(view: str) -> pd.Series | None:
+    index = _nibrs_month_index()
+    if view in {"all", "high"}:
+        return index.get("counts")
+    if view == "venues":
+        return index.get("venues")
+    if view.startswith("type:"):
+        return (index.get("types") or {}).get(view.split(":", 1)[1])
+    return None
+
+
+def _full_blend(view: str) -> pd.Series:
+    blended = _add_grids(_report_grid(view), _nibrs_grid(view))
+    if view == "high":
+        return _high_from(blended)
+    return blended
+
+
 def _range_counts(view: str, start: str, end: str) -> pd.Series | None:
-    """Cell weights inside the month span. None means use the full cached view."""
+    """Cell weights inside the month span. None means use the full blended view."""
     if view == "nibrs":
         index = _nibrs_month_index()
         months = index["months"]
         if not months or (start <= months[0] and end >= months[-1]):
             return None
         return _sum_range(index["counts"], start, end)
-    months = _crime_months
-    if not months or _crime_monthly is None or (start <= months[0] and end >= months[-1]):
+    months = _months_for(view)
+    if not months or (start <= months[0] and end >= months[-1]):
         return None
+    blended = _add_grids(
+        _sum_range(_report_monthly(view), start, end),
+        _sum_range(_nibrs_monthly_series(view), start, end),
+    )
     if view == "high":
-        counts = _sum_range(_crime_monthly["all"], start, end)
-        if counts.empty:
-            return counts
-        cutoff = max(int(counts.quantile(0.9)), 1)
-        return counts[counts >= cutoff]
-    if view == "all":
-        return _sum_range(_crime_monthly["all"], start, end)
-    if view == "venues":
-        return _sum_range(_crime_monthly["venues"], start, end)
-    if view.startswith("type:"):
-        series = _crime_monthly["types"].get(view.split(":", 1)[1])
-        if series is None:
-            return pd.Series(dtype="int64")
-        return _sum_range(series, start, end)
-    return None
+        return _high_from(blended)
+    return blended
 
 
 def _months_for(view: str) -> list[str]:
     if view == "nibrs":
         return list(_nibrs_month_index()["months"])
-    return list(_crime_months)
+    return sorted(set(_report_months(view)) | set(_nibrs_months_for(view)))
 
 
 def crime_heat_points(view: str = "all", start: str | None = None, end: str | None = None) -> dict:
-    """One heatmap view of the 2020–2024 LAPD extract.
+    """One city heatmap.
 
-    ``all`` is the whole city. ``high`` keeps the busiest cells. ``venues``
-    keeps reports inside a venue buffer. ``type:<id>`` keeps one crime type.
-    ``start`` and ``end`` are YYYY-MM bounds. A span inside the series keeps
-    only those months. Coordinates are rounded to about 11 m so nearby reports
-    share a weight.
+    ``all`` blends LAPD reports before March 7, 2024 with NIBRS offenses after
+    that, through the latest NIBRS month. ``high`` keeps the busiest cells.
+    ``venues`` keeps records inside a venue buffer. ``type:<id>`` keeps one
+    crime type. ``nibrs`` is the offense extract on its own. ``start`` and
+    ``end`` are YYYY-MM bounds. A span inside the series keeps only those
+    months. Coordinates are rounded to about 11 m so nearby reports share a
+    weight.
     """
     global _crime_views, _crime_heat_mtime
     start = _check_month(start, "start")
@@ -339,6 +472,8 @@ def crime_heat_points(view: str = "all", start: str | None = None, end: str | No
             start = end = months[0]
     selected = views[view]
     counts = _range_counts(view, start, end) if start and end else None
+    if counts is None and view != "nibrs":
+        counts = _full_blend(view)
     if counts is not None:
         selected = {
             "label": selected["label"],

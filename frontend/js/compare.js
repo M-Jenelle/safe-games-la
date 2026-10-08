@@ -1,5 +1,5 @@
-import { mountDistancePair, mountDistanceSection, mountTimePair, mountTimeSection, mountWeekdayPair, mountWeekdaySection, weekdaySummary } from "./charts.js";
-import { el, fetchJson, formatNumber, formatSports, monthLabel, text } from "./dom.js";
+import { blockForRange, mountDistanceSection, mountTimeSection, mountWeekdaySection, weekdaySummary } from "./charts.js";
+import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, text } from "./dom.js";
 import { closeVenuePage } from "./nav.js";
 import { mountHomeGames, mountPermitSection } from "./permits.js";
 import { resizeMap } from "./shell.js";
@@ -7,7 +7,8 @@ import { comparePage, state } from "./state.js";
 import { cityStats, densityHint, densityNote, incidentNote, presentCount, presentRate, stat } from "./stats.js";
 import { selectVenue } from "./venue.js";
 
-let compareSeries = "reports";
+let compareStart = "";
+let compareEnd = "";
 let compareView = "overview";
 let compareToken = 0;
 const compareCache = new Map();
@@ -66,14 +67,25 @@ function pairOverlapNote(left, right) {
     || "";
 }
 
-function compareSeriesNote() {
-  if (compareView === "overview") return "";
-  if (compareView === "permits" && compareSeries !== "nibrs") {
-    return "Permit days in this view use 2020–2024 reports.";
+function compareRangeNote() {
+  if (compareView === "permits") return "Permit days in this view use 2020–2024 reports.";
+  if (compareView === "overview" || !compareStart || !compareEnd) return "";
+  const span = compareStart === compareEnd
+    ? monthLabel(compareStart)
+    : `${monthLabel(compareStart)}–${monthLabel(compareEnd)}`;
+  return span;
+}
+
+function cachedMonths() {
+  const keys = [];
+  for (const venue of compareCache.values()) {
+    keys.push(...Object.keys(venue.merged_by_month || {}));
   }
-  if (compareSeries === "nibrs") return "Counts are NIBRS offenses. One case can count more than once.";
-  if (compareSeries === "merged") return "Each column shows 2020–2024 reports beside NIBRS offenses.";
-  return "";
+  return [...new Set(keys)].sort();
+}
+
+function padMonth(value) {
+  return String(value).padStart(2, "0");
 }
 
 function compareIdentity(venue) {
@@ -95,19 +107,8 @@ function compareIdentity(venue) {
 }
 
 function overviewWeekdayLines(venue) {
-  if (compareSeries === "nibrs") {
-    const line = weekdayLine(venue.nibrs_weekday);
-    return line ? [line] : [];
-  }
-  if (compareSeries === "merged") {
-    const reports = weekdayLine(venue.crime_weekday);
-    const nibrs = weekdayLine(venue.nibrs_weekday);
-    return [
-      reports ? `2020–2024: ${reports}` : "",
-      nibrs ? `NIBRS: ${nibrs}` : "",
-    ].filter(Boolean);
-  }
-  const line = weekdayLine(venue.crime_weekday);
+  const block = blockForRange(venue.merged_weekday || venue.crime_weekday, compareStart, compareEnd);
+  const line = block?.summary || weekdayLine(block);
   return line ? [line] : [];
 }
 
@@ -162,9 +163,8 @@ function compareColumn(venue) {
   if (compareView === "permits") {
     const permitHost = el("div");
     const homeHost = el("div");
-    const nibrsSeries = compareSeries === "nibrs";
-    mountPermitSection(venue.venue_id, permitHost, nibrsSeries ? "nibrs" : "reports");
-    if (venue.home_games_available && !nibrsSeries) mountHomeGames(homeHost, venue.venue_id);
+    mountPermitSection(venue.venue_id, permitHost, "reports");
+    if (venue.home_games_available) mountHomeGames(homeHost, venue.venue_id);
     return el("div", { className: "compare-body" }, [
       el("section", { className: "crime-unit", "aria-label": "Permit days" }, [
         permitHost,
@@ -173,18 +173,13 @@ function compareColumn(venue) {
     ]);
   }
   const host = el("div", { className: "chart-flat" });
-  const nibrsSeries = compareSeries === "nibrs";
-  const countWord = nibrsSeries ? "offenses" : "incidents";
-  const merged = compareSeries === "merged";
+  const span = compareRangeNote();
   if (compareView === "time") {
-    if (merged) mountTimePair(host, venue.crime_time, venue.nibrs_time, "");
-    else mountTimeSection(nibrsSeries ? venue.nibrs_time : venue.crime_time, host, countWord, "", "");
+    mountTimeSection(blockForRange(venue.merged_time || venue.crime_time, compareStart, compareEnd), host, "records", "", span);
   } else if (compareView === "distance") {
-    if (merged) mountDistancePair(host, venue.crime_distance, venue.nibrs_distance, "");
-    else mountDistanceSection(nibrsSeries ? venue.nibrs_distance : venue.crime_distance, host, countWord, "", "");
+    mountDistanceSection(blockForRange(venue.merged_distance || venue.crime_distance, compareStart, compareEnd), host, "records", "", span);
   } else {
-    if (merged) mountWeekdayPair(host, venue.crime_weekday, venue.nibrs_weekday, "");
-    else mountWeekdaySection(nibrsSeries ? venue.nibrs_weekday : venue.crime_weekday, host, countWord, "", "below");
+    mountWeekdaySection(blockForRange(venue.merged_weekday || venue.crime_weekday, compareStart, compareEnd), host, "records", span, "below");
   }
   quietCompareChart(host);
   return el("div", { className: "compare-body" }, [
@@ -197,12 +192,39 @@ function renderCompare(idA, idB) {
   const [leftId, rightId] = resolveComparePair(idA, idB);
   const selectA = venuePick(leftId);
   const selectB = venuePick(rightId);
-  const series = el("select", { "aria-label": "Crime series" }, [
-    el("option", { value: "reports" }, [text("2020–2024 reports")]),
-    el("option", { value: "nibrs" }, [text("NIBRS offenses, Mar 2024–present")]),
-    el("option", { value: "merged" }, [text("Merged groups, 2020–present")]),
-  ]);
-  series.value = compareSeries;
+  const months = cachedMonths();
+  const years = [...new Set((months.length ? months : ["2020-01", "2026-12"]).map((key) => key.slice(0, 4)))];
+  if (!compareStart || !compareEnd) {
+    compareStart = months[0] || "2020-01";
+    compareEnd = months[months.length - 1] || "2026-12";
+  }
+  const yearSelect = el("select", { "aria-label": "Year" });
+  const fromMonth = el("select", { "aria-label": "From month" }, MONTH_NAMES.map((name, index) => (
+    el("option", { value: String(index + 1) }, [text(name)])
+  )));
+  const toMonth = el("select", { "aria-label": "To month" }, MONTH_NAMES.map((name, index) => (
+    el("option", { value: String(index + 1) }, [text(name)])
+  )));
+  const fromYear = el("select", { "aria-label": "From year" }, years.map((year) => el("option", { value: year }, [text(year)])));
+  const toYear = el("select", { "aria-label": "To year" }, years.map((year) => el("option", { value: year }, [text(year)])));
+  const full = !months.length || (compareStart === months[0] && compareEnd === months[months.length - 1]);
+  const sameYear = compareStart.slice(0, 4) === compareEnd.slice(0, 4);
+  const yearMonths = months.filter((key) => key.startsWith(`${compareStart.slice(0, 4)}-`));
+  const yearMode = full
+    ? "all"
+    : (sameYear && yearMonths.length && compareStart === yearMonths[0] && compareEnd === yearMonths[yearMonths.length - 1]
+      ? compareStart.slice(0, 4)
+      : "custom");
+  yearSelect.replaceChildren(
+    el("option", { value: "all" }, [text("All years")]),
+    ...years.map((year) => el("option", { value: year }, [text(year)])),
+    ...(yearMode === "custom" ? [el("option", { value: "custom" }, [text("Custom")])] : []),
+  );
+  yearSelect.value = yearMode;
+  fromMonth.value = String(Number(compareStart.slice(5)));
+  toMonth.value = String(Number(compareEnd.slice(5)));
+  fromYear.value = compareStart.slice(0, 4);
+  toYear.value = compareEnd.slice(0, 4);
   selectA.setAttribute("aria-label", "Venue A");
   selectB.setAttribute("aria-label", "Venue B");
 
@@ -212,16 +234,57 @@ function renderCompare(idA, idB) {
   }
   selectA.addEventListener("change", paintPair);
   selectB.addEventListener("change", paintPair);
-  series.addEventListener("change", () => {
-    compareSeries = series.value;
+  function paintRange() {
     renderCompare(selectA.value, selectB.value);
+  }
+  yearSelect.addEventListener("change", () => {
+    const known = cachedMonths();
+    const choice = yearSelect.value;
+    if (choice === "custom" || !known.length) return;
+    if (choice === "all") {
+      compareStart = known[0];
+      compareEnd = known[known.length - 1];
+    } else {
+      const picked = known.filter((key) => key.startsWith(`${choice}-`));
+      if (!picked.length) return;
+      compareStart = picked[0];
+      compareEnd = picked[picked.length - 1];
+    }
+    paintRange();
   });
+  const onEdge = (changed) => {
+    const known = cachedMonths();
+    const first = known[0] || "2020-01";
+    const last = known[known.length - 1] || "2026-12";
+    let start = `${fromYear.value}-${padMonth(fromMonth.value)}`;
+    let end = `${toYear.value}-${padMonth(toMonth.value)}`;
+    if (start < first) start = first;
+    if (end > last) end = last;
+    if (known.length && !known.includes(start)) {
+      start = known.find((month) => month >= start) || last;
+    }
+    if (known.length && !known.includes(end)) {
+      const earlier = known.filter((month) => month <= end);
+      end = earlier.length ? earlier[earlier.length - 1] : first;
+    }
+    if (start > end) {
+      if (changed === "from") end = start;
+      else start = end;
+    }
+    compareStart = start;
+    compareEnd = end;
+    paintRange();
+  };
+  fromMonth.addEventListener("change", () => onEdge("from"));
+  fromYear.addEventListener("change", () => onEdge("from"));
+  toMonth.addEventListener("change", () => onEdge("to"));
+  toYear.addEventListener("change", () => onEdge("to"));
 
   const views = [
     ["overview", "Overview"],
-    ["time", "Time of day"],
+    ["time", "Time of Day"],
     ["distance", "Distance"],
-    ["weekday", "Day of week"],
+    ["weekday", "Day of Week"],
     ["permits", "Permits"],
   ];
   const viewButtons = views.map(([id, label]) => {
@@ -237,11 +300,15 @@ function renderCompare(idA, idB) {
     return button;
   });
   const viewBar = el("div", { className: "compare-controls" }, [
-    el("label", { className: "compare-series" }, [text("Series"), series]),
+    el("div", { className: "table-filters compare-range" }, [
+      el("label", {}, [text("Year"), yearSelect]),
+      el("label", {}, [text("From"), el("span", { className: "range-pair" }, [fromMonth, fromYear])]),
+      el("label", {}, [text("To"), el("span", { className: "range-pair" }, [toMonth, toYear])]),
+    ]),
     el("div", { className: "compare-views", role: "group", "aria-label": "What to compare" }, viewButtons),
   ]);
 
-  const note = compareSeriesNote();
+  const note = compareRangeNote();
   const bodyA = el("div");
   const bodyB = el("div");
   const columns = el("div", { className: "compare-columns" }, [
@@ -274,6 +341,13 @@ function renderCompare(idA, idB) {
   bodyA.replaceChildren(el("p", { className: "muted" }, [text("Loading…")]));
   Promise.all([loadCompareVenue(leftId), loadCompareVenue(rightId)]).then(([left, right]) => {
     if (token !== compareToken) return;
+    const known = cachedMonths();
+    if (yearSelect.value === "all" && known.length && compareEnd !== known[known.length - 1]) {
+      compareStart = known[0];
+      compareEnd = known[known.length - 1];
+      renderCompare(selectA.value, selectB.value);
+      return;
+    }
     const overlap = pairOverlapNote(left, right);
     if (overlap) columns.after(el("p", { className: "terms compare-overlap" }, [text(overlap)]));
     bodyA.replaceChildren(compareColumn(left));

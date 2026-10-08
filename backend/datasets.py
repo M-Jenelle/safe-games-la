@@ -61,10 +61,7 @@ CITY_BASELINE_PATH = REPO_ROOT / "data" / "processed" / "city_baseline.json"
 HOME_GAMES_PATH = REPO_ROOT / "data" / "processed" / "dodger_event_risk.json"
 NIBRS_CUTOFF = "2024-03-07"
 REPORT_WEEKDAY_NOTE = "Uses 2020-2024 reports and is inside the 800m buffer."
-MERGED_WEEKDAY_NOTE = (
-    "Reports before March 7, 2024, then NIBRS offenses.\n"
-    "One NIBRS case can count more than once."
-)
+MERGED_WEEKDAY_NOTE = ""
 
 _summary: dict | None = None
 _summary_mtime: float | None = None
@@ -129,6 +126,28 @@ def _read_json(path: Path) -> tuple[dict, float]:
     mtime = path.stat().st_mtime
     return json.loads(path.read_text(encoding="utf-8")), mtime
 
+OFFICIAL_NAMES = {
+    "DTLA Arena (Crypto.com Arena)": "Crypto.com Arena",
+    "LA Convention Center (Halls 1-3)": "LA Convention Center",
+    "Exposition Park Stadium (BMO Stadium)": "BMO Stadium",
+    "Valley Complexes 1-4 (Sepulveda Basin Recreation Area)": "Sepulveda Basin Recreation Area",
+    "Galen Center (USC)": "Galen Center",
+}
+
+
+def _apply_official_names(summary: dict) -> None:
+    """Show the public venue name. The stored file keeps the longer source name."""
+    for venue in summary.get("venues") or []:
+        current = venue.get("venue_name") or ""
+        official = OFFICIAL_NAMES.get(current)
+        if not official:
+            continue
+        former = venue.setdefault("former_names", [])
+        if current not in former:
+            former.append(current)
+        venue["venue_name"] = official
+
+
 def load_summary() -> dict:
     global _summary, _summary_mtime
     if not SUMMARY_PATH.exists():
@@ -138,6 +157,7 @@ def load_summary() -> dict:
     mtime = SUMMARY_PATH.stat().st_mtime
     if _summary is None or mtime != _summary_mtime:
         _summary = json.loads(SUMMARY_PATH.read_text(encoding="utf-8"))
+        _apply_official_names(_summary)
         _summary_mtime = mtime
     return _summary
 

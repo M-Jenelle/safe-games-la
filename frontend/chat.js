@@ -42,7 +42,7 @@
     article.className = `chat-message chat-message-${role}`;
     const author = document.createElement("strong");
     author.className = "chat-author";
-    author.textContent = role === "user" ? "You" : engine === "claude" ? "Claude · venue data" : "Data assistant";
+    author.textContent = role === "user" ? "You" : "Torchy";
     const byline = document.createElement("div");
     byline.className = "chat-byline";
     if (role === "assistant") {
@@ -50,7 +50,7 @@
       avatar.className = "chat-message-avatar bot-avatar";
       avatar.setAttribute("aria-hidden", "true");
       const icon = document.createElement("img");
-      icon.src = "/static/chat-icon.jpg";
+      icon.src = "/static/torch.svg";
       icon.alt = "";
       avatar.append(icon);
       byline.append(avatar);
@@ -184,7 +184,7 @@
       const reason = error.name === "AbortError"
         ? "The request timed out. Please try again."
         : "The chatbot could not be reached. Please retry after checking the server.";
-      messageNode("assistant", `${reason}\n\nNo answer was calculated. Crime context only: LAPD crime reports via the LA Open Data Portal, 2020–2024, 800 m radius around each venue. Supporting datasets use separate sources and scopes.`);
+      messageNode("assistant", `${reason}\n\nNo answer was calculated. Crime context only: LAPD crime, 2020–present, 800 m radius around each venue. Supporting datasets use separate sources and scopes.`);
       input.value = message;
     } finally {
       window.clearTimeout(timeout);
