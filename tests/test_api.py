@@ -294,7 +294,13 @@ class ApiTests(unittest.TestCase):
             self.assertGreaterEqual(marker["longitude"], bounds["west"])
             self.assertLessEqual(marker["longitude"], bounds["east"])
 
+    def _need_nibrs(self):
+        from pipeline.merge_crime import NIBRS_PATH
+        if not NIBRS_PATH.exists():
+            self.skipTest("heatmap ranges read data/raw/nibrs/nibrs_current.csv")
+
     def test_crime_heat_covers_the_city(self):
+        self._need_nibrs()
         response = self.client.get("/api/map/crime")
         self.assertEqual(response.status_code, 200)
         body = response.json()
@@ -312,6 +318,7 @@ class ApiTests(unittest.TestCase):
         self.assertGreater(max(longitudes) - min(longitudes), 0.5)
 
     def test_crime_heat_views(self):
+        self._need_nibrs()
         city = self.client.get("/api/map/crime?view=all").json()
         high = self.client.get("/api/map/crime?view=high")
         venues = self.client.get("/api/map/crime?view=venues")
@@ -335,6 +342,7 @@ class ApiTests(unittest.TestCase):
         self.assertFalse(nibrs_body["hot"])
 
     def test_crime_heat_month_range(self):
+        self._need_nibrs()
         full = self.client.get("/api/map/crime?view=all").json()
         self.assertGreaterEqual(len(full["months"]), 12)
         self.assertEqual(full["start"], full["months"][0])

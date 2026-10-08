@@ -13,7 +13,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from backend.chat import answer_question
-from backend.datasets import crime_time_for, load_city_baseline
+from backend.datasets import load_city_baseline
 from backend.main import app
 from backend.store import DatasetNotFound, get_venue, home_game_comparison, permit_comparison
 
@@ -66,8 +66,9 @@ class ChatTests(unittest.TestCase):
 
                 reports = self.post(f"How many incidents near {venue['venue_name']} during 2020-2024?")
                 self.assertEqual(reports["question_type"], "total")
+                official = get_venue(venue["venue_id"])["venue_name"]
                 self.assertEqual(reports["results"], [{
-                    "venue_id": venue["venue_id"], "venue_name": venue["venue_name"],
+                    "venue_id": venue["venue_id"], "venue_name": official,
                     "category": "All categories", "count": len(points),
                 }])
                 self.assertIn(f"{len(points):,}", reports["answer"])
@@ -654,7 +655,9 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(standalone["results"][0]["venue_id"], "V08")
 
         followed_night = self.post("and for the Coliseum?", prior_message="How many incidents near Dodger Stadium at night?")
-        coliseum_night = next(period["count"] for period in crime_time_for("V05")["periods"] if period["id"] == "night")
+        coliseum_night = next(
+            period["count"] for period in get_venue("V05")["merged_time"]["periods"] if period["id"] == "night"
+        )
         self.assertEqual(followed_night["status"], "answered")
         self.assertEqual(followed_night["results"][0]["venue_id"], "V05")
         self.assertEqual(followed_night["results"][0]["count"], int(coliseum_night))

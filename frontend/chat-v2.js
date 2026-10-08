@@ -38,12 +38,7 @@
     launcher.setAttribute("aria-expanded", open ? "true" : "false");
     if (open) {
       const other = document.querySelector("#chat-panel");
-      const otherLauncher = document.querySelector("#chat-launcher");
       if (other) other.hidden = true;
-      if (otherLauncher) {
-        otherLauncher.hidden = false;
-        otherLauncher.setAttribute("aria-expanded", "false");
-      }
       input.focus();
     } else launcher.focus();
   }

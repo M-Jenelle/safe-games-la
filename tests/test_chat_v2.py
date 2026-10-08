@@ -231,6 +231,90 @@ class ChatV2NextTests(ChatV2Tests):
         self.assertIsNone(body["table"])
         self.assertNotIn("elevator", body["answer"].lower())
 
+    def test_data_questions_are_not_the_page_guide(self):
+        weekend = answer_v2("What does crime look like on weekends near Dodger Stadium?")
+        self.assertEqual(weekend["tool"], "weekend")
+        self.assertNotEqual(weekend["tool"], "page_guide")
+        self.assertEqual(weekend["results"][0]["venue_id"], "V01")
+        self.assertIn("Saturday", weekend["answer"])
+
+        highest = answer_v2("Where is crime highest near the Coliseum?")
+        self.assertEqual(highest["tool"], "distance")
+        self.assertNotIn("Venue page", highest["answer"])
+        self.assertIn("Coliseum", highest["answer"])
+        self.assertTrue(highest["table"]["rows"])
+
+        robberies = answer_v2("What does the data say about robberies near Crypto.com Arena?")
+        self.assertEqual(robberies["tool"], "group_count")
+        self.assertNotIn("Venue page", robberies["answer"])
+        self.assertIn("Crypto.com Arena", robberies["answer"])
+
+    def test_case_does_not_drop_metro_or_density(self):
+        with patch("backend.metro_alerts.swiftly_key", return_value=""):
+            metro = answer_v2("Are there Metro alerts near Dodger Stadium?")
+        self.assertEqual(metro["tool"], "metro_alerts")
+        self.assertIn("not connected", metro["answer"])
+        density = answer_v2("What does Density mean?")
+        self.assertEqual(density["tool"], "page_guide")
+        self.assertIn("square kilometer", density["answer"])
+        self.assertNotIn("Venue page", density["answer"])
+
+    def test_weather_prediction_is_refused(self):
+        body = answer_v2("Will rain tonight lower crime near Dodger Stadium?")
+        self.assertEqual(body["status"], "unsupported")
+        self.assertIn("forecast", body["answer"])
+        self.assertNotIn("°", body["answer"])
+        self.assertNotIn("current reading", body["answer"].lower())
+
+    def test_live_and_historical_rain_are_not_collapsed(self):
+        body = answer_v2("Is it raining now and does rain change crime near Dodger Stadium?")
+        self.assertEqual(body["status"], "unsupported")
+        self.assertIn("separate questions", body["answer"])
+        self.assertNotIn("°", body["answer"])
+        self.assertNotIn("same weekday", body["answer"])
+
+    def test_venue_follow_up_keeps_the_weather_tool(self):
+        body = answer_v2(
+            "What about the Coliseum?",
+            history=[{
+                "user_text": "Wet days versus dry days near Peacock Theater",
+                "tool": "weather_association",
+                "arguments": {"venue_id": "V04", "facet": "wet"},
+            }],
+        )
+        self.assertEqual(body["tool"], "weather_association")
+        self.assertEqual(body["arguments"]["venue_id"], "V05")
+        self.assertIn("same weekday", body["answer"])
+        self.assertIn("Coliseum", body["answer"])
+        self.assertNotIn("Peacock", body["answer"])
+
+    def test_narration_may_use_table_labels_and_numbers(self):
+        template = "Weekend days near Dodger Stadium."
+        table = {"columns": ["Day", "Records"], "rows": [["Saturday", "2,920"], ["Sunday", "1,100"]]}
+        self.assertTrue(narration_ok(
+            "Saturday had 2,920 records.",
+            template,
+            ["V01"],
+            self.venues,
+            table,
+        ))
+        self.assertFalse(narration_ok(
+            "Monday had 9 records.",
+            template,
+            ["V01"],
+            self.venues,
+            table,
+        ))
+
+    def test_weather_gap_has_a_count_model_interval(self):
+        body = answer_v2("Wet days versus dry days near Peacock Theater")
+        self.assertEqual(body["confidence"]["kind"], "interval")
+        interval = body["confidence"]["intervals"][0]
+        self.assertEqual(interval["label"], "Wet days")
+        self.assertLessEqual(interval["low"], interval["multiplier"])
+        self.assertLessEqual(interval["multiplier"], interval["high"])
+        self.assertIn("same weekday", body["answer"])
+
     def test_permit_confidence_is_the_model_range(self):
         body = answer_v2("How do permit days compare near Peacock Theater?")
         self.assertIn("19.5", body["answer"])

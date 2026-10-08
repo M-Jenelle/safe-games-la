@@ -16,6 +16,7 @@ from backend.briefing import HOT_ROW, PERMIT_INTRO, WET_ROW, weather_hints
 from backend.chat import (
     PRESENT_PROVENANCE,
     _hard_block,
+    _is_venue_fragment,
     _mentions,
     _normalize,
     answer_deterministic,
@@ -24,8 +25,8 @@ from backend.chat import (
 from backend.claude import ClaudeUnavailable, explain_figures, explanation_uses_only, interpret_question, settings
 from backend.datasets import load_summary
 from backend.metro_alerts import metro_reply
-from backend.event_baseline import weekday_standardized
-from backend.store import home_game_comparison, permit_comparison
+from backend.event_baseline import fit_count_model, weekday_standardized
+from backend.store import get_venue, home_game_comparison, permit_comparison
 from pipeline.weather import WET_CODES
 from pipeline.weather_compare import HOT_MEAN_F, load_joined_days, present_days, report_daily_counts
 
@@ -42,16 +43,38 @@ _RECORDED = {
 }
 
 
-def narration_ok(text: str, template: str, allowed_venue_ids: list[str], venues: list[dict]) -> bool:
-    """True when the sentence stays inside this turn's template."""
+def _table_source(template: str, table: dict | None) -> tuple[str, list[str]]:
+    """Numbers and labels the narration may repeat. Table cells count, as in v1."""
+    parts = [template]
+    labels: list[str] = []
+    if not table:
+        return template, labels
+    columns = [str(column) for column in table.get("columns") or []]
+    cells = [str(cell) for row in table.get("rows") or [] for cell in row]
+    parts.extend(columns)
+    parts.extend(cells)
+    labels.extend(columns)
+    labels.extend(cell for cell in cells if not re.fullmatch(r"[\d,% ]+", cell.strip()))
+    return " ".join(parts), labels
+
+
+def narration_ok(
+    text: str,
+    template: str,
+    allowed_venue_ids: list[str],
+    venues: list[dict],
+    table: dict | None = None,
+) -> bool:
+    """True when the sentence stays inside this turn's template and table."""
     if not text or _CAUSE.search(text):
         return False
     if _UP.search(text) and not _UP.search(template):
         return False
     if _DOWN.search(text) and not _DOWN.search(template):
         return False
-    labels = [venue["venue_name"] for venue in venues if venue["venue_id"] in set(allowed_venue_ids)]
-    if not explanation_uses_only(text, template, labels):
+    source, labels = _table_source(template, table)
+    labels.extend(venue["venue_name"] for venue in venues if venue["venue_id"] in set(allowed_venue_ids))
+    if not explanation_uses_only(text, source, labels):
         return False
     named = {
         venue["venue_id"]
@@ -106,7 +129,9 @@ def _weather_mode(message: str) -> str | None:
     if re.search(r"\b(now|today|tonight)\b", message) and re.search(r"\b(weather|rain|raining|temperature)\b", message):
         current = True
     historical = bool(re.search(r"\b(wet days?|dry days?|hot days?|cooler days?)\b", message))
-    if re.search(r"\bweather\b", message) and re.search(r"\b(crime|records?|incidents?|correlation|gap)\b", message):
+    weather_word = re.search(r"\b(weather|rain|raining|precipitation|wet|hot)\b", message)
+    crime_word = re.search(r"\b(crime|crimes|records?|incidents?|correlation|gap)\b", message)
+    if weather_word and crime_word:
         historical = True
     if current and historical:
         return "both"
@@ -180,29 +205,63 @@ def _prepare(message: str) -> str:
     return re.sub(r"\brecords\b", "incidents", message, flags=re.IGNORECASE)
 
 
-def _guide_topic(message: str) -> dict | None:
-    """A heading explanation. A count or a comparison stays on the calculator."""
+def _guide_entries() -> tuple:
+    hints = weather_hints()
+    return (
+        ("wet", r"\b(?:wet|dry) days?\b", "Weather", hints[WET_ROW], ""),
+        ("hot", r"\b(?:hot|cooler) days?\b", "Weather", hints[HOT_ROW], ""),
+        ("permit", r"\bpermits?\b", "Permit days", PERMIT_INTRO, ""),
+        ("weekday", r"\bday of week\b", "Day of week", "Monday through Sunday record counts, 2020–present.", "weekday"),
+        ("months", r"\b(?:by month|monthly|incidents by month)\b", "Incidents by month", "Monthly record counts, 2020–present. Red is the busiest month in the selected range.", "months"),
+        ("categories", r"\b(?:incident types?|offense groups?|categories)\b", "Incident types", "Offense groups for the records in view.", "categories"),
+        ("density", r"\bdensit", "Density", "Records per square kilometer inside the 800 m circle, 2020–present.", ""),
+        ("source", r"\bsource\b|\b800 ?m\b", "Source", PRESENT_PROVENANCE, ""),
+    )
+
+
+def _matching_guide(message: str) -> dict | None:
+    for topic_id, pattern, title, text, section in _guide_entries():
+        if re.search(pattern, message):
+            return {"id": topic_id, "title": title, "text": text, "section": section}
+    return None
+
+
+def _definition_request(message: str) -> dict | None:
+    """A question that names a page label. A data question stays on the parser."""
+    if re.search(r"\b(look like|highest|data say|how many)\b", message):
+        return None
+    defines = re.search(
+        r"\b(mean|means|meaning|definition)\b|\bwhat is the source\b|\bsource of\b|\bwhich section\b|\bwhere (?:is|are) the\b",
+        message,
+    )
+    if not defines:
+        return None
+    return _matching_guide(message)
+
+
+def _guide_after_miss(message: str) -> dict | None:
+    """Page help after the parser misses. Crime questions are not given a blurb."""
+    if re.search(r"\b(crime|crimes|robber|incident|incidents|records|highest|look like)\b", message):
+        return None
     if not re.search(
         r"\b(what does|what do|where (?:is|are|can)|which section|what is the source|source of)\b",
         message,
-        flags=re.IGNORECASE,
     ):
         return None
-    hints = weather_hints()
-    topics = (
-        (("wet", "dry"), "Weather", hints[WET_ROW], ""),
-        (("hot", "cooler"), "Weather", hints[HOT_ROW], ""),
-        (("permit",), "Permit days", PERMIT_INTRO, ""),
-        (("weekend", "weekday", "day of week"), "Day of week", "Monday through Sunday record counts, 2020–present.", "weekday"),
-        (("month",), "Incidents by month", "Monthly record counts, 2020–present. Red is the busiest month in the selected range.", "months"),
-        (("categor", "incident type", "offense group"), "Incident types", "Offense groups for the records in view.", "categories"),
-        (("density",), "Density", "Records per square kilometer inside the 800 m circle, 2020–present.", ""),
-        (("source", "800"), "Source", PRESENT_PROVENANCE, ""),
-    )
-    for words, title, text, section in topics:
-        if any(word in message for word in words):
-            return {"title": title, "text": text, "section": section}
-    return {"title": "Venue page", "text": "Counts, weather, permits, and the source note are on the venue page.", "section": ""}
+    return _matching_guide(message) or {
+        "id": "page",
+        "title": "Venue page",
+        "text": "Counts, weather, permits, and the source note are on the venue page.",
+        "section": "",
+    }
+
+
+def _weather_prediction(message: str) -> bool:
+    """True when the question asks weather to change crime. A live reading is not that."""
+    forecast = re.search(r"\b(will|predict|prediction|forecast|cause|causes|caused)\b", message)
+    weather = re.search(r"\b(rain|raining|weather|wet|hot|temperature|precip)\b", message)
+    crime = re.search(r"\b(crime|crimes|records?|incidents?|lower|raise|reduce|increase)\b", message)
+    return bool(forecast and weather and crime)
 
 
 def _event_confidence(venue_id: str, message: str) -> dict:
@@ -276,7 +335,7 @@ def _narrate(intent: str | None, template: str, table: dict | None, venue_ids: l
         text = explain_figures(name, template, table.get("columns") or [], table.get("rows") or [])
     except ClaudeUnavailable:
         return None
-    if not narration_ok(text, template, venue_ids, venues):
+    if not narration_ok(text, template, venue_ids, venues, table):
         return None
     return text
 
@@ -350,6 +409,39 @@ def _gap_sentence(name: str, label: str, other: str, stats: dict | None) -> str:
     )
 
 
+_weather_fit: dict[tuple, dict | None] = {}
+
+
+def _fit_weather(rows: list[dict], kind: str) -> dict | None:
+    key = (kind, tuple((row["date"], int(row["incident_count"]), int(row["event"])) for row in rows))
+    if key not in _weather_fit:
+        _weather_fit[key] = fit_count_model(rows, "event")
+    return _weather_fit[key]
+
+
+def _interval_confidence(fitted: list[tuple[str, dict | None]]) -> dict:
+    """Same count-model range the event answers show. A small gap does not look exact."""
+    intervals = []
+    for label, model in fitted:
+        if model and model.get("multiplier") is not None:
+            intervals.append({
+                "label": label,
+                "multiplier": model["multiplier"],
+                "low": model["low"],
+                "high": model["high"],
+            })
+    if not intervals:
+        return {
+            "kind": "association",
+            "text": "Weekday-adjusted association. No count-model interval. Not a statement about today's weather.",
+        }
+    text = "; ".join(
+        f"{item['label']} {item['multiplier']:.2f} ({item['low']:.2f}–{item['high']:.2f})"
+        for item in intervals
+    )
+    return {"kind": "interval", "text": text, "intervals": intervals}
+
+
 def _historical_weather(message: str, venue: dict) -> dict:
     joined = load_joined_days().get(venue["venue_id"]) or []
     reports = report_daily_counts().get(venue["venue_id"]) or {}
@@ -359,12 +451,15 @@ def _historical_weather(message: str, venue: dict) -> dict:
     if not want_wet and not want_hot:
         want_wet = True
     parts = []
+    fitted = []
     if want_wet:
         rows = [
             {"date": row["date"], "incident_count": row["incident_count"], "event": int(bool(row["wet_day"]))}
             for row in present
         ]
-        parts.append(_gap_sentence(venue["venue_name"], "Wet days", "days", weekday_standardized(rows, "event")))
+        stats = weekday_standardized(rows, "event")
+        parts.append(_gap_sentence(venue["venue_name"], "Wet days", "days", stats))
+        fitted.append(("Wet days", _fit_weather(rows, "wet") if stats else None))
     if want_hot:
         rows = [
             {
@@ -374,17 +469,26 @@ def _historical_weather(message: str, venue: dict) -> dict:
             }
             for row in present
         ]
-        parts.append(_gap_sentence(venue["venue_name"], "Hot days", "days", weekday_standardized(rows, "event")))
+        stats = weekday_standardized(rows, "event")
+        parts.append(_gap_sentence(venue["venue_name"], "Hot days", "days", stats))
+        fitted.append(("Hot days", _fit_weather(rows, "hot") if stats else None))
     caveat = (
         "Weekday-adjusted association inside the 800 m buffer. "
         "This is not a cause, not a forecast, and not a statement about today's weather."
     )
+    if want_wet and want_hot:
+        facet = "both"
+    elif want_hot:
+        facet = "hot"
+    else:
+        facet = "wet"
     return {
         "status": "answered",
         "answer": " ".join(parts),
         "caveat": caveat,
-        "confidence": _confidence("weather_association", caveat),
+        "confidence": _interval_confidence(fitted),
         "tool": "weather_association",
+        "facet": facet,
     }
 
 
@@ -401,7 +505,7 @@ def _finish_weather(payload: dict, venue: dict) -> dict:
         "choices": payload.get("choices") or [],
         "results": [{"venue_id": venue["venue_id"], "venue_name": venue["venue_name"]}],
         "tool": payload["tool"],
-        "arguments": {"venue_id": venue["venue_id"]},
+        "arguments": {"venue_id": venue["venue_id"], **({"facet": payload["facet"]} if payload.get("facet") else {})},
         "engine": "v2",
     }
 
@@ -459,86 +563,209 @@ def _route_miss(message: str, venue_id: str | None, venues: list[dict], body: di
     return body if routed.get("status") == "unsupported" else routed
 
 
+def _stamp(early: dict) -> dict:
+    early.update(version="v2", narration=None, table=None, confidence={"kind": "none", "text": ""}, engine="v2")
+    return early
+
+
+def _guide_reply(guide: dict, message: str, venue_id: str | None, venues: list[dict]) -> dict:
+    venue, early = _one_venue(message, venue_id, venues)
+    if early and not venue_id and not _mentions(_normalize(message), venues):
+        venue = None
+    elif early and venue is None:
+        return _stamp(early)
+    chosen = venue["venue_id"] if venue else venue_id
+    name = venue["venue_name"] if venue else None
+    href = f"#/venue/{chosen}/{guide['section']}".rstrip("/") if chosen else "#/compare"
+    label = guide["title"] if chosen else "Open Compare"
+    arguments = {"topic": guide["id"]}
+    if chosen:
+        arguments["venue_id"] = chosen
+    return {
+        "version": "v2",
+        "status": "answered",
+        "answer": f"{guide['title']}. {guide['text']}",
+        "caveat": "This describes the section. It is not a new count.",
+        "confidence": {"kind": "recorded", "text": "Page guide."},
+        "narration": None,
+        "table": None,
+        "links": [{"href": href, "label": label}],
+        "choices": [],
+        "results": [{"venue_id": chosen, "venue_name": name}] if chosen and name else [],
+        "tool": "page_guide",
+        "arguments": arguments,
+        "engine": "v2",
+    }
+
+
+def _split_weather() -> dict:
+    return {
+        "version": "v2",
+        "status": "unsupported",
+        "answer": (
+            "Ask about today's weather, or about the weekday-adjusted wet-day and hot-day gaps, in separate questions. "
+            "A live reading is not applied to the historical gap."
+        ),
+        "caveat": "This is not a cause and not a forecast.",
+        "confidence": {"kind": "none", "text": ""},
+        "narration": None,
+        "table": None,
+        "links": [],
+        "choices": [],
+        "results": [],
+        "tool": None,
+        "arguments": {},
+        "engine": "v2",
+    }
+
+
+def _where_highest(message: str) -> bool:
+    return bool(
+        re.search(r"\bwhere\b", message)
+        and re.search(r"\b(highest|most|concentrat)\b", message)
+        and re.search(r"\b(crime|crimes|incidents?|records?)\b", message)
+    )
+
+
+def _distance_reply(venue: dict) -> dict | None:
+    detail = get_venue(venue["venue_id"]) or {}
+    bands = (detail.get("merged_distance") or {}).get("bands") or []
+    if not bands:
+        return None
+    total = sum(int(band.get("count") or 0) for band in bands)
+    top = max(bands, key=lambda band: (int(band.get("count") or 0), band.get("label") or ""))
+    rows = [[str(band.get("label") or band.get("id")), f"{int(band.get('count') or 0):,}"] for band in bands]
+    return {
+        "version": "v2",
+        "status": "answered",
+        "answer": (
+            f"Near {venue['venue_name']}, the most records are {str(top.get('label') or '').lower()} "
+            f"({int(top.get('count') or 0):,} of {total:,})."
+        ),
+        "caveat": (
+            "Distance bands inside the 800 m buffer, 2020–present. "
+            "Locations are rounded, so a point inside 200 m is not a crime at the door."
+        ),
+        "confidence": {"kind": "recorded", "text": "Recorded count."},
+        "narration": None,
+        "table": {"columns": ["Distance", "Records"], "rows": rows},
+        "links": _links(venue["venue_id"], venue["venue_name"]),
+        "choices": [],
+        "results": [{"venue_id": venue["venue_id"], "venue_name": venue["venue_name"]}],
+        "tool": "distance",
+        "arguments": {"venue_id": venue["venue_id"]},
+        "engine": "v2",
+    }
+
+
+_REPLAY = {"weather_association", "current_weather", "metro_alerts", "page_guide", "distance"}
+
+
+def _guide_by_id(topic: str) -> dict | None:
+    for topic_id, _pattern, title, text, section in _guide_entries():
+        if topic_id == topic:
+            return {"id": topic_id, "title": title, "text": text, "section": section}
+    return None
+
+
+def _replay(message: str, venues: list[dict], prior: str, tool: str | None, arguments: dict) -> dict | None:
+    """Repeat the last v2 tool when the new message only changes the venue."""
+    if tool not in _REPLAY:
+        return None
+    normalized = _normalize(message)
+    if not _is_venue_fragment(normalized, _mentions(normalized, venues)):
+        return None
+    venue, early = _one_venue(message, None, venues)
+    if early or venue is None:
+        return _stamp(early) if early else None
+    if tool == "weather_association":
+        facet = str(arguments.get("facet") or "")
+        seed = prior if re.search(r"\b(wet|dry|hot|cooler|rain)\b", prior) else ""
+        if facet in {"hot", "both"} and not re.search(r"\b(hot|cooler)\b", seed):
+            seed = f"{seed} hot days".strip()
+        if facet in {"wet", "both", ""} and not re.search(r"\b(wet|dry|rain)\b", seed):
+            seed = f"{seed} wet days".strip()
+        return _finish_weather(_historical_weather(seed or "wet days", venue), venue)
+    if tool == "current_weather":
+        return _finish_weather(_current_weather(venue), venue)
+    if tool == "metro_alerts":
+        return _finish_live(metro_reply(venue), venue)
+    if tool == "distance":
+        return _distance_reply(venue)
+    guide = _guide_by_id(str(arguments.get("topic") or "")) or _matching_guide(prior)
+    if guide is None:
+        return None
+    return _guide_reply(guide, message, venue["venue_id"], venues)
+
+
 def answer_v2(message: str, venue_id: str | None = None, history: list[dict] | None = None, *, narrate: bool = True) -> dict:
-    """One v2 turn. History contributes earlier user text only."""
+    """One v2 turn. History contributes the earlier question, tool, and venue."""
+    message = str(message or "").lower()
     summary = load_summary()
     venues = summary["venues"]
     prior = ""
     carried = None
+    carried_tool = None
+    carried_args: dict = {}
     roster = {venue["venue_id"] for venue in venues}
     for turn in history or []:
         text = str(turn.get("user_text") or "").strip()
         if text:
-            prior = text
+            prior = text.lower()
+        if turn.get("tool"):
+            carried_tool = turn["tool"]
         argued = turn.get("arguments") or {}
-        if isinstance(argued, dict) and argued.get("venue_id") in roster:
-            carried = argued["venue_id"]
+        if isinstance(argued, dict) and argued:
+            carried_args = argued
+            if argued.get("venue_id") in roster:
+                carried = argued["venue_id"]
     if not venue_id and carried:
         venue_id = carried
     if re.search(r"\b(advisories|advisory|service alerts?|metro alerts?)\b", message):
         venue, early = _one_venue(message, venue_id, venues)
         if early:
-            early.update(version="v2", narration=None, table=None, confidence={"kind": "none", "text": ""}, engine="v2")
-            return early
+            return _stamp(early)
         return _finish_live(metro_reply(venue), venue)
-    guide = _guide_topic(message)
+    guide = _definition_request(message)
     if guide:
-        venue, early = _one_venue(message, venue_id, venues)
-        if early and not venue_id and not _mentions(_normalize(message), venues):
-            venue = None
-        elif early and venue is None:
-            return {**early, "version": "v2", "narration": None, "table": None, "confidence": {"kind": "none", "text": ""}, "engine": "v2"}
-        chosen = venue["venue_id"] if venue else venue_id
-        name = venue["venue_name"] if venue else None
-        href = f"#/venue/{chosen}/{guide['section']}".rstrip("/") if chosen else "#/compare"
-        label = guide["title"] if chosen else "Open Compare"
-        return {
-            "version": "v2",
-            "status": "answered",
-            "answer": f"{guide['title']}. {guide['text']}",
-            "caveat": "This describes the section. It is not a new count.",
-            "confidence": {"kind": "recorded", "text": "Page guide."},
-            "narration": None,
-            "table": None,
-            "links": [{"href": href, "label": label}],
-            "choices": [],
-            "results": [{"venue_id": chosen, "venue_name": name}] if chosen and name else [],
-            "tool": "page_guide",
-            "arguments": {"venue_id": chosen} if chosen else {},
-            "engine": "v2",
-        }
+        return _guide_reply(guide, message, venue_id, venues)
+    if _weather_prediction(message):
+        return _blank(
+            "unsupported",
+            "I cannot say whether the weather will change crime. That would be a forecast.",
+            "The weekday-adjusted gap is a past association. A live reading is not applied to it.",
+            venue_id,
+            None,
+        )
     mode = _weather_mode(message)
     if mode == "both":
-        return {
-            "version": "v2",
-            "status": "unsupported",
-            "answer": (
-                "Ask about today's weather, or about the weekday-adjusted wet-day and hot-day gaps, in separate questions. "
-                "A live reading is not applied to the historical gap."
-            ),
-            "caveat": "This is not a cause and not a forecast.",
-            "confidence": {"kind": "none", "text": ""},
-            "narration": None,
-            "table": None,
-            "links": _links(venue_id, None),
-            "choices": [],
-            "results": [],
-            "tool": None,
-            "arguments": {},
-            "engine": "v2",
-        }
+        refused = _split_weather()
+        refused["links"] = _links(venue_id, None)
+        return refused
     if mode in {"current", "historical"}:
         venue, early = _one_venue(message, venue_id, venues)
         if early:
-            early.update(version="v2", narration=None, table=None, confidence={"kind": "none", "text": ""}, engine="v2")
-            return early
+            return _stamp(early)
         payload = _current_weather(venue) if mode == "current" else _historical_weather(message, venue)
         return _finish_weather(payload, venue)
+    replayed = _replay(message, venues, prior, carried_tool, carried_args)
+    if replayed:
+        return replayed
     prepared = _prepare(message)
     body = answer_deterministic(prepared, venue_id, _prepare(prior) if prior else None)
+    if body.get("status") == "unsupported" and _where_highest(prepared):
+        venue, early = _one_venue(message, venue_id, venues)
+        if early:
+            return _stamp(early)
+        located = _distance_reply(venue)
+        if located:
+            return located
     if body.get("status") == "unsupported":
         body = _route_miss(prepared, venue_id, venues, body)
     if body.get("status") == "unsupported":
+        missed = _guide_after_miss(prepared)
+        if missed:
+            return _guide_reply(missed, message, venue_id, venues)
         template, caveat = _split_caveat(body.get("answer") or "")
         note = "Open the matching section on the venue page. The figures there are the same templates."
         body["answer"] = f"{template}\n\n{note}\n\n{caveat}".strip()
