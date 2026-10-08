@@ -2,6 +2,7 @@ import { blockForRange, mountDistanceSection, mountTimeSection, mountWeekdaySect
 import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, text } from "./dom.js";
 import { closeVenuePage } from "./nav.js";
 import { mountHomeGames, mountPermitSection } from "./permits.js";
+import { mountWeatherSection } from "./weather.js";
 import { resizeMap } from "./shell.js";
 import { comparePage, state } from "./state.js";
 import { cityStats, densityHint, densityNote, incidentNote, presentCount, presentRate, stat } from "./stats.js";
@@ -69,6 +70,7 @@ function pairOverlapNote(left, right) {
 
 function compareRangeNote() {
   if (compareView === "permits") return "Permit days in this view use 2020–2024 reports.";
+  if (compareView === "weather") return "Wet and hot days are compared with other days in the same months.";
   if (compareView === "overview" || !compareStart || !compareEnd) return "";
   const span = compareStart === compareEnd
     ? monthLabel(compareStart)
@@ -170,6 +172,13 @@ function compareColumn(venue) {
         permitHost,
         homeHost,
       ]),
+    ]);
+  }
+  if (compareView === "weather") {
+    const weatherHost = el("div");
+    mountWeatherSection(weatherHost, venue.venue_id);
+    return el("div", { className: "compare-body" }, [
+      el("section", { className: "crime-unit", "aria-label": "Weather" }, [weatherHost]),
     ]);
   }
   const host = el("div", { className: "chart-flat" });
@@ -286,6 +295,7 @@ function renderCompare(idA, idB) {
     ["distance", "Distance"],
     ["weekday", "Day of Week"],
     ["permits", "Permits"],
+    ["weather", "Weather"],
   ];
   const viewButtons = views.map(([id, label]) => {
     const button = el("button", {
@@ -315,7 +325,10 @@ function renderCompare(idA, idB) {
     el("article", { className: "compare-column" }, [venueBar("Venue A", selectA), bodyA]),
     el("article", { className: "compare-column" }, [venueBar("Venue B", selectB), bodyB]),
   ]);
-  const sheet = el("div", { className: compareView === "permits" ? "compare-sheet is-permits" : "compare-sheet" }, [
+  const sheetClass = compareView === "permits" || compareView === "weather"
+    ? "compare-sheet is-permits"
+    : "compare-sheet";
+  const sheet = el("div", { className: sheetClass }, [
     el("div", { className: "compare-toolbar" }, [
       el("button", { className: "venue-back", type: "button", "data-close-compare": "true" }, [text("Back to map")]),
       el("button", { className: "compare-link", type: "button" }, [text("Compare")]),

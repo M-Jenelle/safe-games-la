@@ -30,6 +30,7 @@ from backend.store import (
     meta,
     home_game_comparison,
     permit_comparison,
+    weather_comparison,
 )
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -191,6 +192,18 @@ def read_permit_comparison(
     """Permit-day means versus other days in the same months."""
     try:
         body = permit_comparison(venue_id, year=year, month=month, source=source)
+    except DatasetNotFound as exc:
+        raise _missing(exc) from exc
+    if body is None:
+        raise HTTPException(status_code=404, detail=f"Unknown venue_id '{venue_id}'")
+    return body
+
+
+@app.get("/api/venues/{venue_id}/weather")
+def read_weather(venue_id: str) -> dict:
+    """Wet days and hot days versus the other days in the same months."""
+    try:
+        body = weather_comparison(venue_id)
     except DatasetNotFound as exc:
         raise _missing(exc) from exc
     if body is None:

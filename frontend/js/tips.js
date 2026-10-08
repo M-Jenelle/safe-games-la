@@ -100,8 +100,9 @@ export function pageCopy(key) {
   return state.meta?.copy?.[key] || "";
 }
 
-export function withInfo(label) {
-  const hint = state.meta?.copy?.permit_hints?.[label];
+export function withInfo(label, group) {
+  const hints = group === "weather" ? state.meta?.copy?.weather_hints : state.meta?.copy?.permit_hints;
+  const hint = hints?.[label];
   if (!hint) return text(label);
   return el("span", { className: "info-label" }, [text(label), infoMark(hint)]);
 }

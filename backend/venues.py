@@ -503,6 +503,43 @@ def get_venue(venue_id: str) -> dict | None:
             return enriched
     return None
 
+def weather_comparison(venue_id: str) -> dict | None:
+    """Wet-day and hot-day means. None when the venue id is unknown."""
+    from backend.briefing import weather_disclaimer, weather_intro
+    from pipeline.weather_compare import comparison_payload, load_joined_days, nibrs_end, report_daily_counts
+
+    match = next((venue for venue in load_summary()["venues"] if venue["venue_id"] == venue_id), None)
+    if match is None:
+        return None
+    joined = load_joined_days()
+    if not joined:
+        return {
+            "available": False,
+            "venue_id": venue_id,
+            "venue_name": match["venue_name"],
+        }
+    payload = comparison_payload(
+        joined.get(venue_id) or [],
+        report_daily_counts().get(venue_id) or {},
+    )
+    comparisons = [
+        {"id": block["id"], "rows": block["rows"]}
+        for block in payload["comparisons"]
+    ]
+    end = nibrs_end(joined)
+    return {
+        "available": True,
+        "venue_id": venue_id,
+        "venue_name": match["venue_name"],
+        "intro": weather_intro(payload["hot_f"]),
+        "disclaimer": weather_disclaimer(),
+        "hot_f": payload["hot_f"],
+        "nibrs_start": payload["nibrs_start"],
+        "nibrs_end": end,
+        "comparisons": comparisons,
+    }
+
+
 def permit_comparison(venue_id: str, year: str = "all", month: str = "all", source: str = "reports") -> dict | None:
     """Permit-day versus other-day means. None when the venue id is unknown."""
     match = next((venue for venue in load_summary()["venues"] if venue["venue_id"] == venue_id), None)
