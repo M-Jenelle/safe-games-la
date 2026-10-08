@@ -9,8 +9,16 @@ function setChatOpen(open) {
   chatPanel.hidden = !open;
   chatLauncher.hidden = open;
   chatLauncher.setAttribute("aria-expanded", open ? "true" : "false");
-  if (open) document.querySelector("#chat-input").focus();
-  else chatLauncher.focus();
+  if (open) {
+    const other = document.querySelector("#chat-panel-v2");
+    const otherLauncher = document.querySelector("#chat-launcher-v2");
+    if (other) other.hidden = true;
+    if (otherLauncher) {
+      otherLauncher.hidden = false;
+      otherLauncher.setAttribute("aria-expanded", "false");
+    }
+    document.querySelector("#chat-input").focus();
+  } else chatLauncher.focus();
 }
 
 chatLauncher.addEventListener("click", () => setChatOpen(true));

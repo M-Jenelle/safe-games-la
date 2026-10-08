@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 import calendar
+import contextvars
 import math
 import re
 import unicodedata
@@ -1670,6 +1671,50 @@ def answer_question(message: str, venue_id: str | None = None, prior_message: st
     return response
 
 
+def answer_deterministic(message: str, venue_id: str | None = None, prior_message: str | None = None) -> dict:
+    """The local parser and its templates, with no model call and no narration."""
+    return _answer_closed(message, venue_id, prior_message)
+
+
+def answer_routed(
+    message: str,
+    venue_id: str | None = None,
+    *,
+    intent: str | None = None,
+    tool=None,
+) -> dict:
+    """Run one already-validated intent or tool. No model call and no narration."""
+    return _answer_closed(message, venue_id, preset_intent=intent, preset_tool=tool)
+
+
+def _answer_closed(
+    message: str,
+    venue_id: str | None = None,
+    prior_message: str | None = None,
+    *,
+    preset_intent: str | None = None,
+    preset_tool=None,
+) -> dict:
+    engine = {"engine": "data", "model": None, "engine_note": None}
+    normalized = _expand_relative_time(_normalize(message))
+    token = skip_explanation.set(True)
+    try:
+        response = _answer_question(
+            normalized,
+            venue_id,
+            engine,
+            prior_message,
+            deterministic=True,
+            preset_intent=preset_intent,
+            preset_tool=preset_tool,
+        )
+    finally:
+        skip_explanation.reset(token)
+    response.update(engine)
+    response.setdefault("resolved_message", normalized)
+    return response
+
+
 def _join_answers(parts: list[dict]) -> dict:
     """Show every part that was calculated. A dropped part is stated, not skipped."""
     first = parts[0]
@@ -1703,7 +1748,7 @@ def _join_answers(parts: list[dict]) -> dict:
     return body
 
 
-def _answer_question(message: str, venue_id: str | None, engine: dict, prior_message: str | None = None, *, skip_split: bool = False) -> dict:
+def _answer_question(message: str, venue_id: str | None, engine: dict, prior_message: str | None = None, *, skip_split: bool = False, deterministic: bool = False, preset_intent: str | None = None, preset_tool=None) -> dict:
     try:
         summary = load_summary()
     except DatasetNotFound:
@@ -1732,7 +1777,7 @@ def _answer_question(message: str, venue_id: str | None, engine: dict, prior_mes
                 if donor:
                     shared[index] = _with_venue(clause, donor, venues)
             answered = [
-                _answer_question(clause, venue_id, engine, skip_split=True)
+                _answer_question(clause, venue_id, engine, skip_split=True, deterministic=deterministic)
                 for clause in shared
             ]
             response = _join_answers(answered)
@@ -1741,13 +1786,13 @@ def _answer_question(message: str, venue_id: str | None, engine: dict, prior_mes
     if prior_message and not venue_id and not mentions:
         rewritten = _rewrite_year_follow_up(normalized, _normalize(prior_message), venues)
         if rewritten:
-            response = _answer_question(rewritten, venue_id, engine, skip_split=True)
+            response = _answer_question(rewritten, venue_id, engine, skip_split=True, deterministic=deterministic)
             response["resolved_message"] = rewritten
             return response
     if prior_message and _is_venue_fragment(normalized, mentions):
         rewritten = _rewrite_follow_up(normalized, _normalize(prior_message), venues)
         if rewritten:
-            response = _answer_question(rewritten, venue_id, engine, skip_split=True)
+            response = _answer_question(rewritten, venue_id, engine, skip_split=True, deterministic=deterministic)
             response["resolved_message"] = rewritten
             return response
         return _reply(
@@ -1760,6 +1805,14 @@ def _answer_question(message: str, venue_id: str | None, engine: dict, prior_mes
     tool_call = None
     if _outside_scope(normalized, mentions):
         intent = None
+    elif preset_tool is not None:
+        tool_call = preset_tool
+        intent = "tool"
+    elif preset_intent is not None:
+        intent = preset_intent
+    elif deterministic:
+        if intent is None and _tool_opening(normalized):
+            tool_call = _tool_from_question(normalized)
     elif settings()["claude_configured"]:
         try:
             interpretation = interpret_question(message, venues, venue_id)
@@ -2078,8 +2131,11 @@ def _pattern_table(venue_id: str, section: str, label: str, columns: list[str], 
     }
 
 
+skip_explanation: contextvars.ContextVar[bool] = contextvars.ContextVar("skip_chat_explanation", default=False)
+
+
 def _maybe_explain(venue_name: str, caption: str, table: dict) -> str | None:
-    if not settings()["claude_configured"]:
+    if skip_explanation.get() or not settings()["claude_configured"]:
         return None
     labels = [cell for row in table["rows"] for cell in row if not re.fullmatch(r"[\d,% ]+", cell)]
     labels.append(venue_name)
