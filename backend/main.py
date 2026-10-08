@@ -49,7 +49,7 @@ def _load_env_file() -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        if key.strip() in {"ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "SWIFTLY_API_KEY"}:
+        if key.strip() in {"ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "SWIFTLY_API_KEY", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"}:
             # Claude reads these settings on demand, allowing local key changes.
             continue
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))

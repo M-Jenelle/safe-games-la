@@ -21,7 +21,7 @@ from backend.store import DatasetNotFound, get_venue, home_game_comparison, perm
 class ChatTests(unittest.TestCase):
     def setUp(self):
         # These count tests must never make a paid external API request.
-        environment = patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""})
+        environment = patch.dict(os.environ, {"ANTHROPIC_API_KEY": "", "GOOGLE_CLOUD_PROJECT": ""})
         environment.start()
         self.addCleanup(environment.stop)
         env_file = patch("backend.claude.ENV_PATH", Path("/nonexistent/safe-games-la.env"))

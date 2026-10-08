@@ -38,7 +38,7 @@ class ContextChatTests(unittest.TestCase):
                 cls.raw[source] = list(csv.DictReader(handle))
 
     def setUp(self):
-        environment = patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""})
+        environment = patch.dict(os.environ, {"ANTHROPIC_API_KEY": "", "GOOGLE_CLOUD_PROJECT": ""})
         environment.start()
         self.addCleanup(environment.stop)
         env_file = patch("backend.claude.ENV_PATH", Path("/nonexistent/safe-games-la.env"))
