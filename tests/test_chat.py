@@ -95,7 +95,7 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(total["results"][0]["count"], present["count"])
         self.assertIn(f"{present['count']:,}", total["answer"])
         self.assertIn("2020–present", total["answer"])
-        self.assertIn("March 7, 2024", total["answer"])
+        self.assertNotIn("March 7, 2024", total["answer"])
         self.assertNotEqual(total["results"][0]["count"], 914)
 
         plain = self.post("How many incidents were reported near Dodger Stadium?")
@@ -207,8 +207,7 @@ class ChatTests(unittest.TestCase):
         theft = next(row for row in rose["table"]["rows"] if row[0] == labels["theft"])
         self.assertEqual(theft[years.index("2023") + 1], f"{totals('2023')['theft']:,}")
         self.assertIn("2020–present", rose["answer"])
-        self.assertIn("March 6", rose["answer"])
-        self.assertIn("counting difference", rose["answer"])
+        self.assertNotIn("March 6", rose["answer"])
         self.assertIn("not a full year", rose["answer"])
 
     def test_event_lift_quotes_the_page_and_names_the_weekend_mix(self):
@@ -372,7 +371,9 @@ class ChatTests(unittest.TestCase):
                 self.assertEqual(body["status"], "answered")
                 self.assertEqual(body["results"][0]["venue_id"], self.venues[0]["venue_id"])
         crypto = self.post("How many reports near Crypto.com Arena?")
-        self.assertEqual(crypto["results"][0]["venue_name"], "DTLA Arena (Crypto.com Arena)")
+        self.assertEqual(crypto["results"][0]["venue_name"], "Crypto.com Arena")
+        galen = self.post("How many incidents near Galen Center (USC)?")
+        self.assertEqual(galen["results"][0]["venue_name"], "Galen Center")
 
     def test_this_venue_uses_context_and_explicit_name_overrides_it(self):
         first, second = self.venues[:2]
@@ -589,15 +590,15 @@ class ChatTests(unittest.TestCase):
         body = self.post("What is the time of day pattern near Dodger Stadium?")
         self.assertEqual(body["status"], "answered")
         self.assertEqual(body["question_type"], "time_of_day")
-        periods = crime_time_for("V01")["periods"]
+        periods = get_venue("V01")["merged_time"]["periods"]
         usable = sum(int(period["count"]) for period in periods)
         self.assertEqual(
             [(row[0], int(row[1].replace(",", ""))) for row in body["table"]["rows"]],
             [(period["label"], int(period["count"])) for period in periods],
         )
         self.assertIn(f"{usable:,}", body["answer"])
-        self.assertIn("2020–2024", body["answer"])
-        self.assert_provenance(body)
+        self.assertIn("2020–present", body["answer"])
+        self.assertEqual(body["source"]["period"], "2020–present")
         night_period = next(period for period in periods if period["id"] == "night")
         night = self.post("How many incidents near Dodger Stadium at night?")
         self.assertEqual(night["status"], "answered")
@@ -626,7 +627,7 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(body["results"][0]["count"], changes[0][0])
         self.assertIn("800 m circle", body["answer"])
         self.assertIn("not a full year", body["answer"])
-        self.assertIn("March 6", body["answer"])
+        self.assertNotIn("March 6", body["answer"])
 
     def test_follow_up_replaces_only_the_venue(self):
         first = self.post("How many incidents near Dodger Stadium?")
@@ -829,6 +830,24 @@ class ChatTests(unittest.TestCase):
             body = answer_question("How many incidents near Dodger Stadium?")
         self.assertEqual(body["engine"], "fallback")
         self.assertEqual(body["engine_note"], "Verified by local rules.")
+
+    def test_next_month_estimate_stays_a_seasonal_average(self):
+        body = self.post("Estimate the next months near Dodger Stadium")
+        self.assertEqual(body["status"], "answered")
+        self.assertEqual(body["question_type"], "seasonal_estimate")
+        self.assertIn("not recorded crime", body["answer"])
+        self.assertIn("not a certainty", body["answer"])
+        self.assertIn("not a forecast for 2028", body["answer"])
+        self.assertIn("2020–present", body["answer"])
+        self.assertIn("home-game multiplier is not applied", body["answer"])
+        self.assertEqual(len(body["results"]), 3)
+        last_month = max(get_venue("V01")["merged_by_month"])
+        self.assertGreater(body["results"][0]["category"].split()[-1], last_month)
+        self.assertTrue(all(row["count"] >= 0 for row in body["results"]))
+        predicted = self.post("Predict the next month near Dodger Stadium")
+        self.assertEqual(predicted["question_type"], "seasonal_estimate")
+        self.assertEqual(self.post("Predict how many incidents will happen near Dodger Stadium in 2028")["status"], "unsupported")
+        self.assertEqual(self.post("Which venue is safest in 2028?")["status"], "unsupported")
 
 
 if __name__ == "__main__":

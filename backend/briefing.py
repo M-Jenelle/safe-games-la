@@ -51,7 +51,6 @@ def density_hint(radius_m: float, venue_count: int, reports_through: str) -> str
     radius = f"{round(float(radius_m)):g}"
     return (
         f"Records per square kilometer inside the {radius} m circle, from 2020 through the latest data. "
-        f"Reports run through {reports_through}, then NIBRS offenses, and one NIBRS case can count more than once. "
         f"The circle covers about {area} km², so density is the count divided by that area. "
         f"The place compares this venue with the other {others}."
     )
@@ -127,18 +126,18 @@ def permit_hints() -> dict[str, str]:
     gap = _gap()
     days = MIN_EVENT_DAYS_FOR_PERCENT
     return {
-        "Permit days vs other days": (
+        "Permit Days vs Other Days": (
             "A permit day is a day covered by a temporary-event permit. "
             "Other days are the rest of the months that had a permit, from 2020 through 2024. "
             "Months with no permit are left out."
         ),
-        "Permit days": (
+        "Permit Days": (
             "Days covered by at least one temporary-event permit. "
             "Several permits on the same date still count as one day."
         ),
-        "Other days": "The other days in months that had a permit. These are not every day without an event.",
-        "Permit-day mean": "Average reports on permit days.",
-        "Other-day mean": "Average reports on other days.",
+        "Other Days": "The other days in months that had a permit. These are not every day without an event.",
+        "Permit-Day Mean": "Average reports on permit days.",
+        "Other-Day Mean": "Average reports on other days.",
         "Median": "The middle daily count on permit days, then the middle count on other days.",
         "Difference": (
             "Permit-day mean minus the other-day mean. "
@@ -146,40 +145,39 @@ def permit_hints() -> dict[str, str]:
             f"the daily gap is at least {gap}, and the gap is unlikely to be chance."
         ),
         "Overall": "All comparison months from 2020 through 2024, taken together.",
-        "Offense groups": (
+        "Offense Groups": (
             "Crime groups, such as theft or assault, where the daily average on permit days "
             f"differs from other days by at least {gap} reports. The bar length is the size of that gap."
         ),
-        "Permits on the same day": (
+        "Permits on the Same Day": (
             "Permit days split by how many permits cover the date. "
             "One permit and several permits are each compared with other days."
         ),
-        "One permit": "Days covered by a single permit.",
-        "Several permits": "Days covered by two or more permits. Those dates are still one permit day.",
+        "One Permit": "Days covered by a single permit.",
+        "Several Permits": "Days covered by two or more permits. Those dates are still one permit day.",
         "Days": "How many dates are in this row.",
-        "Reports per day": "Average reports on the dates in this row.",
-        "Offenses per day": (
-            "Average NIBRS offenses on the dates in this row. "
-            "One case can include more than one offense."
+        "Reports per Day": "Average reports on the dates in this row.",
+        "Offenses per Day": (
+            "Average NIBRS offenses on the dates in this row."
         ),
-        "Difference vs other days": (
+        "Difference vs Other Days": (
             "This row's average minus the average on other days. "
             "Other days is the baseline, so that row has no difference."
         ),
-        "Home games vs other days": (
+        "Home Games vs Other Days": (
             "Completed Dodgers regular-season home games, 2020 through 2024, "
             "compared with the other days in March through October of those years."
         ),
-        "Game days": "Days with a completed regular-season home game. A doubleheader still counts as one day.",
-        "Other days in season": "The other days in March through October, 2020 through 2024. Winter days are left out.",
-        "Game-day mean": "Average reports on home-game days.",
-        "Other-day mean in season": "Average reports on the other days in those baseball months.",
+        "Game Days": "Days with a completed regular-season home game. A doubleheader still counts as one day.",
+        "Other Days in Season": "The other days in March through October, 2020 through 2024. Winter days are left out.",
+        "Game-Day Mean": "Average reports on home-game days.",
+        "Other-Day Mean in Season": "Average reports on the other days in those baseball months.",
         "2020–2024": "All completed regular-season home games from 2020 through 2024, taken together.",
-        "Game-day groups": (
+        "Game-Day Groups": (
             "Crime groups where the daily average on home-game days differs from other days in season "
             f"by at least {gap} reports. The bar length is the size of that gap."
         ),
-        "Listed events": (
+        "Listed Events": (
             "Ticketmaster listings matched to this venue. "
             "The dates are after 2024, so they are not joined to the crime reports."
         ),
@@ -196,12 +194,11 @@ def page_copy(radius_m: float, venue_count: int, reports_through: str) -> dict:
         "density_hint": density_hint(radius_m, venue_count, reports_through),
         "incident_note": INCIDENT_NOTE,
         "default_crime_hint": (
-            "Pins mark venues. Crime is LAPD reports from 2020 to 2024 across the city, "
-            "green where fewer and red where they concentrate."
+            "Pins mark venues. Green is fewer and red is where they concentrate."
         ),
         "nibrs_crime_hint": (
             "Pins mark venues. This heatmap is NIBRS offenses from March 2024 through the latest extract. "
-            "A case can contribute more than one point. Green is fewer and red is where they concentrate."
+            "Green is fewer and red is where they concentrate."
         ),
         "pie_guide": "",
         "weekday_click": "Click a day to see its main offense groups. Click it again to clear.",

@@ -1,11 +1,11 @@
 import { categoryRows, filledMonths, monthChart, monthTable, mountDistanceSection, mountTimeSection, mountWeekdaySection, scopedBlock, scopedWeekday, yearTotals } from "./charts.js";
-import { MONTH_NAMES, el, fetchJson, formatDistance, formatNumber, formatSports, monthLabel, monthTitle, text } from "./dom.js";
+import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, monthTitle, text } from "./dom.js";
 import { renderMap } from "./map.js";
 import { closeVenuePage, openVenuePage, renderChatContext, venueToolbar } from "./nav.js";
 import { mountHomeGames, mountListingSection, mountPermitSection } from "./permits.js";
 import { renderRoster } from "./roster.js";
 import { FLAG_LABELS, HIDDEN_FLAGS, detail, overview, requests, state, zoneFilter } from "./state.js";
-import { careStations, cityStats, densityHint, densityNote, incidentNote, overlapNote, presentCount, presentRate, renderOverview, stat } from "./stats.js";
+import { careStations, cityStats, densityHint, densityNote, incidentNote, overlapNote, presentCount, presentRate, renderOverview, stat, transitStations } from "./stats.js";
 
 export function renderDetail() {
   const venue = state.detail;
@@ -24,15 +24,6 @@ export function renderDetail() {
   const total = presentCount(venue);
   const flags = venue.data_quality_flags.filter((flag) => !HIDDEN_FLAGS.has(flag)).map((flag) => (
     el("span", { className: "flag" }, [text(FLAG_LABELS[flag] || flag)])
-  ));
-  const rail = venue.rail_stations_nearby.stations.map((station) => (
-    el("li", {}, [
-      el("strong", {}, [text(station.station_name)]),
-      text(` · ${station.lines} · ${formatDistance(station.distance_m)}`),
-    ])
-  ));
-  const buses = venue.bus_stops_nearby.lines.map((line) => (
-    el("span", { className: "pill" }, [text(line)])
   ));
   let fromKey = "";
   let toKey = "";
@@ -64,6 +55,7 @@ export function renderDetail() {
   const chartHost = el("div", { className: "chart-host" });
   const yearHost = el("div", { className: "year-row" });
   const seriesHint = el("p", { className: "muted" });
+  const estimateNote = el("p", { className: "muted" });
 
   function seriesData() {
     if (venue.merged_by_month) {
@@ -209,7 +201,7 @@ export function renderDetail() {
     });
   }
 
-  function paintTable() {
+  function paintTable(estimates = []) {
     const bundle = seriesData();
     const filtered = filteredMonths();
     const peakKey = rangePeak()?.key;
@@ -217,7 +209,7 @@ export function renderDetail() {
       tableWrap.replaceChildren(el("p", { className: "muted" }, [text(bundle.empty)]));
       return;
     }
-    const table = monthTable(filtered, peakKey, selectedKey);
+    const table = monthTable(filtered, peakKey, selectedKey, estimates);
     table.addEventListener("click", (event) => {
       const cell = event.target.closest("td[data-month]");
       if (cell?.dataset.month) selectMonth(cell.dataset.month);
@@ -272,6 +264,51 @@ export function renderDetail() {
     syncYearSelect();
   }
 
+  function seasonalEstimates(byMonth) {
+    const entries = filledMonths(byMonth);
+    if (!entries.length) return [];
+    const counts = new Map(entries.map((entry) => [entry.key, entry.count]));
+    let year = Number(entries[entries.length - 1].key.slice(0, 4));
+    let month = Number(entries[entries.length - 1].key.slice(5));
+    const estimates = [];
+    for (let step = 0; step < 3; step += 1) {
+      month += 1;
+      if (month === 13) {
+        month = 1;
+        year += 1;
+      }
+      const samples = [];
+      for (let prior = year - 1; prior >= year - 3; prior -= 1) {
+        const key = `${prior}-${padMonth(month)}`;
+        if (counts.has(key)) samples.push(counts.get(key));
+      }
+      if (!samples.length) continue;
+      const sum = samples.reduce((total, value) => total + value, 0);
+      estimates.push({
+        key: `${year}-${padMonth(month)}`,
+        count: Math.floor((sum + Math.floor(samples.length / 2)) / samples.length),
+      });
+    }
+    return withSchedule(estimates);
+  }
+
+  function daysInMonth(key) {
+    return new Date(Number(key.slice(0, 4)), Number(key.slice(5)), 0).getDate();
+  }
+
+  function withSchedule(estimates) {
+    const dates = venue.scheduled_home_games || [];
+    const multiplier = Number(venue.home_game_multiplier);
+    if (!dates.length || !Number.isFinite(multiplier)) return estimates;
+    return estimates.map((entry) => {
+      const games = dates.filter((day) => day.startsWith(entry.key)).length;
+      if (!games) return entry;
+      const days = daysInMonth(entry.key);
+      const count = Math.round(entry.count * (1 + (games / days) * (multiplier - 1)));
+      return { ...entry, count, scheduledGames: games };
+    });
+  }
+
   function paintSpan() {
     const bundle = seriesData();
     const entries = filteredMonths();
@@ -281,6 +318,11 @@ export function renderDetail() {
       (best, entry) => (entry[1] > best[1] ? entry : best),
       yearsNow[0] || ["", 0],
     );
+    const series = seriesMonths();
+    const lastKey = series.length ? series[series.length - 1].key : "";
+    const estimates = lastKey && entries.some((entry) => entry.key === lastKey)
+      ? seasonalEstimates(bundle.byMonth)
+      : [];
     yearHost.replaceChildren(...yearsNow.map(([year, count]) => (
       el("article", { className: year === peakYearNow[0] ? "year-card is-peak" : "year-card" }, [
         el("span", {}, [text(year)]),
@@ -288,9 +330,21 @@ export function renderDetail() {
       ])
     )));
     chartHost.replaceChildren(entries.length
-      ? monthChart(entries, peakNow?.key, selectMonth, bundle.word)
+      ? monthChart(entries, peakNow?.key, selectMonth, bundle.word, estimates)
       : el("p", { className: "muted" }, [text(bundle.empty)]));
-    paintTable();
+    if (estimates.length) {
+      estimateNote.hidden = false;
+      const scheduleNote = venue.home_games_available
+        ? (estimates.some((entry) => entry.scheduledGames)
+          ? " Months with a listed home game are scaled by the count-model multiplier."
+          : " No home game on the stored schedule falls in these months, so the home-game multiplier is not applied.")
+        : "";
+      estimateNote.textContent = `The gray bars and gray table numbers after ${monthLabel(lastKey)} are estimates: the average of that month in up to three earlier years. They are not recorded crime and not a certainty.${scheduleNote}`;
+    } else {
+      estimateNote.hidden = true;
+      estimateNote.textContent = "";
+    }
+    paintTable(estimates);
     markMonth(selectedKey);
     paintCategories();
     paintPies();
@@ -342,13 +396,13 @@ export function renderDetail() {
 
   function seriesNote() {
     const hint = "Click a bar or a table cell to filter incident types to that month. Click it again to clear. Red is the busiest month.";
-    if (venue.merged_by_month) {
-      return `Reports before March 7, 2024, then NIBRS offenses. ${hint}`;
-    }
     return hint;
   }
 
-  function scopedSeries(reportsBlock, nibrsBlock, scope) {
+  function presentChart(merged, reportsBlock, nibrsBlock, scope) {
+    if (merged && (merged.total || merged.by_month)) {
+      return { block: scope(merged, selectedKey), word: "records" };
+    }
     if (!selectedKey) return { block: scope(reportsBlock, ""), word: "incidents" };
     const reports = scope(reportsBlock, selectedKey);
     if (reports?.total) return { block: reports, word: "incidents" };
@@ -359,8 +413,8 @@ export function renderDetail() {
 
   function paintPies() {
     const monthName = selectedKey ? monthTitle(selectedKey) : "";
-    const time = scopedSeries(venue.crime_time, venue.nibrs_time, scopedBlock);
-    const distance = scopedSeries(venue.crime_distance, venue.nibrs_distance, scopedBlock);
+    const time = presentChart(venue.merged_time, venue.crime_time, venue.nibrs_time, scopedBlock);
+    const distance = presentChart(venue.merged_distance, venue.crime_distance, venue.nibrs_distance, scopedBlock);
     const guide = "";
     mountTimeSection(time.block, timeHost, time.word, guide, monthName);
     mountDistanceSection(distance.block, distanceHost, distance.word, guide, monthName);
@@ -376,7 +430,7 @@ export function renderDetail() {
 
   function paintWeekday() {
     const monthName = selectedKey ? monthTitle(selectedKey) : "";
-    const picked = scopedSeries(venue.crime_weekday, venue.nibrs_weekday, scopedWeekday);
+    const picked = presentChart(venue.merged_weekday, venue.crime_weekday, venue.nibrs_weekday, scopedWeekday);
     mountWeekdaySection(picked.block, weekdayHost, picked.word, monthName);
   }
 
@@ -433,7 +487,7 @@ export function renderDetail() {
     flags.length ? el("div", { className: "flags" }, flags) : el("span"),
     overlapNote(venue) ? el("p", { className: "terms" }, [text(overlapNote(venue))]) : el("span"),
     el("section", { className: "crime-unit", "aria-label": "Crime patterns" }, [
-      el("h3", { className: "section-title", id: "section-months" }, [text("Incidents by month")]),
+      el("h3", { className: "section-title", id: "section-months" }, [text("Incidents by Month")]),
       el("div", { className: "table-filters" }, [
         el("label", {}, [text("Year"), yearSelect]),
         el("label", {}, [
@@ -448,8 +502,9 @@ export function renderDetail() {
       seriesHint,
       yearHost,
       chartHost,
+      estimateNote,
       tableWrap,
-      el("h3", { className: "section-title", id: "section-categories" }, [text("Incident types")]),
+      el("h3", { className: "section-title", id: "section-categories" }, [text("Incident Types")]),
       categoryNote,
       categoryList,
       categoryToggle,
@@ -460,14 +515,12 @@ export function renderDetail() {
     permitHost,
     homeHost,
     listingHost,
-    el("section", { className: "crime-unit places-unit", "aria-label": "Transit and nearest care" }, [
-      el("h3", { className: "section-title" }, [text(`Rail · ${formatNumber(venue.rail_stations_nearby.count)} ${venue.rail_stations_nearby.count === 1 ? "station" : "stations"}`)]),
-      rail.length ? el("ul", { className: "place-list" }, rail) : el("p", { className: "muted" }, [text("None in the buffer.")]),
-      el("h3", { className: "section-title" }, [
-        text(`Bus · ${formatNumber(venue.bus_stops_nearby.count)} stops · ${venue.bus_stops_nearby.lines.length} lines`),
-      ]),
-      el("div", { className: "pills" }, buses.length ? buses : [el("span", { className: "muted" }, [text("None in the buffer.")])]),
-      el("h3", { className: "section-title" }, [text("Nearest response and care")]),
+    el("section", { className: "crime-unit places-unit", "aria-label": "Transportation" }, [
+      el("h3", { className: "section-title" }, [text("Transportation")]),
+      el("div", { className: "station-grid" }, transitStations(venue)),
+    ]),
+    el("section", { className: "crime-unit places-unit", "aria-label": "Nearest Response and Care" }, [
+      el("h3", { className: "section-title" }, [text("Nearest Response and Care")]),
       el("div", { className: "station-grid" }, careStations(venue)),
       el("p", { className: "terms" }, [text(state.meta.jurisdiction_method)]),
     ]),

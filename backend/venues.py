@@ -20,7 +20,9 @@ from pipeline.permit_event_days import (
     OTHER_DAY_MEAN_FOR_PERCENT,
     collapse_upcoming,
     comparison_view,
+    filter_permit_rows,
 )
+from backend.event_baseline import describe_baseline, future_home_game_dates, home_game_rows
 from backend.briefing import (
     PERMIT_INTRO,
     PERMIT_LOAD_INTRO,
@@ -327,9 +329,101 @@ def _city_comparison(venue: dict, present: dict | None = None) -> dict | None:
             "value": compared["value"],
             "caption": compared["caption"],
             "summary": compared["summary"],
-            "hint": present_base["note"],
+            "hint": (
+                "The city rate divides the citywide count by the City of Los Angeles land area "
+                "(U.S. Census Bureau 2020, 469.49 square miles). "
+                "Venue circles are not added into that total."
+            ),
         }
     return payload
+
+_SLICE_ORDER = {
+    "periods": (
+        ("night", "12am–6am"),
+        ("morning", "6am–12pm"),
+        ("afternoon", "12pm–6pm"),
+        ("evening", "6pm–12am"),
+    ),
+    "bands": (
+        ("near", "Within 200 m"),
+        ("mid", "200–400 m"),
+        ("far", "400–800 m"),
+    ),
+}
+TIME_PRESENT_NOTE = "12:00 is often used for unknown hour."
+DISTANCE_PRESENT_NOTE = (
+    "Offense locations are rounded, so a point inside 200 m is not a crime at the door."
+)
+
+
+def _sum_slices(slice_key: str, blocks: list[dict]) -> list[dict]:
+    """Add part-of-day or distance-band counts, including their offense groups."""
+    buckets: dict[str, dict[str, int]] = {}
+    labels: dict[str, str] = {}
+    group_labels: dict[str, dict[str, str]] = {}
+    for item_id, label in _SLICE_ORDER[slice_key]:
+        buckets[item_id] = {}
+        labels[item_id] = label
+        group_labels[item_id] = {}
+    for block in blocks:
+        for item in (block or {}).get(slice_key) or []:
+            item_id = str(item.get("id") or "")
+            if item_id not in buckets:
+                continue
+            if item.get("label"):
+                labels[item_id] = str(item["label"])
+            for group in item.get("groups") or []:
+                group_id = str(group.get("id") or "")
+                if not group_id:
+                    continue
+                buckets[item_id][group_id] = buckets[item_id].get(group_id, 0) + int(group.get("count") or 0)
+                if group.get("label"):
+                    group_labels[item_id][group_id] = str(group["label"])
+    slices = []
+    for item_id, _label in _SLICE_ORDER[slice_key]:
+        groups = [
+            {
+                "id": group_id,
+                "label": group_labels[item_id].get(group_id) or GROUP_LABELS.get(group_id, group_id),
+                "count": count,
+            }
+            for group_id, count in buckets[item_id].items()
+            if count
+        ]
+        groups.sort(key=lambda group: (-group["count"], group["label"]))
+        slices.append({
+            "id": item_id,
+            "label": labels[item_id],
+            "count": sum(group["count"] for group in groups),
+            "groups": groups,
+        })
+    return slices
+
+
+def merged_chart(report: dict | None, nibrs: dict | None, slice_key: str, disclaimer: str) -> dict:
+    """Reports through February 2024, then NIBRS offenses from March 2024 on.
+
+    The stored report months are whole calendar months, so March 2024 stays
+    with NIBRS. That drops March 1–6 reports instead of counting March twice.
+    """
+    report_months = {
+        month: block
+        for month, block in ((report or {}).get("by_month") or {}).items()
+        if str(month) < "2024-03"
+    }
+    nibrs_months = {
+        month: block
+        for month, block in ((nibrs or {}).get("by_month") or {}).items()
+        if str(month) >= "2024-03"
+    }
+    by_month = {**report_months, **nibrs_months}
+    return {
+        "total": sum(int((block or {}).get("total") or 0) for block in by_month.values()),
+        slice_key: _sum_slices(slice_key, list(by_month.values())),
+        "by_month": by_month,
+        "disclaimer": disclaimer,
+    }
+
 
 def get_venue(venue_id: str) -> dict | None:
     for venue in load_summary()["venues"]:
@@ -358,9 +452,17 @@ def get_venue(venue_id: str) -> dict | None:
             if listings:
                 enriched["ticketmaster"] = listings
             nibrs_charts = nibrs_charts_for(venue_id)
+            nibrs_time = (nibrs_charts or {}).get("time") or {}
+            nibrs_distance = (nibrs_charts or {}).get("distance") or {}
             if nibrs_charts:
-                enriched["nibrs_time"] = nibrs_charts.get("time") or {}
-                enriched["nibrs_distance"] = nibrs_charts.get("distance") or {}
+                enriched["nibrs_time"] = nibrs_time
+                enriched["nibrs_distance"] = nibrs_distance
+            if time_block or nibrs_time:
+                enriched["merged_time"] = merged_chart(time_block, nibrs_time, "periods", TIME_PRESENT_NOTE)
+            if distance_block or nibrs_distance:
+                enriched["merged_distance"] = merged_chart(
+                    distance_block, nibrs_distance, "bands", DISTANCE_PRESENT_NOTE,
+                )
             venues = load_summary()["venues"]
             enriched["density_rank"] = _density_rank(venue, venues)
             enriched["overlapping_venues"] = _overlapping_venues(venue, venues)
@@ -394,6 +496,10 @@ def get_venue(venue_id: str) -> dict | None:
                 home_id == venue_id,
             )
             enriched["home_games_available"] = bool(enriched["display"]["home_games_available"])
+            if home_id == venue_id:
+                fitted = describe_baseline(home_game_rows(), "is_home_game", "home game")
+                enriched["scheduled_home_games"] = future_home_game_dates()
+                enriched["home_game_multiplier"] = (fitted.get("model") or {}).get("multiplier")
             return enriched
     return None
 
@@ -417,6 +523,9 @@ def permit_comparison(venue_id: str, year: str = "all", month: str = "all", sour
     view = comparison_view(rows, year=year, month=month, venue_id=venue_id, venue_name=venue_name, note=note)
     view["source"] = source
     unit = "offenses" if source == "nibrs" else "reports"
+    filtered = filter_permit_rows(rows, year, month)
+    if filtered and int((view.get("summary") or {}).get("event_day_count") or 0):
+        view["baseline"] = describe_baseline(filtered, "is_permit_event_day", "permit", unit=unit)
     view["intro"] = PERMIT_INTRO
     view["load_intro"] = PERMIT_LOAD_INTRO
     view["group_gap_note"] = group_gap_note(unit)
@@ -493,5 +602,6 @@ def home_game_comparison(venue_id: str) -> dict | None:
             "A large percentage can still be less than one extra report a day.\n"
             "This is a past comparison, not a forecast."
         ),
+        "baseline": describe_baseline(home_game_rows(), "is_home_game", "home game"),
     }
 

@@ -21,7 +21,7 @@ class ApiTests(unittest.TestCase):
         home = self.client.get("/")
         self.assertEqual(home.status_code, 200)
         self.assertIn("Safe Games LA", home.text)
-        self.assertIn("Los Angeles venue safety intelligence", home.text)
+        self.assertIn("Los Angeles Venue Safety Intelligence", home.text)
         self.assertIn('id="venue-page"', home.text)
 
     def test_venue_list_and_detail(self):
@@ -82,7 +82,8 @@ class ApiTests(unittest.TestCase):
         span = baseline["present"]
         self.assertEqual(span["period"], "2020–present")
         self.assertIn("2020–present", span["caption"])
-        self.assertIn("March 6, 2024", span["hint"])
+        self.assertIn("Venue circles are not added", span["hint"])
+        self.assertNotIn("March 6, 2024", span["hint"])
         self.assertAlmostEqual(
             span["ratio"],
             round(present["crime_per_km2"] / span["crime_per_km2"], 3),
@@ -153,7 +154,28 @@ class ApiTests(unittest.TestCase):
             body["merged_weekday"]["total"],
             clock_days["total"] + body["nibrs_weekday"]["total"],
         )
-        self.assertIn("March 7, 2024", body["merged_weekday"]["disclaimer"])
+        self.assertEqual(body["merged_weekday"]["disclaimer"], "")
+        merged_time = body["merged_time"]
+        self.assertEqual(merged_time["by_month"]["2023-03"]["total"], clock["by_month"]["2023-03"]["total"])
+        self.assertEqual(merged_time["by_month"]["2024-06"]["total"], nibrs_time["by_month"]["2024-06"]["total"])
+        self.assertNotIn("NIBRS", merged_time["disclaimer"])
+        self.assertIn("unknown hour", merged_time["disclaimer"])
+        self.assertGreater(max(merged_time["by_month"]), "2024-12")
+        self.assertEqual(sum(item["total"] for item in merged_time["by_month"].values()), merged_time["total"])
+        self.assertEqual(
+            sum(period["count"] for period in merged_time["periods"]),
+            sum(period["count"] for period in merged_time["by_month"]["2023-03"]["periods"])
+            + sum(
+                period["count"]
+                for month, item in merged_time["by_month"].items()
+                if month != "2023-03"
+                for period in item["periods"]
+            ),
+        )
+        merged_distance = body["merged_distance"]
+        self.assertEqual(merged_distance["by_month"]["2023-03"]["total"], distance["by_month"]["2023-03"]["total"])
+        self.assertIn("not a crime at the door", merged_distance["disclaimer"])
+        self.assertGreater(max(merged_distance["by_month"]), "2024-12")
         dodger = self.client.get("/api/venues/V01").json()
         self.assertEqual(dodger["nearest_hospital"]["emergency_room"], "No")
         self.assertEqual(dodger["nearest_emergency_room"]["emergency_room"], "Yes")
@@ -317,6 +339,14 @@ class ApiTests(unittest.TestCase):
         self.assertGreaterEqual(len(full["months"]), 12)
         self.assertEqual(full["start"], full["months"][0])
         self.assertEqual(full["end"], full["months"][-1])
+        self.assertGreater(full["end"], "2024-12")
+        later = self.client.get("/api/map/crime?view=all&start=2025-01&end=2025-06")
+        self.assertEqual(later.status_code, 200)
+        later_body = later.json()
+        self.assertEqual(later_body["start"], "2025-01")
+        self.assertEqual(later_body["end"], "2025-06")
+        self.assertGreater(later_body["incident_count"], 0)
+        self.assertLess(later_body["incident_count"], full["incident_count"])
         one = self.client.get("/api/map/crime?view=all&start=2023-06&end=2023-06")
         self.assertEqual(one.status_code, 200)
         one_body = one.json()
@@ -370,7 +400,7 @@ class ApiTests(unittest.TestCase):
         )
         self.assertIn("2.01", body["copy"]["density_hint"])
         self.assertIn("at least 8 permit days", body["copy"]["permit_hints"]["Difference"])
-        self.assertIn("0.05", body["copy"]["permit_hints"]["Offense groups"])
+        self.assertIn("0.05", body["copy"]["permit_hints"]["Offense Groups"])
 
     def test_display_fields_come_from_the_briefing(self):
         peacock = self.client.get("/api/venues/V04").json()

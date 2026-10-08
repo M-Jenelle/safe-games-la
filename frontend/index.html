@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Safe Games LA</title>
-  <link rel="icon" type="image/jpeg" href="/static/chat-icon.jpg">
+  <link rel="icon" type="image/svg+xml" href="/static/torch.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,650&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -25,7 +25,7 @@
         </svg>
         <div>
           <h1>Safe Games LA</h1>
-          <p class="tagline">Los Angeles venue safety intelligence</p>
+          <p class="tagline">Los Angeles Venue Safety Intelligence</p>
         </div>
       </div>
     </header>
@@ -75,7 +75,7 @@
             <legend>Map layers</legend>
             <label><input type="checkbox" data-layer="venues" checked> Venues</label>
             <span class="layer-control">
-              <label title="LAPD incidents, 2020–2024, across the city. Green is fewer, red is more."><input type="checkbox" data-layer="crime" checked> Crime</label>
+              <label title="Crime across the city. Green is fewer, red is more."><input type="checkbox" data-layer="crime" checked> Crime</label>
               <select id="crime-view" aria-label="Crime view">
                 <option value="all">All crime</option>
                 <option value="high">High amount (red)</option>
@@ -143,7 +143,7 @@
     <div class="chat-dock">
     <aside class="chat-panel" id="chat-panel" hidden aria-labelledby="chat-heading">
       <div class="panel-label">
-        <h2 id="chat-heading"><span class="chat-heading-icon bot-avatar" aria-hidden="true"><img src="/static/chat-icon.jpg" alt=""></span>Venue chatbot</h2>
+        <h2 id="chat-heading"><span class="chat-heading-icon bot-avatar" aria-hidden="true"><img src="/static/torch.svg" alt=""></span>Ask Torchy</h2>
         <button type="button" class="chat-close" id="chat-close" aria-label="Close chatbot">
           <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
             <path d="M3.2 3.2 12.8 12.8M12.8 3.2 3.2 12.8" fill="none" stroke="currentColor" stroke-width="1.4"/>
@@ -154,7 +154,7 @@
         <div class="chat-body">
           <p class="analysis-lead" id="analysis-lead">Name a venue or select one on the map to ask about “this venue.”</p>
           <p>Ask about crime counts, nearby transit, nearest fire/police stations or hospitals, and listed sports.</p>
-          <p class="chat-source">Crime: LAPD · 2020–2024 · 800 m radius. Other datasets have their own source and scope in each answer.</p>
+          <p class="chat-source">Crime: LAPD · 2020–present · 800 m radius. Other datasets have their own source and scope in each answer.</p>
           <p class="chat-engine" id="chat-engine">Venue data mode</p>
           <p class="examples-label">Try a question</p>
           <div class="chat-suggestions" id="chat-suggestions"></div>
@@ -168,9 +168,9 @@
       </form>
       <p class="chat-context" id="chat-context">No venue selected. Include a venue name in your question.</p>
     </aside>
-    <button type="button" class="chat-launcher" id="chat-launcher" aria-expanded="false" aria-controls="chat-panel" aria-label="Open venue chatbot">
-      <span class="chat-launcher-icon bot-avatar" aria-hidden="true"><img src="/static/chat-icon.jpg" alt=""></span>
-      <span>Ask venue data</span>
+    <button type="button" class="chat-launcher" id="chat-launcher" aria-expanded="false" aria-controls="chat-panel" aria-label="Open Ask Torchy">
+      <span class="chat-launcher-icon bot-avatar" aria-hidden="true"><img src="/static/torch.svg" alt=""></span>
+      <span>Ask Torchy</span>
     </button>
     </div>
   </div>

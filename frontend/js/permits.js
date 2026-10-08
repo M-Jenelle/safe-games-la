@@ -36,10 +36,18 @@ function formatPermitSpan(start, end) {
   return `${startLabel} – ${endLabel}`;
 }
 
+function headingLabel(label) {
+  return {
+    "One permit": "One Permit",
+    "Several permits": "Several Permits",
+    "Other days": "Other Days",
+  }[label] || label;
+}
+
 function permitTable(rows) {
-  const labels = ["", "Permit days", "Other days", "Permit-day mean", "Other-day mean", "Median", "Difference"];
+  const labels = ["", "Permit Days", "Other Days", "Permit-Day Mean", "Other-Day Mean", "Median", "Difference"];
   const bodyRows = rows.map((row, index) => el("tr", { className: index === 0 ? "is-overall" : "" }, [
-    el("th", { scope: "row" }, [withInfo(row.label)]),
+    el("th", { scope: "row" }, [withInfo(headingLabel(row.label))]),
     el("td", {}, [text(formatNumber(row.event_day_count))]),
     el("td", {}, [text(formatNumber(row.other_day_count))]),
     el("td", {}, [text(formatMean(row.event_day_mean))]),
@@ -55,7 +63,7 @@ function permitTable(rows) {
   ]);
 }
 
-function groupRows(groups, eventLabel = "Permit-day mean") {
+function groupRows(groups, eventLabel = "Permit-Day Mean") {
   const max = groups.reduce(
     (largest, group) => Math.max(largest, Math.abs(Number(group.absolute_difference) || 0)),
     0,
@@ -76,12 +84,12 @@ function groupRows(groups, eventLabel = "Permit-day mean") {
 }
 
 function permitLoadTable(rows, unit) {
-  const labels = ["", "Days", unit === "offenses" ? "Offenses per day" : "Reports per day", "Median", "Difference vs other days"];
+  const labels = ["", "Days", unit === "offenses" ? "Offenses per Day" : "Reports per Day", "Median", "Difference vs Other Days"];
   return el("div", { className: "month-table-wrap" }, [
     el("table", { className: "month-table permit-table" }, [
       el("thead", {}, [el("tr", {}, labels.map((label) => el("th", {}, [withInfo(label)])))]),
       el("tbody", {}, rows.map((row) => el("tr", {}, [
-        el("th", { scope: "row" }, [withInfo(row.label)]),
+        el("th", { scope: "row" }, [withInfo(headingLabel(row.label))]),
         el("td", {}, [text(formatNumber(row.day_count))]),
         el("td", {}, [text(formatMaybeMean(row.mean))]),
         el("td", {}, [text(row.median == null ? "—" : formatMedian(row.median))]),
@@ -226,9 +234,9 @@ export function mountListingSection(block, host, boxed) {
   paint();
   host.replaceChildren(el("section", {
     className: sectionClass(boxed, "permit-section listing-section"),
-    "aria-label": "Listed events",
+    "aria-label": "Listed Events",
   }, [
-    el("h3", { className: "section-title" }, [withInfo("Listed events")]),
+    el("h3", { className: "section-title" }, [withInfo("Listed Events")]),
     el("p", { className: "muted" }, [text(block.note || "")]),
     el("p", { className: "muted" }, [text("Click a month to see its events. Click it again to clear.")]),
     el("div", { className: "listing-split" }, [monthHost, eventHost]),
@@ -282,7 +290,7 @@ export function mountPermitSection(venueId, host, source, boxed) {
     });
     const groupBlock = groups.length
       ? [
-        el("h3", { className: "section-title" }, [withInfo("Offense groups")]),
+        el("h3", { className: "section-title" }, [withInfo("Offense Groups")]),
         el("p", { className: "muted" }, [text(body.group_gap_note || "")]),
         groupList,
         groupToggle,
@@ -295,17 +303,17 @@ export function mountPermitSection(venueId, host, source, boxed) {
     const loadIntro = el("p", { className: "muted" }, [text(body.load_intro || "")]);
     const loadTable = permitLoadTable(loadRows, unit);
     const loadBlock = !loadRows.length ? [] : boxed
-      ? [loadAccordion(withInfo("Permits on the same day"), [loadIntro, loadTable])]
+      ? [loadAccordion(withInfo("Permits on the Same Day"), [loadIntro, loadTable])]
       : [
-        el("h3", { className: "section-title" }, [withInfo("Permits on the same day")]),
+        el("h3", { className: "section-title" }, [withInfo("Permits on the Same Day")]),
         loadIntro,
         loadTable,
       ];
     host.replaceChildren(el("section", {
       className: sectionClass(boxed, "permit-section"),
-      "aria-label": "Permit days",
+      "aria-label": "Permit Days",
     }, [
-      el("h3", { className: "section-title" }, [withInfo("Permit days vs other days")]),
+      el("h3", { className: "section-title" }, [withInfo("Permit Days vs Other Days")]),
       el("p", { className: "muted" }, [text(body.intro || "")]),
       venueNote,
       body.source_note ? el("p", { className: "terms" }, [text(body.source_note)]) : el("span"),
@@ -321,7 +329,7 @@ export function mountPermitSection(venueId, host, source, boxed) {
 }
 
 function gameTable(summary) {
-  const labels = ["", "Game days", "Other days in season", "Game-day mean", "Other-day mean in season", "Median", "Difference"];
+  const labels = ["", "Game Days", "Other Days in Season", "Game-Day Mean", "Other-Day Mean in Season", "Median", "Difference"];
   return el("div", { className: "month-table-wrap" }, [
     el("table", { className: "month-table permit-table" }, [
       el("thead", {}, [el("tr", {}, labels.map((label) => el("th", {}, [withInfo(label)])))]),
@@ -350,18 +358,18 @@ export function mountHomeGames(host, venueId, boxed) {
     const groups = body.groups || [];
     host.replaceChildren(el("section", {
       className: sectionClass(boxed, "permit-section"),
-      "aria-label": "Home games",
+      "aria-label": "Home Games",
     }, [
-      el("h3", { className: "section-title" }, [withInfo("Home games vs other days")]),
+      el("h3", { className: "section-title" }, [withInfo("Home Games vs Other Days")]),
       el("p", { className: "muted" }, [text(body.note || "")]),
       gameTable(body.summary),
       groups.length
-        ? el("h3", { className: "section-title" }, [withInfo("Game-day groups")])
+        ? el("h3", { className: "section-title" }, [withInfo("Game-Day Groups")])
         : el("span"),
       groups.length
         ? el("p", { className: "muted" }, [text(body.group_gap_note || "")])
         : el("span"),
-      groups.length ? el("div", { className: "category-list" }, groupRows(groups, "Game-day mean")) : el("span"),
+      groups.length ? el("div", { className: "category-list" }, groupRows(groups, "Game-Day Mean")) : el("span"),
       el("p", { className: "terms" }, [text(body.disclaimer || "")]),
     ]));
   }).catch(() => {

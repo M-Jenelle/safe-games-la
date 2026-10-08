@@ -23,7 +23,6 @@ class BriefingTests(unittest.TestCase):
         hint = density_hint(800, 14, "March 6, 2024")
         self.assertIn("800 m circle", hint)
         self.assertIn("2.01 km²", hint)
-        self.assertIn("March 6, 2024", hint)
         self.assertIn("other 13", hint)
 
     def test_overlap_sentences_use_the_radius(self):

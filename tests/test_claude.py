@@ -408,7 +408,7 @@ class ClaudeTests(unittest.TestCase):
             [(row["category"], row["count"]) for row in trend["results"]],
             [(label, change) for change, label in rising],
         )
-        self.assertIn("March 6", trend["answer"])
+        self.assertNotIn("March 6", trend["answer"])
 
         saturday = {}
         for day in detail["merged_weekday"]["days"]:

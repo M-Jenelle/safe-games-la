@@ -7,11 +7,13 @@ Unknown filters are rejected rather than ignored.
 from __future__ import annotations
 
 from datetime import date, timedelta
+import calendar
 import math
 import re
 import unicodedata
 
 from backend.claude import ClaudeUnavailable, Interpretation, ToolArguments, explain_figures, explanation_uses_only, interpret_question, settings
+from backend.event_baseline import scale_month
 from backend.context import CONTEXT_INTENTS, ContextUnavailable, context_answer, source_text
 from backend.datasets import _load_home_games, crime_time_for, load_city_baseline, load_permit_day_rows
 from backend.store import DatasetNotFound, get_venue, home_game_comparison, load_summary, permit_comparison
@@ -61,7 +63,6 @@ PRESENT_SOURCE = {
 PRESENT_PROVENANCE = (
     "Source: LAPD crime reports via the LA Open Data Portal, then LAPD NIBRS offenses "
     "(crime_merged.json). Period: 2020–present. Analysis: 800 m radius around the venue. "
-    "Reports dated before March 7, 2024, then one row per NIBRS offense. "
     "This is the venue page headline, not the 2020–2024 report total."
 )
 _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
@@ -73,10 +74,12 @@ HELP = (
     "the weekend pattern, offense groups on weekend or weekday days, and which groups rose most from 2020 to present. "
     "I can also quote the page's permit-day comparison and, for Dodger Stadium, the home-game comparison. "
     "I can compare named offense groups at two venues, rank venues by one offense group, by density, or by the change in records, "
-    "and show the 2020–2024 part-of-day chart, including one part such as night or evening. "
+    "and show the 2020–present part-of-day chart, including one part such as night or evening. "
     "The citywide total is every usable LAPD record in Los Angeles, not the 14 venue circles added together. "
     "I can also show nearby rail/bus transit, nearest recorded fire/police stations "
     "and hospitals (with the recorded emergency-room flag), and listed venue sports. "
+    "I can give a seasonal estimate for the next three months at one venue: the average of that month in earlier years. "
+    "That figure is not recorded crime and not a certainty. "
     "I cannot answer a count of permits, Ticketmaster listings, tonight, hourly counts, other distances, traffic, schedules, fares, "
     "nearest emergency-room hospitals, travel/response times, crime causes, live "
     "conditions, safety assessments, or 2028 predictions."
@@ -111,9 +114,12 @@ def _reply(status: str, answer: str, *, results=None, choices=None, intent=None,
 
 def _aliases(venue: dict) -> set[str]:
     """Build name variants from the real roster, with no hardcoded venue IDs."""
-    name = venue["venue_name"]
-    parts = [name, re.sub(r"\([^)]*\)", "", name)]
-    parts.extend(re.findall(r"\(([^)]*)\)", name))
+    names = [venue["venue_name"], *(venue.get("former_names") or [])]
+    parts = []
+    for name in names:
+        parts.append(name)
+        parts.append(re.sub(r"\([^)]*\)", "", name))
+        parts.extend(re.findall(r"\(([^)]*)\)", name))
     aliases = {_normalize(venue["venue_id"])}
     uninformative = {
         "la", "los", "angeles", "of", "the", "com", "halls", "area",
@@ -279,6 +285,21 @@ _FOLLOW_WORDS = {
     "a", "an", "also", "and", "about", "for", "how", "now", "please",
     "question", "same", "the", "there", "too", "venue", "what",
 }
+
+
+def _seasonal_question(message: str) -> bool:
+    """Next-month seasonal average only. 2028, safety, and "will" stay refused."""
+    if re.search(
+        r"\b(2028|will|safe|safer|safest|safety|risk|why|cause|causes|caused|"
+        r"shooting|shootings|today|tonight|density|rate|rates)\b",
+        message,
+    ):
+        return False
+    return bool(
+        re.search(r"\b(next|upcoming)\b", message)
+        and re.search(r"\bmonths?\b", message)
+        and re.search(r"\b(estimate|estimates|estimated|predict|prediction|forecast)\b", message)
+    )
 
 
 def _hard_block(message: str) -> bool:
@@ -640,6 +661,8 @@ def _tool_from_question(message: str) -> Interpretation | None:
 
 def _outside_scope(message: str, mentions: list) -> bool:
     """Code rejects explicit unsupported qualifiers even if Claude drops them."""
+    if _seasonal_question(message):
+        return False
     residual = _question_text(message, mentions)
     year = _single_year(message)
     group = _group_id(residual)
@@ -838,6 +861,8 @@ def _intent(message: str, mentions: list) -> str | None:
 
 def _choose_intent(message: str, mentions: list) -> str | None:
     # Local fallback rejects unknown words rather than ignoring qualifiers.
+    if _seasonal_question(message):
+        return "seasonal_estimate"
     residual = _question_text(message, mentions)
     if _wants_citywide(message):
         return "citywide"
@@ -1040,8 +1065,7 @@ def _tool_top_groups(venue: dict, args) -> dict | None:
         rows.append([label, _comma(count), f"{share}%"])
         results.append(_result(venue, label, count))
     caption = (
-        f"Top {len(ranked)} offense groups near {venue['venue_name']}, 2020–present, ranked by record count. "
-        "Reports before March 7, 2024, then NIBRS offenses."
+        f"Top {len(ranked)} offense groups near {venue['venue_name']}, 2020–present, ranked by record count."
     )
     table = _pattern_table(venue["venue_id"], "categories", "Open incident types on the venue page", ["Group", "Records", "Share"], rows)
     return _reply(
@@ -1101,14 +1125,10 @@ def _tool_trend(venue: dict, args) -> dict | None:
     baseline = load_city_baseline() or {}
     through = str((baseline.get("present") or {}).get("through") or "")
     partial = f" {end} runs through {through}, not a full year." if through.startswith(end) else ""
-    mix = ""
-    if "2024" in years:
-        mix = " 2024 mixes reports through March 6 with NIBRS offenses after that, so a 2024 count can come from that counting difference."
     name = venue["venue_name"]
     if rows:
         caption = (
-            f"Offense groups near {name} from {start} to {end}, ranked by the change in records. "
-            f"The span uses the 2020–present file: LAPD reports before March 7, 2024, then NIBRS offenses.{mix}{partial}"
+            f"Offense groups near {name} from {start} to {end}, ranked by the change in records.{partial}"
         )
     else:
         caption = f"No offense group near {name} had more records in {end} than in {start}."
@@ -1155,7 +1175,7 @@ def _tool_weekday(venue: dict, args) -> dict | None:
     if args.days == "all" and args.group is None:
         rows = [[day["label"], _comma(int(day.get("count") or 0))] for day in selected_days]
         results = [_result(venue, day["label"], int(day.get("count") or 0)) for day in selected_days]
-        caption = f"Day counts near {name}, 2020–present. Reports before March 7, 2024, then NIBRS offenses."
+        caption = f"Day counts near {name}, 2020–present."
         columns = ["Day", "Records"]
     elif args.group:
         label = _group_label(detail, args.group)
@@ -1166,7 +1186,7 @@ def _tool_weekday(venue: dict, args) -> dict | None:
             total += count
             rows.append([day["label"], _comma(count)])
         results = [_result(venue, label, total)]
-        caption = f"{label} on {when} near {name}, 2020–present: {total:,} records. Reports before March 7, 2024, then NIBRS offenses."
+        caption = f"{label} on {when} near {name}, 2020–present: {total:,} records."
         columns = ["Day", "Records"]
     else:
         totals: dict[str, int] = {}
@@ -1193,7 +1213,7 @@ def _tool_weekday(venue: dict, args) -> dict | None:
             results.append(_result(venue, label, count))
         caption = (
             f"Offense groups on {when} near {name}, 2020–present, ranked by record count. "
-            "Shares are of those days only. Reports before March 7, 2024, then NIBRS offenses."
+            "Shares are of those days only."
         )
         columns = ["Group", "Records", "Share"]
     table = _pattern_table(venue["venue_id"], "weekday", "Open day of week on the venue page", columns, rows)
@@ -1221,11 +1241,11 @@ def _compare_pair(venues: list, args, mentions: list) -> list | None:
 
 def _year_count_clause(year: str | None) -> str:
     if year is None:
-        return "Counts use the 2020–present file: LAPD reports before March 7, 2024, then NIBRS offenses."
+        return ""
     if year <= "2023":
         return f"{year} counts are LAPD reports."
     if year == "2024":
-        return "2024 mixes reports through March 6 with NIBRS offenses after that."
+        return ""
     return f"{year} counts are NIBRS offenses."
 
 
@@ -1266,10 +1286,12 @@ def _tool_compare_groups(pair: list, args) -> dict | None:
     names = f"{left[0]['venue_name']} and {right[0]['venue_name']}"
     label_text = " and ".join(_group_label(left[1], group_id) for group_id in groups)
     when = f" in {year}" if year else ", 2020–present"
-    caption = (
-        f"{label_text} near {names}{when}. {_year_count_clause(year)} "
-        "Venue areas can overlap, so the same incident may appear under both venues."
-    )
+    clause = _year_count_clause(year)
+    caption = " ".join(part for part in (
+        f"{label_text} near {names}{when}.",
+        clause,
+        "Venue areas can overlap, so the same incident may appear under both venues.",
+    ) if part)
     table = {
         "columns": ["Group", left[0]["venue_name"], right[0]["venue_name"]],
         "rows": rows,
@@ -1349,8 +1371,7 @@ def _tool_rank_change(venues: list) -> dict | None:
     packed.sort(key=lambda item: (-item[3], item[0]["venue_name"]))
     partial = f" {end} runs through {through}, not a full year." if through.startswith(end) else ""
     caption = (
-        f"Venues ranked by the change in records from 2020 to {end} inside the 800 m circle.{partial} "
-        "2024 mixes reports through March 6 with NIBRS offenses after that, so part of a change can come from that counting difference."
+        f"Venues ranked by the change in records from 2020 to {end} inside the 800 m circle.{partial}"
     )
     rows, results = [], []
     for index, (venue, start_count, end_count, change) in enumerate(packed, start=1):
@@ -1467,8 +1488,16 @@ def _align_tool(tool_call, message: str, engine: dict):
     return tool_call.model_copy(update={"arguments": current.model_copy(update=updates)})
 
 
+def _present_time_block(venue_id: str) -> dict:
+    """Part-of-day counts through the latest month, not the 2020–2024 file alone."""
+    merged = (get_venue(venue_id) or {}).get("merged_time") or {}
+    if merged.get("periods"):
+        return merged
+    return crime_time_for(venue_id) or {}
+
+
 def _time_of_day_answer(venue: dict) -> dict:
-    block = crime_time_for(venue["venue_id"]) or {}
+    block = _present_time_block(venue["venue_id"])
     periods = [period for period in (block.get("periods") or []) if period.get("label")]
     if not periods:
         return _reply(
@@ -1485,17 +1514,14 @@ def _time_of_day_answer(venue: dict) -> dict:
         share = int(math.floor((count / usable) * 100 + 0.5)) if usable else 0
         rows.append([str(period["label"]), _comma(count), f"{share}%"])
         results.append(_result(venue, str(period["label"]), count))
-    noon = int(block.get("noon_count") or 0)
-    unknown = int(block.get("unknown_count") or 0)
-    caption = f"Part of day near {venue['venue_name']}: {usable:,} reports with a usable hour, 2020–2024."
-    if noon:
-        caption += f" {noon:,} of them are stamped 12:00, often an unknown hour."
-    if unknown:
-        caption += f" {unknown:,} reports have no usable hour."
+    caption = (
+        f"Part of day near {venue['venue_name']}: {usable:,} records with a usable hour, 2020–present. "
+        "12:00 is often an unknown hour."
+    )
     return _reply(
         "answered", caption, results=results, intent="time_of_day",
-        sources=[dict(SOURCE)], provenance_text=PROVENANCE,
-        table={"columns": ["Part of day", "Reports", "Share"], "rows": rows},
+        sources=[dict(PRESENT_SOURCE)], provenance_text=PRESENT_PROVENANCE,
+        table={"columns": ["Part of day", "Records", "Share"], "rows": rows},
     )
 
 
@@ -1525,7 +1551,7 @@ def _period_count(block: dict, period_id: str, year: str | None, group: str | No
 
 
 def _period_answer(venue: dict, message: str) -> dict:
-    block = crime_time_for(venue["venue_id"]) or {}
+    block = _present_time_block(venue["venue_id"])
     period_id = _period_id(message)
     periods = [period for period in (block.get("periods") or []) if period.get("id") == period_id]
     if not periods:
@@ -1553,20 +1579,20 @@ def _period_answer(venue: dict, message: str) -> dict:
         )
     label = str(periods[0].get("label") or period_id)
     detail = get_venue(venue["venue_id"]) or {}
-    subject = _group_label(detail, group) if group else "Reports"
-    when = f" in {year}" if year else ", 2020–2024"
+    subject = _group_label(detail, group) if group else "Records"
+    when = f" in {year}" if year else ", 2020–present"
     caption = (
         f"{subject} during {label} near {venue['venue_name']}{when}: {count:,}. "
-        "These are LAPD reports. 12:00 is often an unknown hour."
+        "12:00 is often an unknown hour."
     )
     return _reply(
         "answered", caption, results=[_result(venue, subject if group else label, count)], intent="period",
-        sources=[dict(SOURCE)], provenance_text=PROVENANCE,
+        sources=[dict(PRESENT_SOURCE)], provenance_text=PRESENT_PROVENANCE,
     )
 
 
 def _period_groups_answer(venue: dict, message: str) -> dict:
-    block = crime_time_for(venue["venue_id"]) or {}
+    block = _present_time_block(venue["venue_id"])
     period_id = _period_id(message)
     periods = [period for period in (block.get("periods") or []) if period.get("id") == period_id]
     groups = list((periods[0].get("groups") if periods else None) or [])
@@ -1587,13 +1613,14 @@ def _period_groups_answer(venue: dict, message: str) -> dict:
         rows.append([str(item.get("label") or item.get("id")), _comma(count), f"{share}%"])
         results.append(_result(venue, str(item.get("label") or item.get("id")), count))
     caption = (
-        f"Offense groups during {label} near {venue['venue_name']}, 2020–2024. "
-        "Shares are of that part of day only. These are LAPD reports. 12:00 is often an unknown hour."
+        f"Offense groups during {label} near {venue['venue_name']}, 2020–present. "
+        "Shares are of that part of day only. "
+        "12:00 is often an unknown hour."
     )
     return _reply(
         "answered", caption, results=results, intent="period_groups",
-        sources=[dict(SOURCE)], provenance_text=PROVENANCE,
-        table={"columns": ["Group", "Reports", "Share"], "rows": rows},
+        sources=[dict(PRESENT_SOURCE)], provenance_text=PRESENT_PROVENANCE,
+        table={"columns": ["Group", "Records", "Share"], "rows": rows},
     )
 
 
@@ -1625,8 +1652,7 @@ def _rank_by_group(venues: list, group_id: str | None) -> dict:
         rows.append([str(index), venue["venue_name"], _comma(count)])
         results.append(_result(venue, label, count))
     caption = (
-        f"Venues ranked by {label} records, 2020–present, inside the 800 m circle. "
-        "Reports before March 7, 2024, then NIBRS offenses."
+        f"Venues ranked by {label} records, 2020–present, inside the 800 m circle."
     )
     return _reply(
         "answered", caption, results=results, intent="rank_group",
@@ -1834,6 +1860,8 @@ def _answer_question(message: str, venue_id: str | None, engine: dict, prior_mes
         return _reply("clarification", "Please name one venue for that question, or ask to compare two venue counts.", intent=intent)
 
     selected = list(resolved.values())
+    if intent == "seasonal_estimate":
+        return _seasonal_answer(selected[0])
     if intent in SLICE_INTENTS:
         return _slice_answer(intent, selected[0], normalized)
     if intent in HEADLINE_INTENTS:
@@ -1915,6 +1943,116 @@ def _rose_years(months: dict) -> list[str]:
     return sorted(found)
 
 
+def _venue_month_counts(venue: dict) -> dict[str, int]:
+    merged = venue.get("merged_by_month")
+    if isinstance(merged, dict) and merged:
+        totals: dict[str, int] = {}
+        for month, groups in merged.items():
+            if isinstance(groups, dict):
+                totals[str(month)] = sum(int(count or 0) for count in groups.values())
+        return totals
+    raw = venue.get("crime_by_month") or {}
+    return {str(month): int(count or 0) for month, count in raw.items()}
+
+
+def seasonal_estimates(by_month: dict[str, int], horizon: int = 3) -> list[dict]:
+    """Average of the same calendar month in up to the three prior years."""
+    keys = sorted(key for key in by_month if re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", str(key)))
+    if not keys:
+        return []
+    start_year, start_month = (int(part) for part in keys[0].split("-"))
+    end_year, end_month = (int(part) for part in keys[-1].split("-"))
+    filled: dict[str, int] = {}
+    year, month = start_year, start_month
+    while (year, month) <= (end_year, end_month):
+        key = f"{year:04d}-{month:02d}"
+        filled[key] = int(by_month.get(key) or 0)
+        month += 1
+        if month == 13:
+            month = 1
+            year += 1
+    estimates = []
+    year, month = end_year, end_month
+    for _step in range(horizon):
+        month += 1
+        if month == 13:
+            month = 1
+            year += 1
+        samples = []
+        for prior in range(year - 1, year - 4, -1):
+            key = f"{prior:04d}-{month:02d}"
+            if key in filled:
+                samples.append(filled[key])
+        if not samples:
+            continue
+        estimates.append({
+            "key": f"{year:04d}-{month:02d}",
+            "count": (sum(samples) + len(samples) // 2) // len(samples),
+            "years": len(samples),
+        })
+    return estimates
+
+
+def _with_home_game_schedule(detail: dict, estimates: list[dict]) -> tuple[list[dict], str]:
+    """Scale a month only when the stored home-game schedule lists a game in it."""
+    if not detail.get("home_games_available"):
+        return estimates, ""
+    multiplier = detail.get("home_game_multiplier")
+    dates = detail.get("scheduled_home_games") or []
+    applied = False
+    if multiplier and dates:
+        adjusted = []
+        for item in estimates:
+            year, month = (int(part) for part in item["key"].split("-"))
+            days = calendar.monthrange(year, month)[1]
+            games = sum(1 for day in dates if str(day).startswith(item["key"]))
+            count = scale_month(item["count"], days, games, float(multiplier))
+            applied = applied or bool(games)
+            adjusted.append({**item, "count": count})
+        estimates = adjusted
+    if applied:
+        note = " Months with a listed home game are scaled by the count-model multiplier."
+    else:
+        note = " No home game on the stored schedule falls in these months, so the home-game multiplier is not applied."
+    return estimates, note
+
+
+def _seasonal_answer(venue: dict) -> dict:
+    detail = get_venue(venue["venue_id"]) or venue
+    estimates = seasonal_estimates(_venue_month_counts(detail))
+    name = venue["venue_name"]
+    if not estimates:
+        return _reply(
+            "answered",
+            f"There are not enough earlier years to estimate the next months near {name}.",
+            intent="seasonal_estimate",
+        )
+    estimates, schedule_note = _with_home_game_schedule(detail, estimates)
+    lines = [
+        (
+            f"{_month_label(item['key'])}: {_comma(item['count'])} estimated records, "
+            f"averaged from {item['years']} earlier {'year' if item['years'] == 1 else 'years'}."
+        )
+        for item in estimates
+    ]
+    answer = (
+        f"Near {name}, the next {len(estimates)} months are seasonal estimates, not recorded crime and not a certainty. "
+        "Each figure is the average of that calendar month in up to the three most recent earlier years, rounded to a whole number. "
+        + " ".join(lines)
+        + schedule_note
+        + " This does not say a crime will occur, and it is not a forecast for 2028."
+    )
+    results = [_result(venue, f"Estimate {item['key']}", item["count"]) for item in estimates]
+    return _reply(
+        "answered",
+        answer,
+        results=results,
+        intent="seasonal_estimate",
+        sources=[dict(PRESENT_SOURCE)],
+        provenance_text=PRESENT_PROVENANCE,
+    )
+
+
 def _group_totals(months: dict, year: str | None = None) -> dict[str, int]:
     totals: dict[str, int] = {}
     for month, groups in (months or {}).items():
@@ -1985,8 +2123,7 @@ def _pattern_answer(intent: str, venue: dict, message: str = "") -> dict:
             results.append(_result(venue, label, count))
         heading = "Top offense group" if len(ranked) == 1 else f"Top {len(ranked)} offense groups"
         caption = (
-            f"{heading} near {name}, 2020–present, ranked by record count. "
-            "Reports before March 7, 2024, then NIBRS offenses."
+            f"{heading} near {name}, 2020–present, ranked by record count."
         )
         table = _pattern_table(venue_id, "categories", "Open incident types on the venue page", ["Group", "Records", "Share"], rows)
     elif intent == "weekend":
@@ -2003,10 +2140,7 @@ def _pattern_answer(intent: str, venue: dict, message: str = "") -> dict:
         rows = [[day["label"], _comma(int(day.get("count") or 0))] for day in days]
         results = [_result(venue, day["label"], int(day.get("count") or 0)) for day in days]
         summary = block.get("summary") or ""
-        caption = (
-            f"{summary} Counts are 2020–present: reports before March 7, 2024, plus NIBRS offenses after that. "
-            "The venue page shows those two series side by side."
-        ).strip()
+        caption = summary or f"Day of week near {name}, 2020–present."
         table = _pattern_table(venue_id, "weekday", "Open day of week on the venue page", ["Day", "Records"], rows)
     elif intent == "weekend_groups":
         block = (detail or {}).get("merged_weekday") or {}
@@ -2045,8 +2179,7 @@ def _pattern_answer(intent: str, venue: dict, message: str = "") -> dict:
         when = "Saturday and Sunday" if span == "weekend" else "Monday through Friday"
         caption = (
             f"Offense groups on {when} near {name}, 2020–present, ranked by record count. "
-            "Shares are of those days only. "
-            "Reports before March 7, 2024, then NIBRS offenses."
+            "Shares are of those days only."
         )
         table = _pattern_table(venue_id, "weekday", "Open day of week on the venue page", ["Group", "Records", "Share"], rows)
     else:
@@ -2075,9 +2208,7 @@ def _pattern_answer(intent: str, venue: dict, message: str = "") -> dict:
         through = str((baseline.get("present") or {}).get("through") or (baseline.get("nibrs") or {}).get("end") or "")
         partial = f" {end} runs through {through}, not a full year." if through.startswith(end) else ""
         caption = (
-            f"Offense groups near {name} that rose the most from {start} to {end}, ranked by how many more records. "
-            "The span is 2020–present: LAPD reports before March 7, 2024, then NIBRS offenses. "
-            "2024 mixes reports through March 6 with NIBRS offenses after that, so a 2024 count can come from that counting difference."
+            f"Offense groups near {name} that rose the most from {start} to {end}, ranked by how many more records."
             f"{partial} "
             "A group can rise from the first year to the last and still sit below a peak in between. "
             "2020 had little or no event crowd."
@@ -2199,6 +2330,9 @@ def _event_lift_answer(venue: dict, message: str) -> dict:
                 f"{_gap_phrase(summary)}. "
                 f"{_permit_weekend_sentence(load_permit_day_rows().get(venue['venue_id']) or [])}"
             )
+            baseline = (view.get("baseline") or {}).get("text")
+            if baseline:
+                sentences.append(baseline)
             if group:
                 match = next((item for item in (view.get("groups") or []) if item.get("group") == group), None)
                 label = _group_label(get_venue(venue["venue_id"]) or {}, group)
@@ -2230,6 +2364,9 @@ def _event_lift_answer(venue: dict, message: str) -> dict:
                 f"{_home_weekend_sentence(payload)} "
                 "2020 games had little or no crowd."
             )
+            baseline = (games.get("baseline") or {}).get("text")
+            if baseline:
+                sentences.append(baseline)
             if group:
                 match = next((item for item in (games.get("groups") or []) if item.get("group") == group), None)
                 label = _group_label(get_venue(venue["venue_id"]) or {}, group)
@@ -2289,7 +2426,7 @@ def _year_note(year: str, through: str) -> str:
     if int(year) <= 2023:
         return f"{year} counts LAPD reports inside the 800 m circle."
     if year == "2024":
-        return "2024 counts LAPD reports through March 6, then NIBRS offenses."
+        return ""
     if through.startswith(year):
         return f"{year} counts NIBRS offenses through {through}, not a full year."
     return f"{year} counts NIBRS offenses."
@@ -2352,7 +2489,7 @@ def _slice_answer(intent: str, venue: dict, message: str) -> dict:
         provenance = (
             "Source: LAPD NIBRS offenses via the LA Open Data Portal (crime_merged.json). "
             f"Period: March 7, 2024 through {end}. Analysis: 800 m radius around the venue. "
-            "One case can include more than one offense. This is not the 2020–2024 report total."
+            "This is not the 2020–2024 report total."
         )
         return _reply(
             "answered",
@@ -2394,8 +2531,7 @@ def _slice_answer(intent: str, venue: dict, message: str) -> dict:
         partial = f" {end} runs through {through}, not a full year." if through.startswith(str(end)) else ""
         subject = label or "Records"
         answer = (
-            f"{name} — {subject}: {count:,} records from {start} through {end}.{partial} "
-            "Reports before March 7, 2024, then NIBRS offenses."
+            f"{name} — {subject}: {count:,} records from {start} through {end}.{partial}"
         )
         return _reply(
             "answered", answer, results=[_result(venue, f"{start}–{end}", count)], intent=intent,
@@ -2413,8 +2549,7 @@ def _slice_answer(intent: str, venue: dict, message: str) -> dict:
         category = f"{label} {year}".strip() if group else year
     else:
         answer = (
-            f"{name} — {subject}: {count:,} records, 2020–present. "
-            "Reports before March 7, 2024, then NIBRS offenses."
+            f"{name} — {subject}: {count:,} records, 2020–present."
         )
         category = label or "2020–present"
     return _reply(
@@ -2437,12 +2572,9 @@ def _citywide_answer() -> dict:
             intent="citywide",
         )
     count = int(present["count"])
-    legacy = int(present.get("legacy_count") or 0)
-    nibrs = int(present.get("nibrs_offense_count") or 0)
     through = present.get("through") or "the latest extract"
     answer = (
         f"City of Los Angeles, 2020–present: {count:,} records. "
-        f"That is {legacy:,} LAPD reports before March 7, 2024, then {nibrs:,} NIBRS offenses through {through}. "
         "This is every usable LAPD record in the city. It is not the 14 venue circles added together. "
         "Downtown circles overlap, so those venue counts are not a city total."
     )
@@ -2504,8 +2636,7 @@ def _headline_answer(intent: str, venue: dict) -> dict:
     count = int(present["count"])
     if intent == "present_total":
         answer = (
-            f"{name} — 2020–present: {count:,} records inside the 800 m circle. "
-            "This blends LAPD reports before March 7, 2024 with NIBRS offenses from that date on."
+            f"{name} — 2020–present: {count:,} records inside the 800 m circle."
         )
         category = "2020–present"
     elif intent == "density":
@@ -2528,7 +2659,7 @@ def _headline_answer(intent: str, venue: dict) -> dict:
                 provenance_text=PRESENT_PROVENANCE,
             )
         answer = f"{name} — {city['summary']} Period: {city['period']}."
-        category = "2020–present vs city"
+        category = "2020–present vs City"
     else:
         label = _month_label(str(present.get("peak_month") or ""))
         peak = int(present.get("peak_count") or 0)
