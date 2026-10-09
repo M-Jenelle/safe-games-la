@@ -382,7 +382,7 @@ class ClaudeTests(unittest.TestCase):
         self.assertEqual(rejected["status"], "unsupported")
         self.assertEqual(rejected["results"], [])
 
-        start, end = year_counts("2021"), year_counts("2025")
+        start, end = year_counts("2021"), year_counts("2023")
         rising = sorted(
             (
                 (end.get(group, 0) - start.get(group, 0), labels.get(group, group))
@@ -395,9 +395,11 @@ class ClaudeTests(unittest.TestCase):
             coerced = self.post("Which groups rose from 2021 to 2025 near Dodger Stadium?")
         self.assertEqual(coerced["question_type"], "trend")
         self.assertEqual(coerced["table"]["columns"][1], "2021")
-        self.assertEqual(coerced["table"]["columns"][-2], "2025")
-        self.assertNotIn("2020", coerced["table"]["columns"])
+        self.assertIn("2025", coerced["table"]["columns"])
         self.assertNotIn("2026", coerced["table"]["columns"])
+        self.assertIn("2023", coerced["table"]["columns"])
+        self.assertNotIn("2020", coerced["table"]["columns"])
+        self.assertEqual(coerced["table"]["columns"][-1], "Change to 2023")
 
         with self.api({
             "intent": "tool", "scope_supported": True, "tool": "trend",
@@ -405,12 +407,16 @@ class ClaudeTests(unittest.TestCase):
         }):
             trend = self.post("Which groups rose from 2021 to 2025 near Dodger Stadium?")
         self.assertEqual(trend["question_type"], "trend")
-        self.assertEqual(trend["table"]["columns"], ["Group", "2021", "2022", "2023", "2024", "2025", "Change"])
+        self.assertEqual(
+            trend["table"]["columns"],
+            ["Group", "2021", "2022", "2023", "2024 to Mar 6", "2024 from Mar 7", "2025", "Change to 2023"],
+        )
         self.assertEqual(
             [(row["category"], row["count"]) for row in trend["results"]],
             [(label, change) for change, label in rising],
         )
-        self.assertNotIn("March 6", trend["answer"])
+        self.assertIn("March 6, 2024", trend["answer"])
+        self.assertIn("From March 7, 2024", trend["answer"])
 
         saturday = {}
         for day in detail["merged_weekday"]["days"]:
@@ -483,7 +489,9 @@ class ClaudeTests(unittest.TestCase):
         self.assertEqual(payload["status"], "answered")
         self.assertEqual(payload["question_type"], "trend")
         self.assertEqual(payload["table"]["columns"][1], "2021")
-        self.assertEqual(payload["table"]["columns"][-2], "2025")
+        self.assertIn("2025", payload["table"]["columns"])
+        self.assertEqual(payload["table"]["columns"][-1], "Change to 2023")
+        self.assertIn("NIBRS offense code", payload["answer"])
         self.assertEqual(payload["engine"], "data")
 
     def test_timeout_still_ranks_and_a_third_venue_id_does_not_change_the_pair(self):

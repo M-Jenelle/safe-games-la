@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,650&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/styles.css?v=heat-load">
 </head>
 <body>
   <div class="app">
@@ -131,6 +131,10 @@
             <div id="facility-tip" class="facility-tip" hidden></div>
           </div>
           <p class="map-hint" id="map-hint">Loading the map.</p>
+          <div class="heat-loading" id="heat-loading" hidden role="status" aria-live="polite">
+            <span class="heat-spinner" aria-hidden="true"></span>
+            <span>Loading crime data</span>
+          </div>
           <div class="map-legend" id="crime-legend"><span>Less</span><i></i><span>More</span></div>
         </div>
         <section class="detail" id="detail" hidden aria-live="polite" aria-labelledby="overview-heading"></section>
@@ -177,7 +181,7 @@
           </svg>
         </button>
       </div>
-      <div class="chat-log" id="chat-log-v2" role="log" aria-live="polite" aria-relevant="additions" aria-label="v2 chat messages">
+      <div class="chat-log" id="chat-log-v2" role="log" aria-live="polite" aria-relevant="additions" aria-label="Torchy chat messages">
         <div class="chat-body">
           <p class="analysis-lead">Name a venue or select one on the map to ask about “this venue.”</p>
           <p>Answers are calculated in Python. The note under each answer is attached by the server.</p>
@@ -187,7 +191,7 @@
       </div>
       <p class="chat-status" id="chat-status-v2" role="status"></p>
       <form class="chat-form" id="chat-form-v2">
-        <label class="visually-hidden" for="chat-input-v2">Message v2</label>
+        <label class="visually-hidden" for="chat-input-v2">Message Torchy</label>
         <input id="chat-input-v2" type="text" placeholder="Ask about a venue" required maxlength="2000" autocomplete="off">
         <button type="submit">Send</button>
       </form>
@@ -208,7 +212,7 @@
   <script src="https://unpkg.com/deck.gl@9.2.0/dist.min.js"></script>
   <script src="https://unpkg.com/@deck.gl/google-maps@9.2.0/dist.min.js"></script>
   <script src="/static/chat.js"></script>
-  <script src="/static/chat-v2.js?v=judge2"></script>
-  <script type="module" src="/static/js/main.js"></script>
+  <script src="/static/chat-v2.js?v=torchy-source"></script>
+  <script type="module" src="/static/js/main.js?v=heat-load"></script>
 </body>
 </html>

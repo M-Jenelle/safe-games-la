@@ -96,7 +96,10 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(total["results"][0]["count"], present["count"])
         self.assertIn(f"{present['count']:,}", total["answer"])
         self.assertIn("2020–present", total["answer"])
-        self.assertNotIn("March 7, 2024", total["answer"])
+        reports_count = present["count"] - venue["nibrs"]["count"]
+        self.assertIn(f"{reports_count:,} LAPD reports from 2020 through March 6, 2024", total["answer"])
+        self.assertIn(f"{venue['nibrs']['count']:,} NIBRS offenses from March 7, 2024", total["answer"])
+        self.assertIn("coding change", total["answer"])
         self.assertNotEqual(total["results"][0]["count"], 914)
 
         plain = self.post("How many incidents were reported near Dodger Stadium?")
@@ -187,9 +190,9 @@ class ChatTests(unittest.TestCase):
             [day["label"] for day in days],
         )
 
-        years = sorted({month[:4] for month in months if month[:4].isdigit() and 2020 <= int(month[:4]) <= 2026})
-        earlier = totals(years[0])
-        later = totals(years[-1])
+        years = ["2020", "2021", "2022", "2023"]
+        earlier = totals("2020")
+        later = totals("2023")
         rising = sorted(
             (
                 (later.get(group, 0) - earlier.get(group, 0), labels.get(group, group))
@@ -202,14 +205,17 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(rose["question_type"], "rose")
         self.assertEqual([(row["category"], row["count"]) for row in rose["results"]], [(label, change) for change, label in rising])
         self.assertEqual(rose["table"]["href"], "#/venue/V01/months")
-        self.assertEqual(rose["table"]["columns"], ["Group", *years, "Change"])
-        self.assertIn("2025", rose["table"]["columns"])
-        self.assertIn("2026", rose["table"]["columns"])
+        self.assertEqual(
+            rose["table"]["columns"],
+            ["Group", *years, "2024 to Mar 6", "2024 from Mar 7", "2025", "2026", "Change to 2023"],
+        )
         theft = next(row for row in rose["table"]["rows"] if row[0] == labels["theft"])
         self.assertEqual(theft[years.index("2023") + 1], f"{totals('2023')['theft']:,}")
         self.assertIn("2020–present", rose["answer"])
-        self.assertNotIn("March 6", rose["answer"])
-        self.assertIn("not a full year", rose["answer"])
+        self.assertIn("March 6, 2024", rose["answer"])
+        self.assertIn("March 7, 2024", rose["answer"])
+        self.assertIn("NIBRS offense code", rose["answer"])
+        self.assertIn("The change stops at 2023", rose["answer"])
 
     def test_event_lift_quotes_the_page_and_names_the_weekend_mix(self):
         permit = permit_comparison("V01")["summary"]
@@ -534,9 +540,12 @@ class ChatTests(unittest.TestCase):
         trend = self.post("Which groups rose from 2021 to 2025 near Dodger Stadium?")
         self.assertEqual(trend["question_type"], "trend")
         self.assertEqual(trend["table"]["columns"][1], "2021")
-        self.assertEqual(trend["table"]["columns"][-2], "2025")
-        self.assertNotIn("2020", trend["table"]["columns"])
+        self.assertIn("2025", trend["table"]["columns"])
         self.assertNotIn("2026", trend["table"]["columns"])
+        self.assertIn("2023", trend["table"]["columns"])
+        self.assertNotIn("2020", trend["table"]["columns"])
+        self.assertEqual(trend["table"]["columns"][-1], "Change to 2023")
+        self.assertIn("NIBRS offense code", trend["answer"])
 
         compared = self.post("Comparing Dodger Stadium and the Coliseum by density")
         self.assertEqual(compared["status"], "answered")
@@ -628,7 +637,7 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(body["results"][0]["count"], changes[0][0])
         self.assertIn("800 m circle", body["answer"])
         self.assertIn("not a full year", body["answer"])
-        self.assertNotIn("March 6", body["answer"])
+        self.assertIn("This ranking crosses March 7, 2024", body["answer"])
 
     def test_follow_up_replaces_only_the_venue(self):
         first = self.post("How many incidents near Dodger Stadium?")
@@ -851,6 +860,36 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(predicted["question_type"], "seasonal_estimate")
         self.assertEqual(self.post("Predict how many incidents will happen near Dodger Stadium in 2028")["status"], "unsupported")
         self.assertEqual(self.post("Which venue is safest in 2028?")["status"], "unsupported")
+
+    def test_other_group_lists_the_labels_inside_it(self):
+        body = self.post("What crimes does Other entail near Peacock Theater?")
+        self.assertEqual(body["status"], "answered")
+        self.assertEqual(body["question_type"], "other_contents")
+        self.assertIn("not one crime", body["answer"])
+        self.assertIn("TRESPASSING", body["answer"])
+        self.assertIn("March 6, 2024", body["answer"])
+        self.assertIn("March 7, 2024", body["answer"])
+        self.assertTrue(body["table"]["rows"])
+        self.assertGreater(body["results"][0]["count"], 0)
+
+    def test_station_neighborhood_is_not_crime_on_a_train(self):
+        near = self.post("How many crimes are near the Metro station at Peacock Theater?")
+        self.assertEqual(near["question_type"], "station_crime")
+        self.assertIn("Pico Station", near["answer"])
+        self.assertIn("not a crime on a train", near["answer"])
+        self.assertIn("NIBRS offenses from March 7, 2024", near["answer"])
+        self.assertNotIn("not in this count", near["answer"])
+        self.assertGreater(near["results"][0]["count"], 1839)
+        walk = self.post("Is the walk from the Metro station to Peacock Theater safe?")
+        self.assertEqual(walk["question_type"], "station_crime")
+        self.assertIn("not a safety assessment", walk["answer"])
+        self.assertEqual(walk["results"][0]["count"], near["results"][0]["count"])
+        none_nearby = self.post("How many crimes are on the Metro line at Dodger Stadium?")
+        self.assertIn("No rail station is recorded within 800", none_nearby["answer"])
+        age = self.post("How old are theft victims near Dodger Stadium?")
+        self.assertEqual(age["question_type"], "victim_age")
+        self.assertIn("Victim age is not in these files", age["answer"])
+        self.assertEqual(age["results"], [])
 
 
 if __name__ == "__main__":

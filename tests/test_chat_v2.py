@@ -345,15 +345,32 @@ class ChatV2NextTests(ChatV2Tests):
         self.assertEqual(body["tool"], "trend")
         self.assertEqual(body["results"][0]["venue_id"], "V01")
         self.assertEqual(body["table"]["columns"][1], "2021")
-        self.assertIn("March 7, 2024", body["answer"])
+        self.assertIn("2025", body["table"]["columns"])
+        self.assertIn("2026", body["table"]["columns"])
+        self.assertEqual(body["table"]["columns"][-1], "Change to 2023")
+        self.assertIn("NIBRS offense code", body["answer"])
         self.assertEqual(body["confidence"]["kind"], "recorded")
         self.assertNotIn("Which venue", body["answer"])
 
     def test_rose_names_the_series_break(self):
         body = answer_v2("Which crimes rose the most near Dodger Stadium?")
         self.assertEqual(body["tool"], "rose")
+        self.assertEqual(
+            body["table"]["columns"],
+            ["Group", "2020", "2021", "2022", "2023", "2024 to Mar 6", "2024 from Mar 7", "2025", "2026", "Change to 2023"],
+        )
+        self.assertIn("March 6, 2024", body["answer"])
         self.assertIn("March 7, 2024", body["answer"])
+        self.assertIn("NIBRS offense code", body["answer"])
+        self.assertNotEqual(body["results"][0]["category"], "Other")
         self.assertEqual(body["confidence"]["kind"], "recorded")
+        center = answer_v2("Which crimes rose the most near LA Convention Center?")
+        self.assertEqual(
+            center["table"]["columns"],
+            ["Group", "2020", "2021", "2022", "2023", "2024 to Mar 6", "2024 from Mar 7", "2025", "2026", "Change to 2023"],
+        )
+        self.assertEqual(center["results"][0]["category"], "Vehicle")
+        self.assertNotEqual(center["results"][0]["category"], "Other")
 
     def test_kinds_of_crime_at_night_are_groups(self):
         body = answer_v2("Which kinds of crime show up most around the Coliseum late at night?")

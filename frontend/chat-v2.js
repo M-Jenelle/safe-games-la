@@ -51,7 +51,7 @@
     article.className = `chat-message chat-message-${role}`;
     const author = document.createElement("strong");
     author.className = "chat-author";
-    author.textContent = role === "user" ? "You" : "v2";
+    author.textContent = role === "user" ? "You" : "Torchy";
     article.append(author);
     const body = document.createElement("p");
     body.textContent = content;
@@ -67,6 +67,18 @@
     note.className = className;
     note.textContent = content;
     article.append(note);
+  }
+
+  function sourceCitation(article, content) {
+    if (!content) return;
+    const details = document.createElement("details");
+    details.className = "chat-source";
+    const summary = document.createElement("summary");
+    summary.textContent = "Source";
+    const note = document.createElement("p");
+    note.textContent = content;
+    details.append(summary, note);
+    article.append(details);
   }
 
   function questionButton(label, message) {
@@ -151,7 +163,7 @@
               article.append(table);
             }
             addLine(article, "chat-caveat", body.confidence?.text);
-            addLine(article, "chat-caveat", body.caveat);
+            sourceCitation(article, body.caveat);
             for (const link of body.links || []) {
               const anchor = document.createElement("a");
               anchor.className = "chat-jump";
@@ -190,7 +202,7 @@
     } catch (error) {
       const reason = error.name === "AbortError"
         ? "The request timed out. The venue page still has the same figures."
-        : "v2 could not be reached. Torchy is unchanged.";
+        : "Torchy could not be reached. The venue page still has the same figures.";
       messageNode("assistant", reason);
       input.value = message;
     } finally {

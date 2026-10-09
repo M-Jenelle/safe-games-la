@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 import calendar
 import contextvars
+import csv
 import math
 import re
 import unicodedata
@@ -16,9 +17,10 @@ import unicodedata
 from backend.claude import ClaudeUnavailable, Interpretation, ToolArguments, explain_figures, explanation_uses_only, interpret_question, settings
 from backend.event_baseline import scale_month
 from backend.context import CONTEXT_INTENTS, ContextUnavailable, context_answer, source_text
-from backend.datasets import _load_home_games, crime_time_for, load_city_baseline, load_permit_day_rows
-from backend.store import DatasetNotFound, get_venue, home_game_comparison, load_summary, permit_comparison
-from pipeline.crime_groups import GROUP_LABELS, crime_group
+from backend.datasets import REPO_ROOT, _load_home_games, crime_time_for, load_city_baseline, load_merged, load_permit_day_rows
+from backend.store import DatasetNotFound, get_crime_points, get_venue, home_game_comparison, load_summary, permit_comparison
+from pipeline.crime_groups import GROUP_LABELS, crime_group, nibrs_group
+from pipeline.geo import haversine_m
 
 PERIOD = "2020–2024"
 RADIUS_M = 800
@@ -79,6 +81,8 @@ HELP = (
     "The citywide total is every usable LAPD record in Los Angeles, not the 14 venue circles added together. "
     "I can also show nearby rail/bus transit, nearest recorded fire/police stations "
     "and hospitals (with the recorded emergency-room flag), and listed venue sports. "
+    "I can count LAPD reports and NIBRS offenses whose pin falls within 200 m of a rail station recorded inside the venue circle. "
+    "That is the neighborhood of the station pin, not a crime on a train and not a safety judgment. "
     "I can give a seasonal estimate for the next three months at one venue: the average of that month in earlier years. "
     "That figure is not recorded crime and not a certainty. "
     "I cannot answer a count of permits, Ticketmaster listings, tonight, hourly counts, other distances, traffic, schedules, fares, "
@@ -680,9 +684,267 @@ def _tool_from_question(message: str) -> Interpretation | None:
     return None
 
 
+_STATION_RADIUS_M = 200.0
+_rail_coords: dict[str, tuple[float, float]] | None = None
+_nibrs_pins: tuple[list[float], list[float], list[int]] | None = None
+
+
+def _rail_coordinates() -> dict[str, tuple[float, float]]:
+    """Station pins from the Metro file. The venue summary stores distance, not coordinates."""
+    global _rail_coords
+    if _rail_coords is None:
+        coords: dict[str, tuple[float, float]] = {}
+        path = REPO_ROOT / "data" / "la_metro_rail_stations.csv"
+        with path.open(newline="", encoding="utf-8") as handle:
+            for row in csv.DictReader(handle):
+                coords[row["station_id"]] = (float(row["latitude"]), float(row["longitude"]))
+        _rail_coords = coords
+    return _rail_coords
+
+
+def _nibrs_station_pins() -> tuple[list[float], list[float], list[int]]:
+    """City NIBRS pins from March 7, 2024 on. Each stored point is already rounded to 4 decimals."""
+    global _nibrs_pins
+    if _nibrs_pins is None:
+        heat = (load_merged() or {}).get("nibrs_heat") or {}
+        latitudes: list[float] = []
+        longitudes: list[float] = []
+        weights: list[int] = []
+        for point in heat.get("points") or []:
+            latitudes.append(float(point["latitude"]))
+            longitudes.append(float(point["longitude"]))
+            weights.append(int(point["weight"]))
+        _nibrs_pins = (latitudes, longitudes, weights)
+    return _nibrs_pins
+
+
+def _pins_within(origin_lat: float, origin_lon: float, latitudes: list[float], longitudes: list[float], weights: list[int] | None, radius_m: float) -> int:
+    if not latitudes:
+        return 0
+    distances = haversine_m(origin_lat, origin_lon, latitudes, longitudes)
+    if weights is None:
+        return int((distances <= radius_m).sum())
+    return int(sum(weight for distance, weight in zip(distances, weights) if distance <= radius_m))
+
+
+def _station_crime_question(message: str) -> bool:
+    """Crime near a recorded rail station, or the walk to one. Not a general transit question."""
+    transit = re.search(r"\b(metro|rail|train|trains|subway)\b", message)
+    place = re.search(r"\b(station|stations|line|lines|walk|walking)\b", message)
+    crime = re.search(r"\b(crime|crimes|incident|incidents|record|records|offense|offenses|offence|offences)\b", message)
+    walk = re.search(r"\b(walk|walking)\b", message) and re.search(r"\b(metro|rail|train|trains|subway|station)\b", message)
+    return bool((transit and place and crime) or walk)
+
+
+def _victim_age_question(message: str) -> bool:
+    return bool(
+        re.search(r"\b(age|ages|old)\b", message)
+        and re.search(r"\b(victim|victims|pickpocket|pickpockets|crime|crimes|theft|thefts)\b", message)
+    )
+
+
+def _victim_age_answer() -> dict:
+    return _reply(
+        "answered",
+        "Victim age is not in these files. Each processed record keeps the offense, the date, and a rounded location. "
+        "Age and the rest of the victim record were left out, so I cannot group crimes by age.",
+        intent="victim_age",
+    )
+
+
+def _station_crime_answer(venue: dict, message: str) -> dict:
+    """Reports whose stored pin is within 200 m of a rail station inside the venue circle."""
+    field = venue.get("rail_stations_nearby") or {}
+    stations = [station for station in (field.get("stations") or []) if station.get("station_name")]
+    name = venue["venue_name"]
+    radius = float(venue["buffer_radius_m"])
+    if not stations:
+        return _reply(
+            "answered",
+            f"No rail station is recorded within {radius:g} m of {name}. "
+            "The crime pins used here are the ones inside that circle, the same points behind the venue map. "
+            "I cannot count records at a station farther away, along a track, or on a train. "
+            "The files have station coordinates, not the track, and no field that says a crime happened on transit.",
+            intent="station_crime",
+            results=[_result(venue, "Near a rail station", 0)],
+        )
+    named = None
+    for station in stations:
+        if _normalize(station["station_name"]) in message:
+            named = station
+            break
+    station = named or min(stations, key=lambda item: float(item["distance_m"]))
+    pin = _rail_coordinates().get(str(station.get("station_id")))
+    if pin is None:
+        return _reply(
+            "unavailable",
+            f"{station['station_name']} is recorded near {name}, but its coordinates are missing, so I cannot count nearby reports.",
+            intent="station_crime",
+        )
+    points = (get_crime_points(venue["venue_id"]) or {}).get("points") or []
+    kept = [
+        point for point in points
+        if str(point.get("date") or "")[:10] and str(point["date"])[:10] < "2024-03-07"
+    ]
+    report_count = _pins_within(
+        pin[0], pin[1],
+        [float(point["latitude"]) for point in kept],
+        [float(point["longitude"]) for point in kept],
+        None,
+        _STATION_RADIUS_M,
+    )
+    nibrs_lat, nibrs_lon, nibrs_weight = _nibrs_station_pins()
+    nibrs_count = _pins_within(pin[0], pin[1], nibrs_lat, nibrs_lon, nibrs_weight, _STATION_RADIUS_M)
+    lines = station.get("lines") or "not recorded"
+    judgment = ""
+    if re.search(r"\b(safe|safer|safest|safety|walk|walking)\b", message):
+        judgment = " This is not a safety assessment, and it is not a count of crimes on the sidewalk between the venue and the station."
+    return _reply(
+        "answered",
+        f"Near {name}, pins within {_STATION_RADIUS_M:g} m of {station['station_name']}: "
+        f"{report_count:,} LAPD reports through March 6, 2024, and {nibrs_count:,} NIBRS offenses from March 7, 2024. "
+        f"Lines: {lines}. The station is {float(station['distance_m']):,.1f} m from the venue pin, inside the {radius:g} m circle. "
+        "Locations are rounded to about 11 m, so this is the neighborhood of the station pin, not a crime on a train. "
+        "The files have no track geometry and no premise field for transit. "
+        f"One NIBRS case can count more than once.{judgment}",
+        results=[_result(venue, station["station_name"], report_count + nibrs_count)],
+        intent="station_crime",
+    )
+
+
+def _other_contents_question(message: str) -> bool:
+    """What landed in the leftover Other group. Permit 'other days' is not this."""
+    if re.search(r"\bother days?\b", message):
+        return False
+    return bool(
+        re.search(r"\bother\b", message)
+        and re.search(
+            r"\b(entail|entails|include|includes|included|mean|means|inside|contain|contains|consist|consists|bucket|group|groups|category|categories)\b",
+            message,
+        )
+    )
+
+
+def _top_labels(counts: dict[str, int], limit: int = 8) -> list[tuple[str, int]]:
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return ranked[:limit]
+
+
+def _other_contents_answer(venue: dict) -> dict:
+    """List the report labels and NIBRS descriptions that the Other bucket kept."""
+    from collections import Counter
+
+    reports: Counter[str] = Counter()
+    for point in (get_crime_points(venue["venue_id"]) or {}).get("points") or []:
+        occurred = str(point.get("date") or "")[:10]
+        if not occurred or occurred >= "2024-03-07":
+            continue
+        label = str(point.get("category") or "").strip() or "Unknown"
+        if crime_group(label) == "other":
+            reports[label] += 1
+    nibrs: Counter[str] = Counter()
+    detail = get_venue(venue["venue_id"]) or {}
+    for label, count in ((detail.get("nibrs") or {}).get("by_category") or {}).items():
+        if crime_group(str(label)) == "other":
+            nibrs[str(label)] += int(count)
+    name = venue["venue_name"]
+    report_total = sum(reports.values())
+    nibrs_total = sum(nibrs.values())
+    if not report_total and not nibrs_total:
+        return _reply(
+            "answered",
+            f"No records near {name} fell into Other.",
+            intent="other_contents",
+            sources=[dict(PRESENT_SOURCE)],
+            provenance_text=PRESENT_PROVENANCE,
+        )
+    lines = [
+        f"Other near {name} is not one crime. It is every record the nine group rules did not claim: "
+        f"{report_total:,} LAPD reports through March 6, 2024, and {nibrs_total:,} NIBRS offenses from March 7, 2024."
+    ]
+    rows = []
+    if reports:
+        shown = _top_labels(reports)
+        lines.append("Reports through March 6, 2024:")
+        lines.extend(f"{label} — {count:,}." for label, count in shown)
+        hidden = len(reports) - len(shown)
+        if hidden:
+            lines.append(f"{hidden} more report labels are in this bucket.")
+        rows.extend([label, _comma(count), "Reports through Mar 6"] for label, count in shown)
+    if nibrs:
+        shown = _top_labels(nibrs)
+        lines.append("NIBRS offenses from March 7, 2024:")
+        lines.extend(f"{label} — {count:,}." for label, count in shown)
+        hidden = len(nibrs) - len(shown)
+        if hidden:
+            lines.append(f"{hidden} more NIBRS descriptions are in this bucket.")
+        rows.extend([label, _comma(count), "NIBRS from Mar 7"] for label, count in shown)
+    table = _pattern_table(
+        venue["venue_id"], "categories", "Open incident types on the venue page",
+        ["Description", "Records", "Series"], rows,
+    )
+    return _reply(
+        "answered",
+        " ".join(lines[:1]) + "\n" + "\n".join(lines[1:]),
+        results=[_result(venue, "Other", report_total + nibrs_total)],
+        intent="other_contents",
+        sources=[dict(PRESENT_SOURCE)],
+        provenance_text=PRESENT_PROVENANCE,
+        table=table,
+    )
+
+
+def _nearest_rail_answer(venue: dict, meta: dict) -> dict:
+    """Closest rail station recorded inside the 800 m buffer."""
+    field = venue.get("rail_stations_nearby")
+    source_file = (meta.get("sources") or {}).get("rail_stations")
+    if not isinstance(field, dict) or not isinstance(source_file, str) or not source_file:
+        return _reply(
+            "unavailable",
+            "The rail station list is missing. I cannot calculate a reliable answer until the data is rebuilt.",
+            intent="rail",
+        )
+    radius = venue["buffer_radius_m"]
+    stations = field.get("stations") or []
+    name = venue["venue_name"]
+    if not stations:
+        answer = f"No rail station is recorded within {radius:g} m of {name}."
+        nearest = None
+    else:
+        nearest = min(stations, key=lambda station: float(station["distance_m"]))
+        lines = nearest.get("lines") or "not recorded"
+        answer = (
+            f"Nearest recorded rail station within {radius:g} m of {name}: {nearest['station_name']}. "
+            f"Lines: {lines}. Straight-line distance: {float(nearest['distance_m']):,.1f} m. "
+            "This is the closest station in the 800 m list, not a search of the whole rail system."
+        )
+    sources = [{
+        "name": "LA Metro GTFS rail stations",
+        "file": source_file,
+        "period": None,
+        "radius_m": radius,
+        "scope": f"Within an {radius:g} m radius around the venue.",
+        "coverage_date": None,
+        "processed_at": meta.get("generated_at"),
+    }]
+    return _reply(
+        "answered",
+        answer,
+        results=[{
+            "venue_id": venue["venue_id"],
+            "venue_name": name,
+            "topic": "rail",
+            "count": 1 if nearest else 0,
+            "stations": [nearest] if nearest else [],
+        }],
+        intent="rail",
+        sources=sources,
+    )
+
+
 def _outside_scope(message: str, mentions: list) -> bool:
     """Code rejects explicit unsupported qualifiers even if Claude drops them."""
-    if _seasonal_question(message):
+    if _seasonal_question(message) or _other_contents_question(message) or _station_crime_question(message) or _victim_age_question(message):
         return False
     residual = _question_text(message, mentions)
     year = _single_year(message)
@@ -794,7 +1056,9 @@ def _context_intent(residual: str) -> str | None:
     if re.search(r"\b(crime|crimes|incident|incidents|offence|offense|compare|comparison|versus|vs|difference|more|fewer|higher|lower|best|better|most|top|highest|largest|common|frequent|busiest)\b", residual):
         return "unsupported"
     if topics <= {"rail", "bus", "transit"}:
-        if re.search(r"\b(nearest|closest|directions|route to|routes to|route from|routes from)\b", residual):
+        if re.search(r"\b(directions|route to|routes to|route from|routes from)\b", residual):
+            return "unsupported"
+        if re.search(r"\b(nearest|closest)\b", residual) and "rail" not in topics and "transit" not in topics:
             return "unsupported"
         if "bus" in topics and re.search(r"\b(names|addresses|locations|individual)\b|\b(list|which|where) (?:the )?bus stops\b", residual):
             return "unsupported"
@@ -898,6 +1162,12 @@ def _choose_intent(message: str, mentions: list) -> str | None:
         return "rank_group_missing"
     if _wants_event_lift(message):
         return "event_lift"
+    if _other_contents_question(message):
+        return "other_contents"
+    if _victim_age_question(message):
+        return "victim_age"
+    if _station_crime_question(message):
+        return "station_crime"
     headline = _headline_intent(residual, mentions)
     if headline:
         return headline
@@ -1127,6 +1397,8 @@ def _tool_trend(venue: dict, args) -> dict | None:
             sources=[dict(PRESENT_SOURCE)],
             provenance_text=PRESENT_PROVENANCE,
         )
+    if _spans_switch(args.from_year, args.to_year):
+        return _switch_group_answer(venue, detail, args.from_year, args.to_year, "trend", args.group)
     years = [str(year) for year in range(args.from_year, args.to_year + 1)]
     yearly = {year: _group_totals(months, year) for year in years}
     start, end = years[0], years[-1]
@@ -1148,10 +1420,9 @@ def _tool_trend(venue: dict, args) -> dict | None:
     through = str((baseline.get("present") or {}).get("through") or "")
     partial = f" {end} runs through {through}, not a full year." if through.startswith(end) else ""
     name = venue["venue_name"]
-    break_note = _series_break_note(args.from_year, args.to_year)
     if rows:
         caption = (
-            f"Offense groups near {name} from {start} to {end}, ranked by the change in records.{partial}{break_note}"
+            f"Offense groups near {name} from {start} to {end}, ranked by the change in records.{partial}"
         )
     else:
         caption = f"No offense group near {name} had more records in {end} than in {start}."
@@ -1690,7 +1961,7 @@ def answer_question(message: str, venue_id: str | None = None, prior_message: st
     response = _answer_question(normalized, venue_id, engine, prior_message)
     response.update(engine)
     response.setdefault("resolved_message", normalized)
-    return response
+    return _note_switch(response, normalized)
 
 
 def answer_deterministic(message: str, venue_id: str | None = None, prior_message: str | None = None) -> dict:
@@ -1734,7 +2005,7 @@ def _answer_closed(
         skip_explanation.reset(token)
     response.update(engine)
     response.setdefault("resolved_message", normalized)
-    return response
+    return _note_switch(response, normalized)
 
 
 def _join_answers(parts: list[dict]) -> dict:
@@ -1951,8 +2222,16 @@ def _answer_question(message: str, venue_id: str | None, engine: dict, prior_mes
         return _period_groups_answer(selected[0], normalized)
     if intent in PATTERN_INTENTS:
         return _pattern_answer(intent, selected[0], normalized)
+    if intent == "other_contents":
+        return _other_contents_answer(selected[0])
+    if intent == "victim_age":
+        return _victim_age_answer()
+    if intent == "station_crime":
+        return _station_crime_answer(selected[0], normalized)
     if intent in CONTEXT_INTENTS:
         try:
+            if intent == "rail" and re.search(r"\b(nearest|closest)\b", normalized):
+                return _nearest_rail_answer(selected[0], summary["meta"])
             answer, results, sources = context_answer(intent, selected[0], summary["meta"])
         except ContextUnavailable as exc:
             return _reply("unavailable", f"{exc} I cannot calculate a reliable answer until the data is rebuilt.", intent=intent)
@@ -2115,14 +2394,260 @@ def _with_home_game_schedule(detail: dict, estimates: list[dict]) -> tuple[list[
 _seasonal_cache: dict[str, dict] = {}
 
 
-def _series_break_note(start: int, end: int) -> str:
-    """A year span that includes both sides of the report/NIBRS change."""
-    if start <= 2023 and end >= 2024:
-        return (
-            " This comparison crosses March 7, 2024, so it mixes LAPD reports with NIBRS offenses. "
-            "One NIBRS case can count more than once."
+_CODE_CHANGE = (
+    " Reporting codes changed on March 7, 2024. "
+    "Through March 6, 2024 the counts are LAPD reports. "
+    "From March 7, 2024 they are NIBRS offenses, and one case can count more than once. "
+    "The group labels also move: Grand Theft Auto is counted as Theft in NIBRS and as Vehicle in the older reports, "
+    "and criminal threats move into Other. "
+    "A rise in Other, or a drop in Theft, across that date is a coding change."
+)
+_SWITCH_INTENTS = {
+    "present_total", "density", "city", "busiest_month", "top_groups", "weekend",
+    "weekend_groups", "time_of_day", "period", "period_groups", "compare",
+    "rank_venues", "rank_count", "rank_group", "citywide", "since_count", "year_count",
+}
+_RANK_INTENTS = {"rank_venues", "rank_count", "rank_group"}
+
+
+def _spans_switch(start: int, end: int) -> bool:
+    """True when the years include both sides of March 7, 2024."""
+    return start <= 2024 <= end
+
+
+def _nibrs_group_months(detail: dict, grouper) -> dict[str, dict[str, int]]:
+    categories = ((detail.get("nibrs") or {}).get("categories_by_month") or {})
+    months: dict[str, dict[str, int]] = {}
+    for month, mapping in categories.items():
+        groups: dict[str, int] = {}
+        for label, count in (mapping or {}).items():
+            group_id = grouper(str(label))
+            groups[group_id] = groups.get(group_id, 0) + int(count or 0)
+        months[str(month)] = groups
+    return months
+
+
+def _split_group_months(detail: dict) -> tuple[dict[str, dict[str, int]], dict[str, dict[str, int]]]:
+    """Reports through March 6, 2024, then NIBRS from March 7. March is split, not doubled.
+
+    The stored March total was built with the older wording, so that wording is
+    what gets subtracted. The NIBRS side is then counted by offense code.
+    """
+    keyword_months = _nibrs_group_months(detail, crime_group)
+    code_months = _nibrs_group_months(detail, nibrs_group)
+    reports: dict[str, dict[str, int]] = {}
+    nibrs: dict[str, dict[str, int]] = {}
+    for month, groups in (detail.get("merged_by_month") or {}).items():
+        text = str(month)
+        counts = {str(key): int(value or 0) for key, value in (groups or {}).items()}
+        if text < "2024-03":
+            reports[text] = counts
+        elif text == "2024-03":
+            nib = keyword_months.get(text, {})
+            legacy = {
+                key: value - int(nib.get(key, 0))
+                for key, value in counts.items()
+                if value - int(nib.get(key, 0)) > 0
+            }
+            if legacy:
+                reports[text] = legacy
+            coded = code_months.get(text, {})
+            if coded:
+                nibrs[text] = {key: int(value) for key, value in coded.items() if int(value)}
+        else:
+            nibrs[text] = code_months.get(text) or counts
+    return reports, nibrs
+
+
+def _year_groups(months: dict[str, dict[str, int]], year: int) -> dict[str, int]:
+    prefix = f"{year}-"
+    totals: dict[str, int] = {}
+    for month, groups in months.items():
+        if str(month).startswith(prefix):
+            for key, value in groups.items():
+                totals[key] = totals.get(key, 0) + int(value)
+    return totals
+
+
+def _span_series_totals(detail: dict, start: int, end: int) -> tuple[int, int]:
+    reports, nibrs = _split_group_months(detail)
+    report_count = 0
+    nibrs_count = 0
+    for month, groups in reports.items():
+        year = int(str(month)[:4])
+        if start <= year <= end:
+            report_count += sum(groups.values())
+    for month, groups in nibrs.items():
+        year = int(str(month)[:4])
+        if start <= year <= end:
+            nibrs_count += sum(groups.values())
+    return report_count, nibrs_count
+
+
+def _through_date() -> str:
+    baseline = load_city_baseline() or {}
+    return str((baseline.get("present") or {}).get("through") or (baseline.get("nibrs") or {}).get("end") or "")
+
+
+def _switch_group_answer(venue: dict, detail: dict, start: int, end: int, intent: str, group_id: str | None = None) -> dict:
+    """Report-series change through March 6, 2024, then the NIBRS counts after that date."""
+    reports, nibrs = _split_group_months(detail)
+    name = venue["venue_name"]
+    through = _through_date()
+    full_end = 2023 if start <= 2023 else None
+    report_years = [str(year) for year in range(start, full_end + 1)] if full_end is not None and start <= full_end else []
+    show_stub = start <= 2024 <= end
+    stub_key = "2024 to Mar 6"
+    nibrs_years = [str(year) for year in range(max(start, 2024), end + 1)]
+    nibrs_yearly = {year: _year_groups(nibrs, int(year)) for year in nibrs_years}
+    columns = list(report_years)
+    yearly = {year: _year_groups(reports, int(year)) for year in report_years}
+    if show_stub:
+        columns.append(stub_key)
+        yearly[stub_key] = _year_groups(reports, 2024)
+    for year in nibrs_years:
+        label = "2024 from Mar 7" if year == "2024" else year
+        columns.append(label)
+        yearly[label] = nibrs_yearly[year]
+    rising = []
+    if report_years:
+        earlier = yearly[report_years[0]]
+        later = yearly[report_years[-1]]
+        wanted = [group_id] if group_id else sorted(set(earlier) | set(later))
+        changes = []
+        for item in wanted:
+            change = later.get(item, 0) - earlier.get(item, 0)
+            if group_id or change > 0:
+                changes.append((change, _group_label(detail, item), item))
+        changes.sort(key=lambda item: (-item[0], item[1]))
+        rising = changes if group_id else changes[:5]
+    change_header = f"Change to {report_years[-1]}" if report_years else None
+    rows = []
+    for change, label, item in rising:
+        sign = "+" if change > 0 else ""
+        rows.append([
+            label,
+            *[_comma(yearly[column].get(item, 0)) for column in columns],
+            f"{sign}{_comma(change)}",
+        ])
+    partial = f" {end} runs through {through}, not a full year." if through.startswith(str(end)) else ""
+    if not report_years:
+        stub_total = sum(yearly.get(stub_key, {}).values()) if show_stub else 0
+        lead = (
+            "LAPD reports in this window run only from January 1 through March 6, 2024"
+            + (f" ({_comma(stub_total)} reports)" if show_stub else "")
+            + "."
         )
-    return ""
+    elif rising:
+        change, label, item = rising[0]
+        sign = "+" if change > 0 else ""
+        lead = (
+            f"{label} rose the most from {report_years[0]} to {report_years[-1]}, "
+            f"from {_comma(yearly[report_years[0]].get(item, 0))} to "
+            f"{_comma(yearly[report_years[-1]].get(item, 0))} ({sign}{_comma(change)})."
+        )
+    else:
+        lead = "no offense group rose across the full report years before March 6, 2024."
+    crowd = " 2020 had little or no event crowd." if intent == "rose" and start == 2020 else ""
+    stop = " The change stops at 2023." if report_years else ""
+    caption = (
+        f"Near {name}, {lead}{crowd}{partial}{stop} "
+        "Counts through March 6, 2024 use the older report wording. "
+        "From March 7, 2024 the same row uses the NIBRS offense code: theft is larceny, and motor-vehicle theft is Vehicle."
+    )
+    table = None
+    if rows and change_header:
+        table = _pattern_table(
+            venue["venue_id"], "months", "Open incidents by month on the venue page",
+            ["Group", *columns, change_header], rows,
+        )
+    return _reply(
+        "answered",
+        caption,
+        results=[_result(venue, label, change) for change, label, _item in rising],
+        intent=intent,
+        sources=[dict(PRESENT_SOURCE)],
+        provenance_text=PRESENT_PROVENANCE,
+        table=table,
+    )
+
+
+def _asked_span(message: str) -> tuple[int, int] | None:
+    pair = _year_pair(message)
+    if pair:
+        return pair
+    since = _since_span(message)
+    if since:
+        return since
+    year = _single_year(message)
+    if year and year != "bad":
+        return int(year), int(year)
+    return None
+
+
+def _note_switch(response: dict, message: str) -> dict:
+    """Split a crime answer that crosses March 7, 2024 into the two series."""
+    if response.get("status") != "answered":
+        return response
+    intent = response.get("question_type")
+    if intent in {"rose", "trend"} or intent not in _SWITCH_INTENTS:
+        return response
+    if "March 7, 2024" in (response.get("answer") or ""):
+        return response
+    span = _asked_span(message)
+    if span is not None and not _spans_switch(*span):
+        return response
+    if span is None and intent == "year_count":
+        return response
+    results = response.get("results") or []
+    venue_ids = []
+    for row in results:
+        venue_id = row.get("venue_id")
+        if venue_id and venue_id not in venue_ids:
+            venue_ids.append(venue_id)
+    through = _through_date()
+    start, end = span if span else (2020, max(_COUNT_YEARS))
+    if through.startswith(str(end)):
+        ended = f" through {through}"
+    else:
+        ended = f" through {end}"
+    if intent == "citywide":
+        present = (load_city_baseline() or {}).get("present") or {}
+        reports = present.get("legacy_count")
+        nibrs = present.get("nibrs_offense_count")
+        if reports is None or nibrs is None:
+            clause = _CODE_CHANGE
+        else:
+            clause = (
+                f" {int(reports):,} are LAPD reports through March 6, 2024, and "
+                f"{int(nibrs):,} are NIBRS offenses from March 7, 2024{ended}."
+                + _CODE_CHANGE
+            )
+    elif intent in _RANK_INTENTS or len(venue_ids) > 2:
+        clause = (
+            " This ranking crosses March 7, 2024. Counts through March 6, 2024 are LAPD reports, "
+            f"and counts from March 7, 2024{ended} are NIBRS offenses."
+            + _CODE_CHANGE
+        )
+    else:
+        pieces = []
+        for venue_id in venue_ids:
+            detail = get_venue(venue_id) or {}
+            reports, nibrs = _span_series_totals(detail, start, end)
+            name = next((row.get("venue_name") for row in results if row.get("venue_id") == venue_id), venue_id)
+            pieces.append(
+                f"{name}: {reports:,} LAPD reports from {start} through March 6, 2024, and "
+                f"{nibrs:,} NIBRS offenses from March 7, 2024{ended}"
+            )
+        clause = ((" " + ". ".join(pieces) + ".") if pieces else "") + _CODE_CHANGE
+    answer = response.get("answer") or ""
+    marker = "\n\nSource:"
+    if marker in answer:
+        visible, provenance = answer.split(marker, 1)
+        response["answer"] = f"{visible.rstrip()}{clause}{marker}{provenance}"
+    else:
+        response["answer"] = f"{answer.rstrip()}{clause}"
+    return response
 
 
 def _seasonal_answer(venue: dict) -> dict:
@@ -2302,8 +2827,12 @@ def _pattern_answer(intent: str, venue: dict, message: str = "") -> dict:
         table = _pattern_table(venue_id, "weekday", "Open day of week on the venue page", ["Group", "Records", "Share"], rows)
     else:
         years = _rose_years(months)
-        start = years[0] if years else "2020"
-        end = years[-1] if years else "2020"
+        raw_start = int(years[0]) if years else 2020
+        raw_end = int(years[-1]) if years else 2020
+        if _spans_switch(raw_start, raw_end):
+            return _switch_group_answer(venue, detail, raw_start, raw_end, intent)
+        start = years[0]
+        end = years[-1]
         earlier = _group_totals(months, start)
         later = _group_totals(months, end)
         yearly = {year: _group_totals(months, year) for year in years}
@@ -2330,7 +2859,6 @@ def _pattern_answer(intent: str, venue: dict, message: str = "") -> dict:
             f"{partial} "
             "A group can rise from the first year to the last and still sit below a peak in between. "
             "2020 had little or no event crowd."
-            f"{_series_break_note(int(start), int(end))}"
         )
         if not rows:
             caption = f"No offense group near {name} had more records in {end} than in {start}."

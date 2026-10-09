@@ -529,6 +529,45 @@ select { width: 132px; }
   pointer-events: none;
 }
 
+.heat-loading {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 500;
+  pointer-events: none;
+}
+
+.heat-loading[hidden] { display: none; }
+
+.heat-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #d9d6d1;
+  border-top-color: var(--navy);
+  border-radius: 50%;
+  animation: heat-spin 0.7s linear infinite;
+}
+
+@keyframes heat-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heat-spinner { animation: none; }
+}
+
 .map-legend {
   position: absolute;
   top: 12px;

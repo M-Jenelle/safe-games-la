@@ -7,18 +7,48 @@
     "venue_context": null,
     "v1": null,
     "v2": {
-      "status": "clarification",
-      "tool": "since_count",
+      "status": "answered",
+      "tool": "trend",
       "confidence": {
         "kind": "recorded",
-        "text": "Recorded count."
+        "text": "Recorded change across years. Not a forecast."
       },
-      "answer": "Which venue do you mean? Select a venue below or include its full name.",
-      "caveat": "Source: LAPD crime reports via the LA Open Data Portal (Crime_Data_from_2020_to_2024.csv). Period: 2020–2024. Analysis: 800 m radius around each venue.",
-      "table_columns": null,
-      "table_rows": [],
-      "choices": 14,
-      "ms": 12,
+      "answer": "Offense groups near Dodger Stadium from 2021 to 2026, ranked by the change in records. 2026 runs through 2026-09-19, not a full year. This comparison crosses March 7, 2024, so it mixes LAPD reports with NIBRS offenses. One NIBRS case can count more than once.",
+      "caveat": "Source: LAPD crime reports via the LA Open Data Portal, then LAPD NIBRS offenses (crime_merged.json). Period: 2020–present. Analysis: 800 m radius around the ve",
+      "table_columns": [
+        "Group",
+        "2021",
+        "2022",
+        "2023",
+        "2024",
+        "2025",
+        "2026",
+        "Change"
+      ],
+      "table_rows": [
+        [
+          "Theft",
+          "23",
+          "41",
+          "78",
+          "18",
+          "61",
+          "36",
+          "+13"
+        ],
+        [
+          "Sexual offenses",
+          "1",
+          "7",
+          "4",
+          "6",
+          "7",
+          "4",
+          "+3"
+        ]
+      ],
+      "choices": 0,
+      "ms": 1320,
       "model_calls_for_routing": 0,
       "error": null
     },
@@ -38,12 +68,12 @@
         "kind": "recorded",
         "text": "Recorded count."
       },
-      "answer": "LA Memorial Coliseum — All categories: 5,050 reported incidents, 2020–2024.\nCrypto.com Arena — All categories: 12,995 reported incidents, 2020–2024.\nCrypto.com Arena has 7,945 more reports (absolute difference).\nVenue areas can overlap, so the same incident may appear under both venues. These counts are not added into a unique citywide total.",
-      "caveat": "Source: LAPD crime reports via the LA Open Data Portal (Crime_Data_from_2020_to_2024.csv). Period: 2020–2024. Analysis: 800 m radius around each venue.",
+      "answer": "LA Memorial Coliseum — 6,905 records, 2020–present.\nCrypto.com Arena — 17,162 records, 2020–present.\nCrypto.com Arena has 10,257 more records (absolute difference).\nThese are the same 2020–present totals as a venue count, not the 2020–2024 report totals. Venue areas can overlap, so the same incident may appear under both venues. These counts are not added into a unique citywide total.",
+      "caveat": "Source: LAPD crime reports via the LA Open Data Portal, then LAPD NIBRS offenses (crime_merged.json). Period: 2020–present. Analysis: 800 m radius around the ve",
       "table_columns": null,
       "table_rows": [],
       "choices": 0,
-      "ms": 3384,
+      "ms": 3185,
       "model_calls_for_routing": 1,
       "error": null
     },
@@ -68,7 +98,7 @@
       "table_columns": null,
       "table_rows": [],
       "choices": 0,
-      "ms": 1331,
+      "ms": 10,
       "model_calls_for_routing": 0,
       "error": null
     },
@@ -83,17 +113,42 @@
     "v1": null,
     "v2": {
       "status": "answered",
-      "tool": "period",
+      "tool": "period_groups",
       "confidence": {
         "kind": "recorded",
         "text": "Recorded count."
       },
-      "answer": "Records during 12am–6am near LA Memorial Coliseum, 2020–present: 904. 12:00 is often an unknown hour.",
+      "answer": "Offense groups during 12am–6am near LA Memorial Coliseum, 2020–present. Shares are of that part of day only. 12:00 is often an unknown hour.",
       "caveat": "Source: LAPD crime reports via the LA Open Data Portal, then LAPD NIBRS offenses (crime_merged.json). Period: 2020–present. Analysis: 800 m radius around the ve",
-      "table_columns": null,
-      "table_rows": [],
+      "table_columns": [
+        "Group",
+        "Records",
+        "Share"
+      ],
+      "table_rows": [
+        [
+          "Assault",
+          "265",
+          "29%"
+        ],
+        [
+          "Vehicle",
+          "129",
+          "14%"
+        ],
+        [
+          "Other",
+          "117",
+          "13%"
+        ],
+        [
+          "Theft",
+          "113",
+          "13%"
+        ]
+      ],
       "choices": 0,
-      "ms": 22,
+      "ms": 11,
       "model_calls_for_routing": 0,
       "error": null
     },
@@ -143,15 +198,15 @@
         ]
       ],
       "choices": 0,
-      "ms": 16,
+      "ms": 12,
       "model_calls_for_routing": 0,
       "error": null
     },
     "narration": {
-      "raw": "Near Crypto.com Arena, Vehicle offenses are the most common with 4,540 records comprising 26% of incidents, followed by Theft at 3,869 records (23%) and Assault at 3,489 records (20%). Vandalism accounts for 1,685 records (10%) and Other offenses total 1,404 records (8%).",
+      "raw": "Near Crypto.com Arena, Vehicle offenses lead with 4,540 records representing 26% of the total, followed by Theft with 3,869 records at 23%. Assault offenses account for 3,489 records or 20% of the offense groups, while Vandalism and Other offenses comprise 10% and 8% respectively.",
       "kept": true,
       "reasons": [],
-      "ms": 2314
+      "ms": 2239
     }
   },
   {
@@ -198,17 +253,15 @@
         ]
       ],
       "choices": 0,
-      "ms": 12,
+      "ms": 10,
       "model_calls_for_routing": 0,
       "error": null
     },
     "narration": {
-      "raw": "At Dodger Stadium, Assault accounts for 151 records and 34% of offenses on Saturday and Sunday, while Theft represents 103 records and 23%. The remaining offense categories include Other at 73 records (16%), Vehicle at 55 records (12%), and Vandalism at 26 records (6%).",
-      "kept": false,
-      "reasons": [
-        "labels not in the table: ['Saturday', 'Sunday']"
-      ],
-      "ms": 1525
+      "raw": "Near Dodger Stadium from 2020 to present, assault offenses represent the largest share at 34% with 151 records on Saturday and Sunday. Theft accounts for 23% of the records with 103 incidents, followed by other offenses at 16% with 73 records.",
+      "kept": true,
+      "reasons": [],
+      "ms": 2106
     }
   },
   {
@@ -222,10 +275,10 @@
       "status": "answered",
       "tool": "trend",
       "confidence": {
-        "kind": "none",
-        "text": ""
+        "kind": "recorded",
+        "text": "Recorded change across years. Not a forecast."
       },
-      "answer": "Offense groups near Dodger Stadium from 2020 to 2024, ranked by the change in records.",
+      "answer": "Offense groups near Dodger Stadium from 2020 to 2024, ranked by the change in records. This comparison crosses March 7, 2024, so it mixes LAPD reports with NIBRS offenses. One NIBRS case can count more than once.",
       "caveat": "Source: LAPD crime reports via the LA Open Data Portal, then LAPD NIBRS offenses (crime_merged.json). Period: 2020–present. Analysis: 800 m radius around the ve",
       "table_columns": [
         "Group",
@@ -275,7 +328,7 @@
         ]
       ],
       "choices": 0,
-      "ms": 17,
+      "ms": 10,
       "model_calls_for_routing": 0,
       "error": null
     },
@@ -289,22 +342,47 @@
     "venue_context": null,
     "v1": null,
     "v2": {
-      "status": "unsupported",
-      "tool": null,
+      "status": "answered",
+      "tool": "weekend",
       "confidence": {
-        "kind": "none",
-        "text": ""
+        "kind": "recorded",
+        "text": "Recorded count."
       },
-      "answer": "I cannot answer that question from the supported processed-data calculations. I can answer a venue's 2020–present record count, a single year from 2020 through 2026, the 2020–2024 report total when that period is named, NIBRS offense totals, and offense-group counts such as robbery. I can also answer the most common LAPD category, comparisons between two named venues, density, the city comparison, the busiest month, ",
-      "caveat": "Source: LAPD crime reports via the LA Open Data Portal (Crime_Data_from_2020_to_2024.csv). Period: 2020–2024. Analysis: 800 m radius around each venue.",
-      "table_columns": null,
-      "table_rows": [],
+      "answer": "Saturday is the busiest day, 1,187 records. Weekend days are 2,145 (31%).",
+      "caveat": "Source: LAPD crime reports via the LA Open Data Portal, then LAPD NIBRS offenses (crime_merged.json). Period: 2020–present. Analysis: 800 m radius around the ve",
+      "table_columns": [
+        "Day",
+        "Records"
+      ],
+      "table_rows": [
+        [
+          "Monday",
+          "930"
+        ],
+        [
+          "Tuesday",
+          "940"
+        ],
+        [
+          "Wednesday",
+          "974"
+        ],
+        [
+          "Thursday",
+          "915"
+        ]
+      ],
       "choices": 0,
-      "ms": 2158,
-      "model_calls_for_routing": 1,
+      "ms": 10,
+      "model_calls_for_routing": 0,
       "error": null
     },
-    "narration": null
+    "narration": {
+      "raw": "LA Memorial Coliseum had 1,187 records on Saturday, making it the busiest day of the week. Weekend days combined accounted for 2,145 records, which represented 31% of the total records.",
+      "kept": true,
+      "reasons": [],
+      "ms": 1862
+    }
   },
   {
     "n": 9,
@@ -318,14 +396,14 @@
       "tool": "current_weather",
       "confidence": {
         "kind": "live",
-        "text": "Fetched at 2026-10-08T18:15."
+        "text": "Fetched at 2026-10-08T18:45."
       },
-      "answer": "At Dodger Stadium the current reading is 75.8°F. No precipitation in this reading. Precipitation is 0.00 inches.",
-      "caveat": "Fetched at 2026-10-08T18:15 America/Los_Angeles. Current conditions at the venue pin. This is not applied to the historical weather comparison and it is not a c",
+      "answer": "At Dodger Stadium the current reading is 75.6°F. No precipitation in this reading. Precipitation is 0.00 inches.",
+      "caveat": "Fetched at 2026-10-08T18:45 America/Los_Angeles. Current conditions at the venue pin. This is not applied to the historical weather comparison and it is not a c",
       "table_columns": null,
       "table_rows": [],
       "choices": 0,
-      "ms": 1025,
+      "ms": 988,
       "model_calls_for_routing": 0,
       "error": null
     },
@@ -350,7 +428,7 @@
       "table_columns": null,
       "table_rows": [],
       "choices": 0,
-      "ms": 30,
+      "ms": 13,
       "model_calls_for_routing": 0,
       "error": null
     },
@@ -383,7 +461,7 @@
       "table_columns": null,
       "table_rows": [],
       "choices": 0,
-      "ms": 1585,
+      "ms": 1213,
       "model_calls_for_routing": 0,
       "error": null
     },
@@ -432,7 +510,7 @@
         ]
       ],
       "choices": 0,
-      "ms": 6,
+      "ms": 4,
       "model_calls_for_routing": 0,
       "error": null
     },
@@ -465,7 +543,7 @@
       "table_columns": null,
       "table_rows": [],
       "choices": 0,
-      "ms": 712,
+      "ms": 564,
       "model_calls_for_routing": 0,
       "error": null
     },
@@ -498,7 +576,7 @@
       "table_columns": null,
       "table_rows": [],
       "choices": 0,
-      "ms": 783,
+      "ms": 763,
       "model_calls_for_routing": 0,
       "error": null
     },
@@ -598,7 +676,7 @@
       "table_columns": null,
       "table_rows": [],
       "choices": 0,
-      "ms": 1936,
+      "ms": 1778,
       "model_calls_for_routing": 1,
       "error": null
     },
