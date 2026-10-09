@@ -437,5 +437,6 @@ class ChatV2NextTests(ChatV2Tests):
             json={"message": "How many incidents were reported near Peacock Theater?"},
         )
         self.assertEqual(response.status_code, 200, response.text)
+        self.assertLess(response.text.index('"event": "status"'), response.text.index('"event": "template"'))
         self.assertLess(response.text.index('"event": "template"'), response.text.index('"event": "narration"'))
         self.assertIn("18,537", response.text)

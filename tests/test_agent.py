@@ -9,7 +9,7 @@ import unittest
 
 from unittest.mock import patch
 
-from backend.agent import _join_gaps, _without_safety_judgment, brief_reply
+from backend.agent import _join_gaps, _without_safety_judgment, answer_events, brief_reply
 from backend.claude import ClaudeUnavailable
 from backend.agent_tools import (
     FORECAST_WARNING,
@@ -163,6 +163,27 @@ class AgentToolTests(unittest.TestCase):
         self.assertIn("1,418", kept)
         self.assertNotIn("area is unsafe", kept)
         self.assertIn("without a number against the citywide rate.", kept)
+
+    def test_a_wet_forecast_uses_the_count_model(self):
+        events = list(answer_events(
+            "If the next 30 days at Dodger Stadium are wet, what daily range does the count model give?"
+        ))
+        template = next(event for event in events if event["event"] == "template")
+        self.assertEqual(template["tool"], "forecast")
+        self.assertIn("Dodger Stadium", template["answer"])
+        self.assertIn("times a dry day", template["answer"])
+        self.assertIn("no Olympic precedent", template["answer"])
+        self.assertNotIn("python", template["answer"].lower())
+
+    def test_a_count_streams_status_before_the_answer(self):
+        events = list(answer_events("How many incidents were reported near Dodger Stadium?"))
+        self.assertEqual(events[0]["event"], "status")
+        template = next(event for event in events if event["event"] == "template")
+        self.assertIn("1,418", template["answer"])
+        self.assertLess(
+            [event["event"] for event in events].index("status"),
+            [event["event"] for event in events].index("template"),
+        )
 
     def test_auth_failure_is_an_unavailable_model(self):
         from backend.agent import agent_answer

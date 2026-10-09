@@ -111,7 +111,7 @@
     input.value = "";
     setBusy(true);
     const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 30000);
+    const timeout = window.setTimeout(() => controller.abort(), 70000);
     try {
       const context = selectedVenue || discussedVenue;
       const response = await fetch("/api/chat/v2/stream", {
@@ -129,6 +129,7 @@
       const decoder = new TextDecoder();
       let buffer = "";
       let article = null;
+      let prose = null;
       let body = null;
       while (true) {
         const step = await reader.read();
@@ -139,10 +140,26 @@
           const line = chunk.split("\n").find((item) => item.startsWith("data: "));
           if (!line) continue;
           const event = JSON.parse(line.slice(6));
-          if (event.event === "template") {
+          if (event.event === "status") {
+            status.textContent = event.text || "Looking that up…";
+          } else if (event.event === "delta") {
+            if (!article) {
+              article = messageNode("assistant", "");
+              prose = article.querySelector("p");
+            }
+            prose.textContent += event.text || "";
+            log.scrollTop = log.scrollHeight;
+          } else if (event.event === "clear" && prose) {
+            prose.textContent = "";
+          } else if (event.event === "template") {
             body = event;
             if (!body.answer) throw new Error("empty");
-            article = messageNode("assistant", body.answer);
+            if (!article) {
+              article = messageNode("assistant", body.answer);
+              prose = article.querySelector("p");
+            } else if (prose) {
+              prose.textContent = body.answer;
+            }
             if (body.table?.columns && body.table.rows) {
               const table = document.createElement("table");
               table.className = "chat-table";

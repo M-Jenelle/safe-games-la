@@ -19,7 +19,6 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from backend.chat_v2 import narrate_answer
 from backend.claude import settings as claude_settings
 
 from backend.store import (
@@ -154,26 +153,17 @@ def _v2_history(request: ChatV2Request) -> list[dict]:
 
 def _v2_answer(request: ChatV2Request, narrate: bool = True) -> dict:
     """Tools for the page figures. The model answers anything those tools do not cover."""
-    from backend.agent import agent_answer, brief_reply, facts_reply, wet_reply
-    from backend.claude import ClaudeUnavailable, settings
+    from backend.agent import answer_events
 
-    for reply in (wet_reply, facts_reply):
-        body = reply(request.message, request.venue_id)
-        if body is not None:
-            return body
-    if settings()["claude_configured"]:
-        try:
-            return agent_answer(request.message, request.venue_id, _v2_history(request))
-        except ClaudeUnavailable:
-            pass
-
-    short = brief_reply(request.message, request.venue_id)
-    if short is not None:
-        return short
+    for event in answer_events(request.message, request.venue_id, _v2_history(request)):
+        if event.get("event") == "template":
+            payload = dict(event)
+            payload.pop("event", None)
+            return payload
     return {
         "version": "v2",
         "status": "answered",
-        "answer": "The model is not available for that. Ask for a count, the city comparison, weekdays, current weather, or a Metro alert, and name a venue.",
+        "answer": "I didn't get that one out. Ask it again in a short sentence, and name a venue if it is about just one place.",
         "caveat": "",
         "confidence": {"kind": "none", "text": ""},
         "narration": None,
@@ -196,12 +186,18 @@ def chat_v2(request: ChatV2Request):
 
 @app.post("/api/chat/v2/stream")
 def chat_v2_stream(request: ChatV2Request):
-    """Template first. A narration event follows only for a pattern table."""
+    """Status, then answer text as it is written, then the finished payload."""
     def generate():
+        from backend.agent import answer_events
+
         try:
-            payload = _v2_answer(request, narrate=False)
+            for event in answer_events(request.message, request.venue_id, _v2_history(request)):
+                if str(event.get("event") or "").startswith("_"):
+                    continue
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception:
             payload = {
+                "event": "template",
                 "version": "v2",
                 "status": "answered",
                 "answer": "I didn't get that one out. Ask it again in a short sentence, and name a venue if it is about just one place.",
@@ -216,14 +212,13 @@ def chat_v2_stream(request: ChatV2Request):
                 "arguments": {},
                 "engine": "v2",
             }
-        yield f"data: {json.dumps({'event': 'template', **payload}, ensure_ascii=False)}\n\n"
-        try:
-            narration = narrate_answer(payload)
-        except Exception:
-            narration = None
-        yield f"data: {json.dumps({'event': 'narration', 'narration': narration}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'event': 'narration', 'narration': None})}\n\n"
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(generate(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    })
 
 
 @app.get("/api/map")
