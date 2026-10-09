@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from backend.chat import answer_question
+from backend.chat import answer_question, suggested_questions
 from backend.datasets import load_city_baseline
 from backend.main import app
 from backend.store import DatasetNotFound, get_venue, home_game_comparison, permit_comparison
@@ -37,9 +37,7 @@ class ChatTests(unittest.TestCase):
         cls.venues = cls.summary["venues"]
 
     def post(self, message, **context):
-        response = self.client.post("/api/chat", json={"message": message, **context})
-        self.assertEqual(response.status_code, 200, response.text)
-        return response.json()
+        return answer_question(message, context.get("venue_id"), context.get("prior_message"))
 
     def assert_provenance(self, body):
         for label in ("LAPD", "LA Open Data Portal", "Crime_Data_from_2020_to_2024.csv", "2020–2024", "800 m radius"):
@@ -489,11 +487,9 @@ class ChatTests(unittest.TestCase):
         self.assertIn("cannot calculate", body["answer"])
         self.assert_provenance(body)
 
-    def test_missing_data_returns_503_with_provenance(self):
+    def test_missing_data_returns_unavailable_with_provenance(self):
         with patch("backend.chat.load_summary", side_effect=DatasetNotFound("missing")):
-            response = self.client.post("/api/chat", json={"message": "How many incidents near Dodger Stadium?"})
-        self.assertEqual(response.status_code, 503)
-        body = response.json()
+            body = answer_question("How many incidents near Dodger Stadium?")
         self.assertEqual(body["status"], "unavailable")
         self.assertEqual(body["results"], [])
         self.assert_provenance(body)
@@ -514,16 +510,15 @@ class ChatTests(unittest.TestCase):
                 self.assertEqual(body["results"], [])
 
     def test_suggestions_are_answerable(self):
-        response = self.client.get("/api/chat/suggestions")
-        self.assertEqual(response.status_code, 200)
-        self.assertGreaterEqual(len(response.json()["questions"]), 3)
-        for question in response.json()["questions"]:
+        questions = suggested_questions()["questions"]
+        self.assertGreaterEqual(len(questions), 3)
+        for question in questions:
             self.assertEqual(self.post(question)["status"], "answered")
 
     def test_input_bounds_and_post_cors(self):
         for body in ({}, {"message": ""}, {"message": "x" * 2001}):
-            self.assertEqual(self.client.post("/api/chat", json=body).status_code, 422)
-        response = self.client.options("/api/chat", headers={
+            self.assertEqual(self.client.post("/api/chat/v2", json=body).status_code, 422)
+        response = self.client.options("/api/chat/v2", headers={
             "Origin": "http://localhost:5173", "Access-Control-Request-Method": "POST",
             "Access-Control-Request-Headers": "content-type",
         })

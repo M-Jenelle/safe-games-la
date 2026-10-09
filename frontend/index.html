@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,650&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=heat-load">
+  <link rel="stylesheet" href="/static/styles.css?v=edge">
 </head>
 <body>
   <div class="app">
@@ -145,33 +145,6 @@
     <section class="venue-page compare-page" id="compare-page" hidden aria-labelledby="compare-heading"></section>
 
     <div class="chat-dock">
-    <aside class="chat-panel" id="chat-panel" hidden aria-labelledby="chat-heading">
-      <div class="panel-label">
-        <h2 id="chat-heading"><span class="chat-heading-icon bot-avatar" aria-hidden="true"><img src="/static/torch.svg" alt=""></span>Ask Torchy</h2>
-        <button type="button" class="chat-close" id="chat-close" aria-label="Close chatbot">
-          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-            <path d="M3.2 3.2 12.8 12.8M12.8 3.2 3.2 12.8" fill="none" stroke="currentColor" stroke-width="1.4"/>
-          </svg>
-        </button>
-      </div>
-      <div class="chat-log" id="chat-log" role="log" aria-live="polite" aria-relevant="additions" aria-label="Chat messages">
-        <div class="chat-body">
-          <p class="analysis-lead" id="analysis-lead">Name a venue or select one on the map to ask about “this venue.”</p>
-          <p>Ask about crime counts, nearby transit, nearest fire/police stations or hospitals, and listed sports.</p>
-          <p class="chat-source">Crime: LAPD · 2020–present · 800 m radius. Other datasets have their own source and scope in each answer.</p>
-          <p class="chat-engine" id="chat-engine">Venue data mode</p>
-          <p class="examples-label">Try a question</p>
-          <div class="chat-suggestions" id="chat-suggestions"></div>
-        </div>
-      </div>
-      <p class="chat-status" id="chat-status" role="status"></p>
-      <form class="chat-form" id="chat-form">
-        <label class="visually-hidden" for="chat-input">Message the assistant</label>
-        <input id="chat-input" type="text" placeholder="Ask about a venue" required maxlength="2000" autocomplete="off">
-        <button type="submit">Send</button>
-      </form>
-      <p class="chat-context" id="chat-context">No venue selected. Include a venue name in your question.</p>
-    </aside>
     <aside class="chat-panel" id="chat-panel-v2" hidden aria-labelledby="chat-heading-v2">
       <div class="panel-label">
         <h2 id="chat-heading-v2"><span class="chat-heading-icon bot-avatar" aria-hidden="true"><img src="/static/torch.svg" alt=""></span>Ask Torchy</h2>
@@ -189,20 +162,17 @@
           <div class="chat-suggestions" id="chat-suggestions-v2"></div>
         </div>
       </div>
-      <p class="chat-status" id="chat-status-v2" role="status"></p>
+      <p class="chat-status" id="chat-status-v2" role="status" hidden></p>
       <form class="chat-form" id="chat-form-v2">
         <label class="visually-hidden" for="chat-input-v2">Message Torchy</label>
         <input id="chat-input-v2" type="text" placeholder="Ask about a venue" required maxlength="2000" autocomplete="off">
         <button type="submit">Send</button>
       </form>
-      <p class="chat-context" id="chat-context-v2">No venue selected. Include a venue name in your question.</p>
+      <p class="chat-context" id="chat-context-v2" hidden></p>
+      <p class="chat-edge">From the venue tables.</p>
     </aside>
     <div class="chat-launchers">
     <button type="button" class="chat-launcher" id="chat-launcher-v2" aria-expanded="false" aria-controls="chat-panel-v2" aria-label="Open Ask Torchy">
-      <span class="chat-launcher-icon bot-avatar" aria-hidden="true"><img src="/static/torch.svg" alt=""></span>
-      <span>Ask Torchy</span>
-    </button>
-    <button type="button" class="chat-launcher" id="chat-launcher" hidden aria-expanded="false" aria-controls="chat-panel" aria-label="Open the previous chatbot">
       <span class="chat-launcher-icon bot-avatar" aria-hidden="true"><img src="/static/torch.svg" alt=""></span>
       <span>Ask Torchy</span>
     </button>
@@ -211,8 +181,7 @@
   </div>
   <script src="https://unpkg.com/deck.gl@9.2.0/dist.min.js"></script>
   <script src="https://unpkg.com/@deck.gl/google-maps@9.2.0/dist.min.js"></script>
-  <script src="/static/chat.js"></script>
-  <script src="/static/chat-v2.js?v=torchy-source"></script>
-  <script type="module" src="/static/js/main.js?v=heat-load"></script>
+  <script src="/static/chat-v2.js?v=dots"></script>
+  <script type="module" src="/static/js/main.js?v=one-torchy"></script>
 </body>
 </html>

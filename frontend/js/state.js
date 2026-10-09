@@ -68,12 +68,6 @@ const mapFrame = document.querySelector("#map-frame");
 export const mapPanel = document.querySelector(".map-panel");
 export const mapHint = document.querySelector("#map-hint");
 const ZOOM = 7;
-export const chatContext = document.querySelector("#chat-context");
-export const analysisLead = document.querySelector("#analysis-lead");
-export const chatPanel = document.querySelector("#chat-panel");
-export const chatLauncher = document.querySelector("#chat-launcher");
-export const chatClose = document.querySelector("#chat-close");
-
 export const appShell = document.querySelector(".app");
 export const roster = document.querySelector("#roster");
 export const rosterToggle = document.querySelector("#roster-toggle");

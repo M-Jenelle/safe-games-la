@@ -30,11 +30,6 @@ class ChatV2Tests(unittest.TestCase):
         cls.client = TestClient(app)
         cls.venues = load_summary()["venues"]
 
-    def test_torchy_endpoint_still_answers(self):
-        response = self.client.post("/api/chat", json={"message": "How many incidents were reported near Peacock Theater?"})
-        self.assertEqual(response.status_code, 200, response.text)
-        self.assertIn("Peacock Theater", response.json()["answer"])
-
     def test_count_keeps_the_server_caveat(self):
         body = answer_v2("How many incidents were reported near Peacock Theater?")
         self.assertEqual(body["version"], "v2")
@@ -67,6 +62,24 @@ class ChatV2Tests(unittest.TestCase):
         self.assertEqual(body["status"], "unsupported")
         self.assertIn("separate questions", body["answer"])
         self.assertIn("not applied", body["answer"])
+
+    def test_greeting_is_a_reply_and_not_a_venue_list(self):
+        body = answer_v2("Hi")
+        self.assertEqual(body["tool"], "conversation")
+        self.assertEqual(body["status"], "answered")
+        self.assertIn("Torchy", body["answer"])
+        self.assertEqual(body["choices"], [])
+        self.assertNotIn("Which venue", body["answer"])
+
+    def test_weather_impact_across_venues_does_not_ask_for_a_pick(self):
+        body = answer_v2("Is there any venue where you could see an impact of weather on crime")
+        self.assertEqual(body["tool"], "weather_association")
+        self.assertEqual(body["status"], "answered")
+        self.assertEqual(body["choices"], [])
+        self.assertNotIn("Which venue", body["answer"])
+        self.assertNotIn("pick it below", body["answer"])
+        self.assertEqual(len(body["table"]["rows"]), len(self.venues))
+        self.assertIn("not a cause", body["caveat"])
 
     def test_weekday_adjusted_weather_gap(self):
         body = answer_v2("Wet days versus dry days near Peacock Theater")
@@ -424,5 +437,6 @@ class ChatV2NextTests(ChatV2Tests):
             json={"message": "How many incidents were reported near Peacock Theater?"},
         )
         self.assertEqual(response.status_code, 200, response.text)
+        self.assertLess(response.text.index('"event": "status"'), response.text.index('"event": "template"'))
         self.assertLess(response.text.index('"event": "template"'), response.text.index('"event": "narration"'))
         self.assertIn("18,537", response.text)

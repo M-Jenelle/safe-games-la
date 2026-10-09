@@ -14,6 +14,7 @@ from unittest.mock import patch
 import httpx
 from fastapi.testclient import TestClient
 
+from backend.chat import answer_question
 from backend.claude import API_URL, DEFAULT_MODEL, ClaudeUnavailable, explanation_uses_only, interpret_question
 from backend.main import app
 from backend.store import get_venue
@@ -67,12 +68,10 @@ class ClaudeTests(unittest.TestCase):
             yield requests
 
     def post(self, message, **context):
-        response = self.client.post("/api/chat", json={"message": message, **context})
-        self.assertEqual(response.status_code, 200, response.text)
-        body = response.json()
+        body = answer_question(message, context.get("venue_id"), context.get("prior_message"))
         for text in ("LAPD", "2020–2024", "800 m radius"):
             self.assertIn(text, body["answer"])
-        self.assertNotIn(FAKE_KEY, response.text)
+        self.assertNotIn(FAKE_KEY, json.dumps(body))
         return body
 
     def test_messages_api_request_and_model_setting(self):
@@ -487,9 +486,7 @@ class ClaudeTests(unittest.TestCase):
     def test_key_off_answers_a_custom_year_span_from_the_question(self):
         os.environ["ANTHROPIC_API_KEY"] = ""
         os.environ["GOOGLE_CLOUD_PROJECT"] = ""
-        body = self.client.post("/api/chat", json={"message": "Which groups rose from 2021 to 2025 near Dodger Stadium?"})
-        self.assertEqual(body.status_code, 200)
-        payload = body.json()
+        payload = answer_question("Which groups rose from 2021 to 2025 near Dodger Stadium?")
         self.assertEqual(payload["status"], "answered")
         self.assertEqual(payload["question_type"], "trend")
         self.assertEqual(payload["table"]["columns"][1], "2021")

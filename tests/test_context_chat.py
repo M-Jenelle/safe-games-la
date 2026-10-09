@@ -46,9 +46,7 @@ class ContextChatTests(unittest.TestCase):
         self.addCleanup(env_file.stop)
 
     def post(self, message, **context):
-        response = self.client.post("/api/chat", json={"message": message, **context})
-        self.assertEqual(response.status_code, 200, response.text)
-        body = response.json()
+        body = answer_question(message, context.get("venue_id"), context.get("prior_message"))
         for label in ("LAPD", "2020–2024", "800 m radius"):
             self.assertIn(label, body["answer"])
         return body
@@ -232,9 +230,9 @@ class ContextChatTests(unittest.TestCase):
                 summary = deepcopy(self.summary)
                 summary["venues"][0][field] = value
                 with patch("backend.chat.load_summary", return_value=summary):
-                    response = self.client.post("/api/chat", json={"message": f"What {topic} is near Dodger Stadium?"})
-                self.assertEqual(response.status_code, 503)
-                self.assertEqual(response.json()["results"], [])
+                    body = answer_question(f"What {topic} is near Dodger Stadium?")
+                self.assertEqual(body["status"], "unavailable")
+                self.assertEqual(body["results"], [])
 
     def test_missing_source_is_not_fabricated(self):
         summary = deepcopy(self.summary)

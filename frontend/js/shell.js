@@ -2,27 +2,8 @@ import { closeCompare } from "./compare.js";
 import { renderMap } from "./map.js";
 import { clearSelection, closeVenuePage, openVenuePage } from "./nav.js";
 import { renderRoster } from "./roster.js";
-import { appShell, chatClose, chatLauncher, chatPanel, comparePage, detail, overview, roster, rosterBackdrop, rosterList, rosterToggle, rosterToggleLabel, sortMode, state, zoneFilter } from "./state.js";
+import { appShell, comparePage, detail, overview, roster, rosterBackdrop, rosterList, rosterToggle, rosterToggleLabel, sortMode, state, zoneFilter } from "./state.js";
 import { selectVenue } from "./venue.js";
-
-function setChatOpen(open) {
-  chatPanel.hidden = !open;
-  chatLauncher.hidden = open;
-  chatLauncher.setAttribute("aria-expanded", open ? "true" : "false");
-  if (open) {
-    const other = document.querySelector("#chat-panel-v2");
-    const otherLauncher = document.querySelector("#chat-launcher-v2");
-    if (other) other.hidden = true;
-    if (otherLauncher) {
-      otherLauncher.hidden = false;
-      otherLauncher.setAttribute("aria-expanded", "false");
-    }
-    document.querySelector("#chat-input").focus();
-  } else chatLauncher.focus();
-}
-
-chatLauncher.addEventListener("click", () => setChatOpen(true));
-chatClose.addEventListener("click", () => setChatOpen(false));
 
 const NARROW_ROSTER = 980;
 let rosterNarrow = window.innerWidth <= NARROW_ROSTER;
@@ -62,10 +43,6 @@ rosterBackdrop.addEventListener("click", () => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
-  if (!chatPanel.hidden) {
-    setChatOpen(false);
-    return;
-  }
   if (comparePage && !comparePage.hidden) {
     closeCompare();
     return;
