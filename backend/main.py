@@ -7,9 +7,11 @@ Run from the repo root:
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 import json
 import os
+import sys
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -57,10 +59,28 @@ def _load_env_file() -> None:
 
 _load_env_file()
 
+
+def _skip_prepare() -> bool:
+    """Tests import the app. They must not build data or register a Windows task."""
+    if os.environ.get("SAFE_GAMES_PREPARE") == "0":
+        return True
+    return any("unittest" in arg for arg in sys.argv)
+
+
+@asynccontextmanager
+async def _lifespan(_app):
+    if not _skip_prepare():
+        from pipeline.prepare import prepare
+
+        prepare()
+    yield
+
+
 app = FastAPI(
     title="Safe Games LA",
     version="0.1.0",
     summary="Venue safety briefings for LA28 anchor sites.",
+    lifespan=_lifespan,
 )
 app.add_middleware(
     CORSMiddleware,
