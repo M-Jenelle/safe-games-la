@@ -17,7 +17,7 @@
     "How many incidents were reported near Peacock Theater?",
     "Wet days versus dry days near Peacock Theater",
     "What is the weather now at Peacock Theater?",
-    "Are there Metro advisories near Peacock Theater?",
+    "What does crime look like on weekends near Dodger Stadium?",
   ];
 
   function renderContext() {

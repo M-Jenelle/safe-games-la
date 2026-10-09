@@ -15,10 +15,11 @@ import httpx
 from backend.briefing import HOT_ROW, PERMIT_INTRO, WET_ROW, weather_hints
 from backend.chat import (
     PRESENT_PROVENANCE,
+    _FOLLOW_WORDS,
     _hard_block,
-    _is_venue_fragment,
     _mentions,
     _normalize,
+    _question_text,
     answer_deterministic,
     answer_routed,
 )
@@ -393,18 +394,31 @@ def _current_weather(venue: dict) -> dict:
     }
 
 
-def _gap_sentence(name: str, label: str, other: str, stats: dict | None) -> str:
+def _covers_one(model: dict | None) -> bool | None:
+    if not model or model.get("low") is None or model.get("high") is None:
+        return None
+    return float(model["low"]) <= 1 <= float(model["high"])
+
+
+def _gap_sentence(name: str, label: str, other: str, stats: dict | None, model: dict | None) -> str:
+    """Lead with the count model. The weekday percent is a different adjustment."""
     if not stats:
         return (
             f"Near {name}, there are not enough {label.lower()} on matching weekdays "
             f"to quote a weekday-adjusted gap against {other.lower()}."
         )
-    gap = stats["absolute_difference"]
-    sign = "+" if gap > 0 else ""
+    covered = _covers_one(model)
+    if covered is True:
+        lead = "No clear difference. "
+    elif covered is False and float(model["high"]) < 1:
+        lead = "The count model stays below 1.00. "
+    elif covered is False:
+        lead = "The count model stays above 1.00. "
+    else:
+        lead = ""
     return (
-        f"Near {name}, {label.lower()} average {stats['event_day_mean']:.2f} records "
-        f"and other {other.lower()} of the same weekday average {stats['other_day_mean']:.2f}. "
-        f"The weekday-adjusted gap is {sign}{gap:.2f} per day ({sign}{stats['lift_pct']:.1f}%), "
+        f"{lead}Near {name}, {label.lower()} average {stats['event_day_mean']:.2f} records "
+        f"and other {other.lower()} of the same weekday average {stats['other_day_mean']:.2f}, "
         f"from {stats['event_day_count']} {label.lower()}."
     )
 
@@ -436,9 +450,11 @@ def _interval_confidence(fitted: list[tuple[str, dict | None]]) -> dict:
             "text": "Weekday-adjusted association. No count-model interval. Not a statement about today's weather.",
         }
     text = "; ".join(
-        f"{item['label']} {item['multiplier']:.2f} ({item['low']:.2f}–{item['high']:.2f})"
+        f"{item['label']} {item['multiplier']:.2f}× ({item['low']:.2f}–{item['high']:.2f})"
         for item in intervals
     )
+    if all(item["low"] <= 1 <= item["high"] for item in intervals):
+        text = f"No clear difference. {text}"
     return {"kind": "interval", "text": text, "intervals": intervals}
 
 
@@ -458,8 +474,9 @@ def _historical_weather(message: str, venue: dict) -> dict:
             for row in present
         ]
         stats = weekday_standardized(rows, "event")
-        parts.append(_gap_sentence(venue["venue_name"], "Wet days", "days", stats))
-        fitted.append(("Wet days", _fit_weather(rows, "wet") if stats else None))
+        fitted_wet = _fit_weather(rows, "wet") if stats else None
+        parts.append(_gap_sentence(venue["venue_name"], "Wet days", "days", stats, fitted_wet))
+        fitted.append(("Wet days", fitted_wet))
     if want_hot:
         rows = [
             {
@@ -470,8 +487,9 @@ def _historical_weather(message: str, venue: dict) -> dict:
             for row in present
         ]
         stats = weekday_standardized(rows, "event")
-        parts.append(_gap_sentence(venue["venue_name"], "Hot days", "days", stats))
-        fitted.append(("Hot days", _fit_weather(rows, "hot") if stats else None))
+        fitted_hot = _fit_weather(rows, "hot") if stats else None
+        parts.append(_gap_sentence(venue["venue_name"], "Hot days", "days", stats, fitted_hot))
+        fitted.append(("Hot days", fitted_hot))
     caveat = (
         "Weekday-adjusted association inside the 800 m buffer. "
         "This is not a cause, not a forecast, and not a statement about today's weather."
@@ -659,6 +677,37 @@ def _distance_reply(venue: dict) -> dict | None:
 
 
 _REPLAY = {"weather_association", "current_weather", "metro_alerts", "page_guide", "distance"}
+_GLUE = _FOLLOW_WORDS | {"instead", "rather", "switch", "to", "at", "near", "on", "in", "me", "show", "tell", "there"}
+
+
+def _venue_swap(message: str, venues: list[dict]) -> dict | None:
+    """A follow-up that only names a different venue, such as “What about the Coliseum?”."""
+    normalized = _normalize(message)
+    mentions = _mentions(normalized, venues)
+    if len(mentions) != 1 or len(mentions[0][2]) != 1:
+        return None
+    if set(_question_text(normalized, mentions).split()) - _GLUE:
+        return None
+    return mentions[0][2][0]
+
+
+def _remembered_tool(prior: str, tool: str | None) -> str | None:
+    """Keep the last v2 tool. If it was not stored, read it from the earlier question."""
+    if tool in _REPLAY:
+        return tool
+    if re.search(r"\b(advisories|advisory|service alerts?|metro alerts?)\b", prior):
+        return "metro_alerts"
+    if re.search(r"\b(right now|currently|current weather|weather now|raining now|is it raining|temperature now)\b", prior):
+        return "current_weather"
+    if re.search(r"\b(now|today|tonight)\b", prior) and re.search(r"\b(weather|rain|raining|temperature)\b", prior):
+        return "current_weather"
+    if re.search(r"\b(wet days?|dry days?|hot days?|cooler days?)\b", prior):
+        return "weather_association"
+    if re.search(r"\b(weather|rain|raining|precipitation|wet|hot)\b", prior) and re.search(
+        r"\b(crime|crimes|records?|incidents?|correlation|gap)\b", prior
+    ):
+        return "weather_association"
+    return None
 
 
 def _guide_by_id(topic: str) -> dict | None:
@@ -670,14 +719,12 @@ def _guide_by_id(topic: str) -> dict | None:
 
 def _replay(message: str, venues: list[dict], prior: str, tool: str | None, arguments: dict) -> dict | None:
     """Repeat the last v2 tool when the new message only changes the venue."""
+    tool = _remembered_tool(prior, tool)
     if tool not in _REPLAY:
         return None
-    normalized = _normalize(message)
-    if not _is_venue_fragment(normalized, _mentions(normalized, venues)):
+    venue = _venue_swap(message, venues)
+    if venue is None:
         return None
-    venue, early = _one_venue(message, None, venues)
-    if early or venue is None:
-        return _stamp(early) if early else None
     if tool == "weather_association":
         facet = str(arguments.get("facet") or "")
         seed = prior if re.search(r"\b(wet|dry|hot|cooler|rain)\b", prior) else ""

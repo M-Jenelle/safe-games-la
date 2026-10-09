@@ -11,19 +11,18 @@ import os
 import re
 from pathlib import Path
 from typing import Literal
-from urllib.parse import quote
 
 import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-DEFAULT_MODEL = "claude-haiku-4-5@20251001"
-DEFAULT_LOCATION = "us-east5"
+API_URL = "https://api.anthropic.com/v1/messages"
+DEFAULT_MODEL = "claude-haiku-4-5"
 ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
-_VERTEX_ALIASES = {
-    "claude-haiku-4-5": DEFAULT_MODEL,
+_API_MODELS = {
+    "claude-haiku-4-5@20251001": DEFAULT_MODEL,
     "claude-haiku-4-5-20251001": DEFAULT_MODEL,
 }
-_SETTINGS = {"GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION", "ANTHROPIC_MODEL"}
+_SETTINGS = {"ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"}
 
 
 class ClaudeUnavailable(Exception):
@@ -73,8 +72,8 @@ class Explanation(BaseModel):
     explanation: str
 
 
-def _configuration() -> tuple[str, str, str]:
-    """Project, region, and model. A value already in the process wins over .env."""
+def _configuration() -> tuple[str, str]:
+    """API key and model. A value already in the process wins over .env."""
     values = {}
     try:
         lines = ENV_PATH.read_text(encoding="utf-8").splitlines()
@@ -90,50 +89,23 @@ def _configuration() -> tuple[str, str, str]:
         return os.environ.get(name, "").strip() or values.get(name, "") or default
 
     raw_model = pick("ANTHROPIC_MODEL", DEFAULT_MODEL)
-    return pick("GOOGLE_CLOUD_PROJECT"), pick("GOOGLE_CLOUD_LOCATION", DEFAULT_LOCATION), _VERTEX_ALIASES.get(raw_model, raw_model)
+    return pick("ANTHROPIC_API_KEY"), _API_MODELS.get(raw_model, raw_model)
 
 
 def settings() -> dict:
-    _project, _location, model = _configuration()
+    _api_key, model = _configuration()
     return {
-        "claude_configured": bool(_project),
+        "claude_configured": bool(_api_key),
         "model": model,
     }
 
 
-def _vertex_url(project: str, location: str, model: str) -> str:
-    model_id = quote(model, safe="")
-    if location == "global":
-        host = "https://aiplatform.googleapis.com"
-    else:
-        host = f"https://{location}-aiplatform.googleapis.com"
-    return (
-        f"{host}/v1/projects/{quote(project, safe='')}/locations/{quote(location, safe='')}"
-        f"/publishers/anthropic/models/{model_id}:rawPredict"
-    )
-
-
-def _bearer_token() -> str:
-    """Access token from Application Default Credentials. Never logged."""
-    try:
-        import google.auth
-        from google.auth.transport.requests import Request
-        credentials, _discovered = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-        credentials.refresh(Request())
-    except Exception as exc:
-        raise ClaudeUnavailable("Claude is not configured") from exc
-    token = getattr(credentials, "token", None)
-    if not token:
-        raise ClaudeUnavailable("Claude is not configured")
-    return token
-
-
 def _send(system: str, messages: list, schema: dict, failure: str) -> str:
-    project, location, model = _configuration()
-    if not project:
+    api_key, model = _configuration()
+    if not api_key:
         raise ClaudeUnavailable("Claude is not configured")
     payload = {
-        "anthropic_version": "vertex-2023-10-16",
+        "model": model,
         "max_tokens": 256,
         "system": system,
         "messages": messages,
@@ -141,8 +113,9 @@ def _send(system: str, messages: list, schema: dict, failure: str) -> str:
     }
     try:
         with httpx.Client(timeout=httpx.Timeout(8.0, connect=3.0)) as client:
-            response = client.post(_vertex_url(project, location, model), headers={
-                "Authorization": f"Bearer {_bearer_token()}",
+            response = client.post(API_URL, headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
                 "content-type": "application/json",
             }, json=payload)
             response.raise_for_status()
@@ -157,7 +130,7 @@ def _send(system: str, messages: list, schema: dict, failure: str) -> str:
 
 
 def interpret_question(message: str, venues: list[dict], venue_id: str | None) -> Interpretation:
-    """One bounded Vertex call with a validated structured response."""
+    """One bounded Messages API call with a validated structured response."""
     schema = {
         "type": "object",
         "properties": {
@@ -293,6 +266,15 @@ def explanation_uses_only(text: str, source: str, allowed_labels: list[str]) -> 
     supplied = {token.replace(",", "") for token in re.findall(r"\d[\d,]*", source)}
     for token in re.findall(r"\d[\d,]*", cleaned):
         if token.replace(",", "") not in supplied:
+            return False
+    source_text = source.casefold()
+    for word in (
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+        "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+        "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty",
+        "sixty", "seventy", "eighty", "ninety", "hundred", "thousand", "million",
+    ):
+        if re.search(rf"\b{word}\b", cleaned, re.IGNORECASE) and not re.search(rf"\b{word}\b", source_text):
             return False
     allowed = {label.casefold() for label in allowed_labels}
     for label in _PATTERN_LABELS:

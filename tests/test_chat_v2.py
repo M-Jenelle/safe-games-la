@@ -288,6 +288,40 @@ class ChatV2NextTests(ChatV2Tests):
         self.assertIn("Coliseum", body["answer"])
         self.assertNotIn("Peacock", body["answer"])
 
+    def test_venue_swap_works_without_a_stored_tool(self):
+        weather = answer_v2(
+            "What about the Coliseum instead?",
+            venue_id="V04",
+            history=[{"user_text": "Wet days versus dry days near Peacock Theater"}],
+        )
+        self.assertEqual(weather["tool"], "weather_association")
+        self.assertEqual(weather["arguments"]["venue_id"], "V05")
+        self.assertIn("Coliseum", weather["answer"])
+        with patch("backend.metro_alerts.swiftly_key", return_value=""):
+            metro = answer_v2(
+                "What about the Coliseum?",
+                venue_id="V01",
+                history=[{"user_text": "Are there Metro alerts near Dodger Stadium?"}],
+            )
+        self.assertEqual(metro["tool"], "metro_alerts")
+        self.assertEqual(metro["arguments"]["venue_id"], "V05")
+        self.assertIn("not connected", metro["answer"])
+
+    def test_expected_next_months_is_the_seasonal_estimate(self):
+        body = answer_v2("What are the next few months expected near Dodger Stadium?")
+        self.assertEqual(body["tool"], "seasonal_estimate")
+        self.assertEqual(body["confidence"]["kind"], "seasonal")
+        self.assertIn("not a certainty", body["answer"] + body["caveat"])
+
+    def test_spelled_out_numbers_are_rejected(self):
+        template = "Saturday is the busiest day, 253 records."
+        self.assertFalse(narration_ok(
+            "Saturday had four hundred forty-six records.",
+            template,
+            ["V01"],
+            self.venues,
+        ))
+
     def test_narration_may_use_table_labels_and_numbers(self):
         template = "Weekend days near Dodger Stadium."
         table = {"columns": ["Day", "Records"], "rows": [["Saturday", "2,920"], ["Sunday", "1,100"]]}
@@ -314,6 +348,10 @@ class ChatV2NextTests(ChatV2Tests):
         self.assertLessEqual(interval["low"], interval["multiplier"])
         self.assertLessEqual(interval["multiplier"], interval["high"])
         self.assertIn("same weekday", body["answer"])
+        self.assertNotIn("%", body["answer"])
+        if interval["low"] <= 1 <= interval["high"]:
+            self.assertTrue(body["answer"].startswith("No clear difference."))
+            self.assertTrue(body["confidence"]["text"].startswith("No clear difference."))
 
     def test_permit_confidence_is_the_model_range(self):
         body = answer_v2("How do permit days compare near Peacock Theater?")

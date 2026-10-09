@@ -299,7 +299,10 @@ def _seasonal_question(message: str) -> bool:
     return bool(
         re.search(r"\b(next|upcoming)\b", message)
         and re.search(r"\bmonths?\b", message)
-        and re.search(r"\b(estimate|estimates|estimated|predict|prediction|forecast)\b", message)
+        and re.search(
+            r"\b(estimate|estimates|estimated|expect|expected|expectation|predict|prediction|forecast)\b",
+            message,
+        )
     )
 
 

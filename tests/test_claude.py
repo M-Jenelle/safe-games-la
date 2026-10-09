@@ -14,7 +14,7 @@ from unittest.mock import patch
 import httpx
 from fastapi.testclient import TestClient
 
-from backend.claude import DEFAULT_MODEL, ClaudeUnavailable, explanation_uses_only, interpret_question
+from backend.claude import API_URL, DEFAULT_MODEL, ClaudeUnavailable, explanation_uses_only, interpret_question
 from backend.main import app
 from backend.store import get_venue
 
@@ -30,15 +30,11 @@ class ClaudeTests(unittest.TestCase):
 
     def setUp(self):
         environment = patch.dict(os.environ, {
-            "ANTHROPIC_API_KEY": "",
+            "ANTHROPIC_API_KEY": FAKE_KEY,
             "ANTHROPIC_MODEL": "",
-            "GOOGLE_CLOUD_PROJECT": "test-project",
-            "GOOGLE_CLOUD_LOCATION": "us-east5",
+            "GOOGLE_CLOUD_PROJECT": "",
         })
-        self.token = patch("backend.claude._bearer_token", return_value="test-token")
         environment.start()
-        self.token.start()
-        self.addCleanup(self.token.stop)
         self.addCleanup(environment.stop)
         env_file = patch("backend.claude.ENV_PATH", Path("/nonexistent/safe-games-la.env"))
         env_file.start()
@@ -82,13 +78,11 @@ class ClaudeTests(unittest.TestCase):
         self.assertEqual(body["model"], "test-model-choice")
         self.assertEqual(len(requests), 1)
         request = requests[0]
-        self.assertIn("/projects/test-project/locations/us-east5/", str(request.url))
-        self.assertIn("/models/test-model-choice:rawPredict", str(request.url))
-        self.assertEqual(request.headers["authorization"], "Bearer test-token")
-        self.assertNotIn("x-api-key", request.headers)
+        self.assertEqual(str(request.url), API_URL)
+        self.assertEqual(request.headers["x-api-key"], FAKE_KEY)
+        self.assertEqual(request.headers["anthropic-version"], "2023-06-01")
         payload = json.loads(request.content)
-        self.assertEqual(payload["anthropic_version"], "vertex-2023-10-16")
-        self.assertNotIn("model", payload)
+        self.assertEqual(payload["model"], "test-model-choice")
         self.assertEqual(payload["max_tokens"], 256)
         schema = payload["output_config"]["format"]["schema"]
         self.assertEqual(set(schema["properties"]), {"intent", "scope_supported", "tool", "arguments"})
@@ -291,7 +285,7 @@ class ClaudeTests(unittest.TestCase):
                 self.assertNotIn("upstream-secret", json.dumps(body))
 
     def test_no_key_means_no_api_call(self):
-        os.environ["GOOGLE_CLOUD_PROJECT"] = ""
+        os.environ["ANTHROPIC_API_KEY"] = ""
         with self.api() as requests:
             body = self.post("How many incidents near Dodger Stadium?")
         self.assertEqual(body["engine"], "data")
@@ -320,21 +314,20 @@ class ClaudeTests(unittest.TestCase):
         self.assertNotIn(FAKE_KEY, self.client.get("/").text)
 
     def test_local_env_changes_activate_claude_without_restart(self):
-        os.environ["GOOGLE_CLOUD_PROJECT"] = ""
+        os.environ["ANTHROPIC_API_KEY"] = ""
         with TemporaryDirectory() as directory:
             path = Path(directory) / ".env"
             with patch("backend.claude.ENV_PATH", path):
                 self.assertFalse(self.client.get("/api/chat/config").json()["claude_configured"])
-                path.write_text("GOOGLE_CLOUD_PROJECT=file-project\nGOOGLE_CLOUD_LOCATION=us-east5\nANTHROPIC_MODEL=test-local-model\n")
+                path.write_text('ANTHROPIC_API_KEY = "test-local-key"\nANTHROPIC_MODEL = test-local-model\n')
                 config = self.client.get("/api/chat/config")
                 self.assertEqual(config.json(), {"claude_configured": True, "model": "test-local-model"})
-                self.assertNotIn("file-project", config.text)
+                self.assertNotIn("test-local-key", config.text)
                 with self.api({"intent": "present_total", "scope_supported": True}) as requests:
                     body = self.post("How many incidents near Dodger Stadium?")
                 self.assertEqual(body["engine"], "claude")
-                self.assertIn("/projects/file-project/", str(requests[0].url))
-                self.assertIn("/models/test-local-model:rawPredict", str(requests[0].url))
-                path.write_text("GOOGLE_CLOUD_PROJECT=\nANTHROPIC_MODEL=test-updated-model\n")
+                self.assertEqual(requests[0].headers["x-api-key"], "test-local-key")
+                path.write_text("ANTHROPIC_API_KEY=\nANTHROPIC_MODEL=test-updated-model\n")
                 self.assertEqual(self.client.get("/api/chat/config").json(), {
                     "claude_configured": False, "model": "test-updated-model",
                 })
@@ -343,13 +336,12 @@ class ClaudeTests(unittest.TestCase):
         os.environ["ANTHROPIC_MODEL"] = "test-process-model"
         with TemporaryDirectory() as directory:
             path = Path(directory) / ".env"
-            path.write_text("GOOGLE_CLOUD_PROJECT=file-project\nANTHROPIC_MODEL=test-local-model\n")
+            path.write_text("ANTHROPIC_API_KEY=test-local-key\nANTHROPIC_MODEL=test-local-model\n")
             with patch("backend.claude.ENV_PATH", path), self.api({"intent": "present_total", "scope_supported": True}) as requests:
                 body = self.post("How many incidents near Dodger Stadium?")
         self.assertEqual(body["model"], "test-process-model")
-        self.assertIn("/projects/test-project/", str(requests[0].url))
-        self.assertIn("/models/test-process-model:rawPredict", str(requests[0].url))
-        self.assertEqual(requests[0].headers["authorization"], "Bearer test-token")
+        self.assertEqual(requests[0].headers["x-api-key"], FAKE_KEY)
+        self.assertEqual(json.loads(requests[0].content)["model"], "test-process-model")
 
     def test_tools_use_validated_arguments_and_processed_numbers(self):
         detail = get_venue("V01")
@@ -484,7 +476,7 @@ class ClaudeTests(unittest.TestCase):
         self.assertEqual(kept["results"][0]["count"], get_venue("V01")["present"]["count"])
 
     def test_key_off_answers_a_custom_year_span_from_the_question(self):
-        os.environ["GOOGLE_CLOUD_PROJECT"] = ""
+        os.environ["ANTHROPIC_API_KEY"] = ""
         body = self.client.post("/api/chat", json={"message": "Which groups rose from 2021 to 2025 near Dodger Stadium?"})
         self.assertEqual(body.status_code, 200)
         payload = body.json()
