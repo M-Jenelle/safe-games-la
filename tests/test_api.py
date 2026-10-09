@@ -294,7 +294,13 @@ class ApiTests(unittest.TestCase):
             self.assertGreaterEqual(marker["longitude"], bounds["west"])
             self.assertLessEqual(marker["longitude"], bounds["east"])
 
+    def _need_nibrs(self):
+        from pipeline.merge_crime import NIBRS_PATH
+        if not NIBRS_PATH.exists():
+            self.skipTest("heatmap ranges read data/raw/nibrs/nibrs_current.csv")
+
     def test_crime_heat_covers_the_city(self):
+        self._need_nibrs()
         response = self.client.get("/api/map/crime")
         self.assertEqual(response.status_code, 200)
         body = response.json()
@@ -312,6 +318,7 @@ class ApiTests(unittest.TestCase):
         self.assertGreater(max(longitudes) - min(longitudes), 0.5)
 
     def test_crime_heat_views(self):
+        self._need_nibrs()
         city = self.client.get("/api/map/crime?view=all").json()
         high = self.client.get("/api/map/crime?view=high")
         venues = self.client.get("/api/map/crime?view=venues")
@@ -335,6 +342,7 @@ class ApiTests(unittest.TestCase):
         self.assertFalse(nibrs_body["hot"])
 
     def test_crime_heat_month_range(self):
+        self._need_nibrs()
         full = self.client.get("/api/map/crime?view=all").json()
         self.assertGreaterEqual(len(full["months"]), 12)
         self.assertEqual(full["start"], full["months"][0])
@@ -415,6 +423,48 @@ class ApiTests(unittest.TestCase):
         permit = self.client.get("/api/venues/V01/permit-comparison").json()
         self.assertIn("permit days, not the MLB", permit["note"])
         self.assertIn("0.05", permit["group_gap_note"])
+
+    def test_weather_comparison(self):
+        missing = self.client.get("/api/venues/V99/weather")
+        self.assertEqual(missing.status_code, 404)
+        peacock = self.client.get("/api/venues/V04/weather")
+        self.assertEqual(peacock.status_code, 200)
+        body = peacock.json()
+        self.assertTrue(body["available"])
+        self.assertEqual(body["venue_name"], "Peacock Theater")
+        self.assertEqual(body["nibrs_end"], "2026-09-19")
+        self.assertIn("not a forecast", body["disclaimer"])
+        self.assertNotIn("September 19, 2026", body["disclaimer"])
+        self.assertNotIn("2020 through", body["disclaimer"])
+        wet = body["comparisons"][0]["rows"]
+        hot = body["comparisons"][1]["rows"]
+        self.assertEqual([row["label"] for row in wet], ["Wet Day vs Dry Day"])
+        self.assertEqual(wet[0]["event_day_mean"], 8.0)
+        self.assertEqual(wet[0]["other_day_mean"], 7.46)
+        self.assertEqual(wet[0]["absolute_difference"], 0.54)
+        self.assertEqual(wet[0]["lift_pct"], 7.2)
+        self.assertTrue(wet[0]["percent_shown"])
+        self.assertEqual(hot[0]["event_day_mean"], 6.82)
+        self.assertEqual(hot[0]["other_day_mean"], 7.62)
+        self.assertEqual(hot[0]["lift_pct"], -10.5)
+        self.assertTrue(hot[0]["percent_shown"])
+        self.assertEqual(hot[0]["label"], "Hot Day vs Cooler Day")
+        valley = self.client.get("/api/venues/V12/weather").json()
+        valley_wet = valley["comparisons"][0]["rows"][0]
+        self.assertEqual(valley_wet["label"], "Wet Day vs Dry Day")
+        self.assertTrue(valley_wet["available"])
+        venice = self.client.get("/api/venues/V13/weather").json()
+        venice_wet = venice["comparisons"][0]["rows"][0]
+        self.assertEqual(venice_wet["label"], "Wet Day vs Dry Day")
+        self.assertTrue(venice_wet["percent_shown"])
+        self.assertEqual(venice_wet["lift_pct"], -16.0)
+        from pipeline.weather_compare import load_joined_days, present_days, report_daily_counts
+        from backend.venues import present_headlines
+        counted = present_days(load_joined_days()["V04"], report_daily_counts()["V04"])
+        self.assertEqual(sum(row["incident_count"] for row in counted), present_headlines()["V04"]["count"])
+        hints = self.client.get("/api/meta").json()["copy"]["weather_hints"]
+        self.assertIn("75", hints["Hot Day vs Cooler Day"])
+        self.assertIn("at least 8", hints["Difference"])
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,650&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/styles.css?v=heat-load">
 </head>
 <body>
   <div class="app">
@@ -131,6 +131,10 @@
             <div id="facility-tip" class="facility-tip" hidden></div>
           </div>
           <p class="map-hint" id="map-hint">Loading the map.</p>
+          <div class="heat-loading" id="heat-loading" hidden role="status" aria-live="polite">
+            <span class="heat-spinner" aria-hidden="true"></span>
+            <span>Loading crime data</span>
+          </div>
           <div class="map-legend" id="crime-legend"><span>Less</span><i></i><span>More</span></div>
         </div>
         <section class="detail" id="detail" hidden aria-live="polite" aria-labelledby="overview-heading"></section>
@@ -168,15 +172,47 @@
       </form>
       <p class="chat-context" id="chat-context">No venue selected. Include a venue name in your question.</p>
     </aside>
-    <button type="button" class="chat-launcher" id="chat-launcher" aria-expanded="false" aria-controls="chat-panel" aria-label="Open Ask Torchy">
+    <aside class="chat-panel" id="chat-panel-v2" hidden aria-labelledby="chat-heading-v2">
+      <div class="panel-label">
+        <h2 id="chat-heading-v2"><span class="chat-heading-icon bot-avatar" aria-hidden="true"><img src="/static/torch.svg" alt=""></span>Ask Torchy</h2>
+        <button type="button" class="chat-close" id="chat-close-v2" aria-label="Close chatbot">
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M3.2 3.2 12.8 12.8M12.8 3.2 3.2 12.8" fill="none" stroke="currentColor" stroke-width="1.4"/>
+          </svg>
+        </button>
+      </div>
+      <div class="chat-log" id="chat-log-v2" role="log" aria-live="polite" aria-relevant="additions" aria-label="Torchy chat messages">
+        <div class="chat-body">
+          <p class="analysis-lead">Name a venue or select one on the map to ask about “this venue.”</p>
+          <p>Answers are calculated in Python. The note under each answer is attached by the server.</p>
+          <p class="examples-label">Try a question</p>
+          <div class="chat-suggestions" id="chat-suggestions-v2"></div>
+        </div>
+      </div>
+      <p class="chat-status" id="chat-status-v2" role="status"></p>
+      <form class="chat-form" id="chat-form-v2">
+        <label class="visually-hidden" for="chat-input-v2">Message Torchy</label>
+        <input id="chat-input-v2" type="text" placeholder="Ask about a venue" required maxlength="2000" autocomplete="off">
+        <button type="submit">Send</button>
+      </form>
+      <p class="chat-context" id="chat-context-v2">No venue selected. Include a venue name in your question.</p>
+    </aside>
+    <div class="chat-launchers">
+    <button type="button" class="chat-launcher" id="chat-launcher-v2" aria-expanded="false" aria-controls="chat-panel-v2" aria-label="Open Ask Torchy">
       <span class="chat-launcher-icon bot-avatar" aria-hidden="true"><img src="/static/torch.svg" alt=""></span>
       <span>Ask Torchy</span>
     </button>
+    <button type="button" class="chat-launcher" id="chat-launcher" hidden aria-expanded="false" aria-controls="chat-panel" aria-label="Open the previous chatbot">
+      <span class="chat-launcher-icon bot-avatar" aria-hidden="true"><img src="/static/torch.svg" alt=""></span>
+      <span>Ask Torchy</span>
+    </button>
+    </div>
     </div>
   </div>
   <script src="https://unpkg.com/deck.gl@9.2.0/dist.min.js"></script>
   <script src="https://unpkg.com/@deck.gl/google-maps@9.2.0/dist.min.js"></script>
   <script src="/static/chat.js"></script>
-  <script type="module" src="/static/js/main.js"></script>
+  <script src="/static/chat-v2.js?v=torchy-source"></script>
+  <script type="module" src="/static/js/main.js?v=heat-load"></script>
 </body>
 </html>

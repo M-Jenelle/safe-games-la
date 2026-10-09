@@ -32,6 +32,7 @@ class ClaudeTests(unittest.TestCase):
         environment = patch.dict(os.environ, {
             "ANTHROPIC_API_KEY": FAKE_KEY,
             "ANTHROPIC_MODEL": "",
+            "GOOGLE_CLOUD_PROJECT": "",
         })
         environment.start()
         self.addCleanup(environment.stop)
@@ -122,7 +123,7 @@ class ClaudeTests(unittest.TestCase):
         first, second = self.venues[:2]
         with self.api({"intent": "compare", "scope_supported": True}):
             body = self.post(f"How does the volume of reports around {first['venue_name']} stack up against {second['venue_name']}?")
-        expected = {v["venue_id"]: len(self.points[v["venue_id"]]["points"]) for v in (first, second)}
+        expected = {v["venue_id"]: get_venue(v["venue_id"])["present"]["count"] for v in (first, second)}
         self.assertEqual(body["engine"], "claude")
         self.assertEqual({row["venue_id"]: row["count"] for row in body["results"]}, expected)
         self.assertIn("overlap", body["answer"])
@@ -326,7 +327,7 @@ class ClaudeTests(unittest.TestCase):
                     body = self.post("How many incidents near Dodger Stadium?")
                 self.assertEqual(body["engine"], "claude")
                 self.assertEqual(requests[0].headers["x-api-key"], "test-local-key")
-                path.write_text('ANTHROPIC_API_KEY=\nANTHROPIC_MODEL=test-updated-model\n')
+                path.write_text("ANTHROPIC_API_KEY=\nANTHROPIC_MODEL=test-updated-model\n")
                 self.assertEqual(self.client.get("/api/chat/config").json(), {
                     "claude_configured": False, "model": "test-updated-model",
                 })
@@ -335,11 +336,12 @@ class ClaudeTests(unittest.TestCase):
         os.environ["ANTHROPIC_MODEL"] = "test-process-model"
         with TemporaryDirectory() as directory:
             path = Path(directory) / ".env"
-            path.write_text('ANTHROPIC_API_KEY=test-local-key\nANTHROPIC_MODEL=test-local-model\n')
+            path.write_text("ANTHROPIC_API_KEY=test-local-key\nANTHROPIC_MODEL=test-local-model\n")
             with patch("backend.claude.ENV_PATH", path), self.api({"intent": "present_total", "scope_supported": True}) as requests:
                 body = self.post("How many incidents near Dodger Stadium?")
         self.assertEqual(body["model"], "test-process-model")
         self.assertEqual(requests[0].headers["x-api-key"], FAKE_KEY)
+        self.assertEqual(json.loads(requests[0].content)["model"], "test-process-model")
 
     def test_tools_use_validated_arguments_and_processed_numbers(self):
         detail = get_venue("V01")
@@ -380,7 +382,7 @@ class ClaudeTests(unittest.TestCase):
         self.assertEqual(rejected["status"], "unsupported")
         self.assertEqual(rejected["results"], [])
 
-        start, end = year_counts("2021"), year_counts("2025")
+        start, end = year_counts("2021"), year_counts("2023")
         rising = sorted(
             (
                 (end.get(group, 0) - start.get(group, 0), labels.get(group, group))
@@ -393,9 +395,11 @@ class ClaudeTests(unittest.TestCase):
             coerced = self.post("Which groups rose from 2021 to 2025 near Dodger Stadium?")
         self.assertEqual(coerced["question_type"], "trend")
         self.assertEqual(coerced["table"]["columns"][1], "2021")
-        self.assertEqual(coerced["table"]["columns"][-2], "2025")
-        self.assertNotIn("2020", coerced["table"]["columns"])
+        self.assertIn("2025", coerced["table"]["columns"])
         self.assertNotIn("2026", coerced["table"]["columns"])
+        self.assertIn("2023", coerced["table"]["columns"])
+        self.assertNotIn("2020", coerced["table"]["columns"])
+        self.assertEqual(coerced["table"]["columns"][-1], "Change to 2023")
 
         with self.api({
             "intent": "tool", "scope_supported": True, "tool": "trend",
@@ -403,12 +407,16 @@ class ClaudeTests(unittest.TestCase):
         }):
             trend = self.post("Which groups rose from 2021 to 2025 near Dodger Stadium?")
         self.assertEqual(trend["question_type"], "trend")
-        self.assertEqual(trend["table"]["columns"], ["Group", "2021", "2022", "2023", "2024", "2025", "Change"])
+        self.assertEqual(
+            trend["table"]["columns"],
+            ["Group", "2021", "2022", "2023", "2024 to Mar 6", "2024 from Mar 7", "2025", "Change to 2023"],
+        )
         self.assertEqual(
             [(row["category"], row["count"]) for row in trend["results"]],
             [(label, change) for change, label in rising],
         )
-        self.assertNotIn("March 6", trend["answer"])
+        self.assertIn("March 6, 2024", trend["answer"])
+        self.assertIn("From March 7, 2024", trend["answer"])
 
         saturday = {}
         for day in detail["merged_weekday"]["days"]:
@@ -481,7 +489,9 @@ class ClaudeTests(unittest.TestCase):
         self.assertEqual(payload["status"], "answered")
         self.assertEqual(payload["question_type"], "trend")
         self.assertEqual(payload["table"]["columns"][1], "2021")
-        self.assertEqual(payload["table"]["columns"][-2], "2025")
+        self.assertIn("2025", payload["table"]["columns"])
+        self.assertEqual(payload["table"]["columns"][-1], "Change to 2023")
+        self.assertIn("NIBRS offense code", payload["answer"])
         self.assertEqual(payload["engine"], "data")
 
     def test_timeout_still_ranks_and_a_third_venue_id_does_not_change_the_pair(self):

@@ -3,4 +3,6 @@ numpy>=1.24
 scipy>=1.11
 fastapi>=0.115
 uvicorn>=0.32
-httpx>=0.27
+httpx
+google-auth
+requests>=0.27

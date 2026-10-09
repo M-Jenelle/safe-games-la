@@ -21,6 +21,23 @@ PERMIT_INTRO = (
 )
 PERMIT_NOT_MLB_NOTE = "These figures use permit days, not the MLB home-game list."
 INCIDENT_NOTE = "inside the buffer, 2020–present"
+WET_ROW = "Wet Day vs Dry Day"
+HOT_ROW = "Hot Day vs Cooler Day"
+
+
+def weather_intro(hot_f: int) -> str:
+    return (
+        f"A wet day had rain or snow. A hot day averaged at least {hot_f}°F. "
+        "Other days are the rest of the months that had both. "
+        "The count is records, 2020–present."
+    )
+
+
+def weather_disclaimer() -> str:
+    return (
+        "Records inside the 800 m buffer. "
+        "This is an association, not a cause and not a forecast."
+    )
 
 
 def reports_through_label(cutoff: str) -> str:
@@ -189,6 +206,38 @@ def permit_hints() -> dict[str, str]:
     }
 
 
+def weather_hints(hot_f: int = 75) -> dict[str, str]:
+    """Tooltip text for the weather tables. The percent rule matches the permit table."""
+    gap = _gap()
+    days = MIN_EVENT_DAYS_FOR_PERCENT
+    return {
+        "Weather": (
+            "Daily weather at the venue pin, compared with records inside the 800 m buffer, 2020–present."
+        ),
+        WET_ROW: (
+            "A wet day had rain or snow. "
+            "Dry days are the other days in months that had both."
+        ),
+        HOT_ROW: (
+            f"A hot day averaged at least {hot_f}°F. "
+            "Cooler days are the other days in months that had both."
+        ),
+        "Days": "How many dates are in this side of the comparison.",
+        "Other Days": "The other days in months that had both kinds of day.",
+        "Mean": "Average records on the days named in this row.",
+        "Other-Day Mean": "Average records on the other days in those months.",
+        "Median": (
+            "The middle daily count on the days in the first column, "
+            "then the middle count on the other days."
+        ),
+        "Difference": (
+            "This row's mean minus the other-day mean. "
+            f"A percent is shown when there are at least {days} days, "
+            f"the daily gap is at least {gap}, and the gap is unlikely to be chance."
+        ),
+    }
+
+
 def page_copy(radius_m: float, venue_count: int, reports_through: str) -> dict:
     return {
         "density_hint": density_hint(radius_m, venue_count, reports_through),
@@ -204,6 +253,7 @@ def page_copy(radius_m: float, venue_count: int, reports_through: str) -> dict:
         "weekday_click": "Click a day to see its main offense groups. Click it again to clear.",
         "permit_intro": PERMIT_INTRO,
         "permit_hints": permit_hints(),
+        "weather_hints": weather_hints(),
         "min_event_days": MIN_EVENT_DAYS_FOR_PERCENT,
     }
 

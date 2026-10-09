@@ -517,6 +517,13 @@ function applyHeatWindow(crimeHeat) {
   syncHeatControls();
 }
 
+function setHeatLoading(active) {
+  const node = document.querySelector("#heat-loading");
+  if (node) node.hidden = !active;
+}
+
+let heatLoads = 0;
+
 export async function loadCrimeHeat(view = state.crimeView || "all") {
   const crimeToggle = document.querySelector('#layer-toggles input[data-layer="crime"]');
   const token = ++crimeRequest;
@@ -532,6 +539,8 @@ export async function loadCrimeHeat(view = state.crimeView || "all") {
     if (state.layers.crime) refreshCrimeLayer();
     return;
   }
+  heatLoads += 1;
+  setHeatLoading(true);
   try {
     const params = new URLSearchParams({ view });
     if (!fullHeatRange() && state.heatStart && state.heatEnd) {
@@ -563,5 +572,11 @@ export async function loadCrimeHeat(view = state.crimeView || "all") {
     if (select) select.disabled = true;
     if (!mapHint.hidden) mapHint.textContent = `Could not load city crime: ${error.message}`;
     refreshCrimeLayer();
+  } finally {
+    heatLoads -= 1;
+    if (heatLoads <= 0) {
+      heatLoads = 0;
+      setHeatLoading(false);
+    }
   }
 }

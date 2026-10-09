@@ -1,0 +1,30 @@
+{
+  "source": "Open-Meteo Historical Weather API",
+  "endpoint": "https://archive-api.open-meteo.com/v1/archive",
+  "timezone": "America/Los_Angeles",
+  "units": {
+    "temperature": "fahrenheit",
+    "precipitation": "inch",
+    "wind": "mph"
+  },
+  "requested_start": "2020-01-01",
+  "requested_end": "2026-10-07",
+  "actual_start": "2020-01-01",
+  "actual_end": "2026-10-07",
+  "venue_count": 14,
+  "weather_rows": 34608,
+  "joined_rows": 34608,
+  "crime_daily_start": "2020-01-01",
+  "crime_daily_end": "2026-09-19",
+  "crime_counts": {
+    "report_file": "data/processed/permit_event_days.csv",
+    "report_rule": "LAPD report counts inside the 800 m buffer, dates before 2024-03-07.",
+    "nibrs_file": "data/raw/nibrs/nibrs_current.csv",
+    "nibrs_rule": "NIBRS offense rows inside the 800 m buffer, from 2024-03-07 through the last date in that file. A day with no offense is 0.",
+    "nibrs_start": "2024-03-07",
+    "nibrs_end": "2026-09-19",
+    "venue_count": 14
+  },
+  "crime_daily_note": "incident_count is the LAPD report count inside the 800 m buffer before March 7, 2024, and the NIBRS offense count inside that buffer from March 7, 2024 through the last day in the NIBRS file. Days after that leave incident_count blank. count_source says which series the count came from.",
+  "generated_at": "2026-10-08T07:01:02+00:00"
+}

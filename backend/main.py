@@ -8,15 +8,17 @@ Run from the repo root:
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import os
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from backend.chat import answer_question, suggested_questions
+from backend.chat_v2 import answer_v2, narrate_answer
 from backend.claude import settings as claude_settings
 
 from backend.store import (
@@ -30,6 +32,7 @@ from backend.store import (
     meta,
     home_game_comparison,
     permit_comparison,
+    weather_comparison,
 )
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -46,7 +49,7 @@ def _load_env_file() -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        if key.strip() in {"ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"}:
+        if key.strip() in {"ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "SWIFTLY_API_KEY", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"}:
             # Claude reads these settings on demand, allowing local key changes.
             continue
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
@@ -104,6 +107,21 @@ class ChatRequest(BaseModel):
     prior_message: str | None = Field(default=None, max_length=2000)
 
 
+class ChatV2Turn(BaseModel):
+    """Earlier user text and the tool that answered it. Model prose is ignored."""
+
+    model_config = {"extra": "ignore"}
+    user_text: str = Field(default="", max_length=2000)
+    tool: str | None = Field(default=None, max_length=80)
+    arguments: dict | None = None
+
+
+class ChatV2Request(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    venue_id: str | None = Field(default=None, min_length=1, max_length=80)
+    history: list[ChatV2Turn] = Field(default_factory=list, max_length=6)
+
+
 @app.get("/api/chat/suggestions")
 def chat_suggestions() -> dict:
     try:
@@ -122,6 +140,29 @@ def chat_config() -> dict:
 def chat(request: ChatRequest):
     response = answer_question(request.message, request.venue_id, request.prior_message)
     return JSONResponse(response, status_code=503 if response["status"] == "unavailable" else 200)
+
+
+def _v2_history(request: ChatV2Request) -> list[dict]:
+    return [turn.model_dump() for turn in request.history]
+
+
+@app.post("/api/chat/v2")
+def chat_v2(request: ChatV2Request):
+    """The trial bot. Torchy remains on /api/chat."""
+    response = answer_v2(request.message, request.venue_id, _v2_history(request))
+    return JSONResponse(response, status_code=503 if response["status"] == "unavailable" else 200)
+
+
+@app.post("/api/chat/v2/stream")
+def chat_v2_stream(request: ChatV2Request):
+    """Template first. A narration event follows only for a pattern table."""
+    def generate():
+        payload = answer_v2(request.message, request.venue_id, _v2_history(request), narrate=False)
+        yield f"data: {json.dumps({'event': 'template', **payload}, ensure_ascii=False)}\n\n"
+        narration = narrate_answer(payload)
+        yield f"data: {json.dumps({'event': 'narration', 'narration': narration}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @app.get("/api/map")
@@ -191,6 +232,18 @@ def read_permit_comparison(
     """Permit-day means versus other days in the same months."""
     try:
         body = permit_comparison(venue_id, year=year, month=month, source=source)
+    except DatasetNotFound as exc:
+        raise _missing(exc) from exc
+    if body is None:
+        raise HTTPException(status_code=404, detail=f"Unknown venue_id '{venue_id}'")
+    return body
+
+
+@app.get("/api/venues/{venue_id}/weather")
+def read_weather(venue_id: str) -> dict:
+    """Wet days and hot days versus the other days in the same months."""
+    try:
+        body = weather_comparison(venue_id)
     except DatasetNotFound as exc:
         raise _missing(exc) from exc
     if body is None:

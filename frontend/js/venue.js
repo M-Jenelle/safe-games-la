@@ -3,6 +3,7 @@ import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, mon
 import { renderMap } from "./map.js";
 import { closeVenuePage, openVenuePage, renderChatContext, venueToolbar } from "./nav.js";
 import { mountHomeGames, mountListingSection, mountPermitSection } from "./permits.js";
+import { mountWeatherSection } from "./weather.js";
 import { renderRoster } from "./roster.js";
 import { FLAG_LABELS, HIDDEN_FLAGS, detail, overview, requests, state, zoneFilter } from "./state.js";
 import { careStations, cityStats, densityHint, densityNote, incidentNote, overlapNote, presentCount, presentRate, renderOverview, stat, transitStations } from "./stats.js";
@@ -46,6 +47,7 @@ export function renderDetail() {
   const fromYearSelect = el("select", { "aria-label": "From year" });
   const toYearSelect = el("select", { "aria-label": "To year" });
   toSelect.value = "12";
+  const weatherHost = el("div");
   const permitHost = el("div");
   const homeHost = el("div");
   const listingHost = el("div");
@@ -512,6 +514,7 @@ export function renderDetail() {
       distanceHost,
       weekdayHost,
     ]),
+    weatherHost,
     permitHost,
     homeHost,
     listingHost,
@@ -525,6 +528,7 @@ export function renderDetail() {
       el("p", { className: "terms" }, [text(state.meta.jurisdiction_method)]),
     ]),
   ]));
+  mountWeatherSection(weatherHost, venue.venue_id, true);
   mountListingSection(venue.ticketmaster, listingHost, true);
   const sectionId = {
     categories: "section-categories",

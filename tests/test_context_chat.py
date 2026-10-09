@@ -38,7 +38,7 @@ class ContextChatTests(unittest.TestCase):
                 cls.raw[source] = list(csv.DictReader(handle))
 
     def setUp(self):
-        environment = patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""})
+        environment = patch.dict(os.environ, {"ANTHROPIC_API_KEY": "", "GOOGLE_CLOUD_PROJECT": ""})
         environment.start()
         self.addCleanup(environment.stop)
         env_file = patch("backend.claude.ENV_PATH", Path("/nonexistent/safe-games-la.env"))
@@ -190,7 +190,6 @@ class ContextChatTests(unittest.TestCase):
             "Compare transit near Dodger Stadium and LA Zoo",
             "Which venue has more bus stops, Dodger Stadium or LA Zoo?",
             "What is the most common bus route near Dodger Stadium?",
-            "What is the nearest rail station to Dodger Stadium?",
             "List bus stops near Dodger Stadium",
             "What are the names of bus stops near Dodger Stadium?",
             "What is the nearest emergency room to Dodger Stadium?",
@@ -253,6 +252,23 @@ class ContextChatTests(unittest.TestCase):
         self.assertEqual(body["status"], "answered")
         self.assertIsNone(body["results"][0]["facility"])
         self.assertIn("No nearest fire station is recorded", body["answer"])
+
+    def test_nearest_metro_station_is_the_closest_recorded_stop(self):
+        body = self.post("Where is the nearest Metro station to Peacock Theater?")
+        self.assertEqual(body["status"], "answered")
+        self.assertEqual(body["question_type"], "rail")
+        stations = body["results"][0]["stations"]
+        self.assertEqual(len(stations), 1)
+        peacock = next(venue for venue in self.venues if venue["venue_id"] == "V04")
+        recorded = peacock["rail_stations_nearby"]["stations"]
+        nearest = min(recorded, key=lambda station: station["distance_m"])
+        self.assertEqual(stations[0]["station_name"], nearest["station_name"])
+        self.assertIn("within 800", body["answer"])
+        none_nearby = self.post("Where is the nearest Metro station to Dodger Stadium?")
+        self.assertIn("No rail station is recorded within 800", none_nearby["answer"])
+        police = self.post("What is the nearest police station to Dodger Stadium?")
+        self.assertEqual(police["question_type"], "police")
+        self.assertIn(police["results"][0]["facility"]["station_name"], police["answer"])
 
     def test_supporting_answers_do_not_depend_on_crime_category_counts(self):
         summary = deepcopy(self.summary)

@@ -7,7 +7,7 @@ The sections are ``datasets`` (file cache), ``venues`` (one briefing),
 from backend.datasets import DatasetNotFound, get_crime_points, load_summary
 from backend.heatmap import crime_heat_points
 from backend.layers import map_layers, map_payload, meta
-from backend.venues import get_venue, home_game_comparison, list_venues, permit_comparison
+from backend.venues import get_venue, home_game_comparison, list_venues, permit_comparison, weather_comparison
 
 __all__ = [
     "DatasetNotFound",
@@ -21,4 +21,5 @@ __all__ = [
     "map_payload",
     "meta",
     "permit_comparison",
+    "weather_comparison",
 ]

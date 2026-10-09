@@ -7,7 +7,7 @@ from datetime import date
 
 import pandas as pd
 
-from pipeline.crime_groups import crime_group
+from pipeline.crime_groups import crime_group, nibrs_group
 from pipeline.merge_crime import build_merged, source_for
 
 
@@ -27,6 +27,16 @@ class MergeRulesTests(unittest.TestCase):
         self.assertEqual(crime_group("BATTERY - SIMPLE ASSAULT"), "assault")
         self.assertEqual(crime_group("BURGLARY"), "burglary")
         self.assertEqual(crime_group("TRESPASSING"), "other")
+
+    def test_nibrs_groups_follow_the_offense_code(self):
+        self.assertEqual(nibrs_group("Grand Theft Auto - GTA - 240"), "vehicle")
+        self.assertEqual(crime_group("Grand Theft Auto - GTA - 240"), "theft")
+        self.assertEqual(nibrs_group("Theft From Motor Vehicle - 23F"), "theft")
+        self.assertEqual(nibrs_group("ADW - Bodily Force - Aggravated - 13A"), "assault")
+        self.assertEqual(crime_group("ADW - Bodily Force - Aggravated - 13A"), "other")
+        self.assertEqual(nibrs_group("Criminal Threats - 13C"), "other")
+        self.assertEqual(nibrs_group("Identity Theft - 26F"), "other")
+        self.assertEqual(nibrs_group("All Other Larceny - 23H"), "theft")
 
     def test_build_keeps_legacy_before_the_cutoff_and_nibrs_after(self):
         venues = [{"venue_id": "V01", "latitude": 34.0, "longitude": -118.0}]
