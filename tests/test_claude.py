@@ -123,7 +123,7 @@ class ClaudeTests(unittest.TestCase):
         first, second = self.venues[:2]
         with self.api({"intent": "compare", "scope_supported": True}):
             body = self.post(f"How does the volume of reports around {first['venue_name']} stack up against {second['venue_name']}?")
-        expected = {v["venue_id"]: len(self.points[v["venue_id"]]["points"]) for v in (first, second)}
+        expected = {v["venue_id"]: get_venue(v["venue_id"])["present"]["count"] for v in (first, second)}
         self.assertEqual(body["engine"], "claude")
         self.assertEqual({row["venue_id"]: row["count"] for row in body["results"]}, expected)
         self.assertIn("overlap", body["answer"])

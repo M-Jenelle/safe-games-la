@@ -326,13 +326,16 @@ class ChatTests(unittest.TestCase):
         first, second = self.venues[:2]
         body = self.post(f"Compare the crime counts near {first['venue_name']} and {second['venue_name']}.")
         self.assertEqual(body["status"], "answered")
-        expected = {v["venue_id"]: len(self.points[v["venue_id"]]["points"]) for v in (first, second)}
+        expected = {v["venue_id"]: get_venue(v["venue_id"])["present"]["count"] for v in (first, second)}
         self.assertEqual({r["venue_id"]: r["count"] for r in body["results"]}, expected)
-        self.assertIn(f"{abs(expected[first['venue_id']] - expected[second['venue_id']]):,} more reports", body["answer"])
-        self.assertTrue(all(r["category"] == "All categories" for r in body["results"]))
+        self.assertIn("2020–present", body["answer"])
+        self.assertIn("not the 2020–2024 report totals", body["answer"])
+        self.assertIn(f"{abs(expected[first['venue_id']] - expected[second['venue_id']]):,} more records", body["answer"])
+        self.assertTrue(all(r["category"] == "2020–present" for r in body["results"]))
         self.assertIn("overlap", body["answer"])
         self.assertIn("not added into a unique citywide total", body["answer"])
-        self.assert_provenance(body)
+        self.assertEqual(body["source"]["period"], "2020–present")
+        self.assertIn("crime_merged.json", body["answer"])
 
     def test_short_venue_is_ambiguous_even_with_map_context(self):
         body = self.post("How many incidents near Venice?", venue_id=self.venues[0]["venue_id"])
@@ -465,10 +468,7 @@ class ChatTests(unittest.TestCase):
         self.assertIn("no most common category", body["answer"])
 
     def test_equal_comparison_counts(self):
-        summary = deepcopy(self.summary)
-        summary["venues"][1]["crime_count_nearby"] = summary["venues"][0]["crime_count_nearby"]
-        summary["venues"][1]["crime_by_category"] = {"ROBBERY": summary["venues"][0]["crime_count_nearby"]}
-        with patch("backend.chat.load_summary", return_value=summary):
+        with patch("backend.chat._present_figures", return_value=(10, 1.0)):
             body = answer_question("Compare crime counts near Dodger Stadium and Crypto.com Arena")
         self.assertIn("absolute difference: 0", body["answer"])
         self.assertIn("overlap", body["answer"])

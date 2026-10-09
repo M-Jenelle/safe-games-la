@@ -321,6 +321,45 @@ class ChatV2NextTests(ChatV2Tests):
             ["V01"],
             self.venues,
         ))
+        self.assertTrue(narration_ok(
+            "Saturday and Sunday lead the weekend.",
+            "Offense groups on Saturday and Sunday near Dodger Stadium, 100 records.",
+            ["V01"],
+            self.venues,
+            {"columns": ["Group", "Records"], "rows": [["Assault", "100"]]},
+        ))
+
+    def test_busiest_day_phrases_use_the_weekday_chart(self):
+        for question in (
+            "Which day of the week is busiest near the Coliseum?",
+            "What is the busiest day near the Coliseum?",
+        ):
+            body = answer_v2(question)
+            self.assertEqual(body["tool"], "weekend", question)
+            self.assertEqual(body["results"][0]["venue_id"], "V05")
+            self.assertIn("Saturday", body["answer"])
+
+    def test_climbing_since_a_year_is_a_trend_not_a_total(self):
+        body = answer_v2("Which crimes have been climbing around the Dodgers' ballpark since 2021?")
+        self.assertEqual(body["status"], "answered")
+        self.assertEqual(body["tool"], "trend")
+        self.assertEqual(body["results"][0]["venue_id"], "V01")
+        self.assertEqual(body["table"]["columns"][1], "2021")
+        self.assertIn("March 7, 2024", body["answer"])
+        self.assertEqual(body["confidence"]["kind"], "recorded")
+        self.assertNotIn("Which venue", body["answer"])
+
+    def test_rose_names_the_series_break(self):
+        body = answer_v2("Which crimes rose the most near Dodger Stadium?")
+        self.assertEqual(body["tool"], "rose")
+        self.assertIn("March 7, 2024", body["answer"])
+        self.assertEqual(body["confidence"]["kind"], "recorded")
+
+    def test_kinds_of_crime_at_night_are_groups(self):
+        body = answer_v2("Which kinds of crime show up most around the Coliseum late at night?")
+        self.assertEqual(body["tool"], "period_groups")
+        self.assertTrue(body["table"]["rows"])
+        self.assertNotEqual(body["results"][0]["count"], 904)
 
     def test_narration_may_use_table_labels_and_numbers(self):
         template = "Weekend days near Dodger Stadium."

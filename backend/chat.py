@@ -134,6 +134,13 @@ def _aliases(venue: dict) -> set[str]:
         aliases.add(re.sub(r"\blos angeles\b", "la", normalized))
         aliases.add(re.sub(r"\bla\b", "los angeles", normalized))
         aliases.add(re.sub(r"^(?:la|los angeles) ", "", normalized))
+        if "stadium" in normalized:
+            ballpark = normalized.replace("stadium", "ballpark")
+            aliases.add(ballpark)
+            aliases.update(
+                word for word in ballpark.split()
+                if len(word) >= 3 and word not in uninformative
+            )
         # Short names such as "Dodger", "Coliseum", and "Venice". Shared
         # tokens such as "stadium" deliberately yield a clarification.
         aliases.update(
@@ -286,6 +293,14 @@ _FOLLOW_WORDS = {
     "a", "an", "also", "and", "about", "for", "how", "now", "please",
     "question", "same", "the", "there", "too", "venue", "what",
 }
+_ROSE_RE = re.compile(
+    r"\b(rose|risen|rising|rise|grew|grown|increased|increase|climbing|climbed|climb)\b"
+    r"|\b(?:gone|went) up\b"
+)
+_CHANGE_RE = re.compile(
+    _ROSE_RE.pattern
+    + r"|\b(change|changed|trend)\b"
+)
 
 
 def _seasonal_question(message: str) -> bool:
@@ -527,16 +542,16 @@ def _headline_intent(residual: str, mentions: list) -> str | None:
         return "top_groups"
     if re.search(r"\b(?:biggest|largest) crime problem\b", residual) or re.search(r"\bmost common crimes?\b(?!\s+categor)", residual):
         return "top_groups"
-    if re.search(r"\b(weekend|weekends|weekday|weekdays|day of week)\b", residual):
+    if re.search(r"\b(weekend|weekends|weekday|weekdays|day of(?: the)? week|busiest day)\b", residual):
         if _weekday_group_all(residual):
             return None
         if _day_type_span(residual):
             return "weekend_groups"
         return "weekend"
-    if re.search(r"\b(rose|risen|grew|grown|increased)\b", residual) and re.search(
+    if _ROSE_RE.search(residual) and re.search(
         r"\b(most|crime|crimes|category|categories|group|groups|which)\b", residual
     ):
-        if _year_pair(residual):
+        if _year_pair(residual) or _since_span(residual):
             return None
         return "rose"
     if re.search(r"\bbusiest month\b", residual):
@@ -578,7 +593,9 @@ def _strip_headline_phrases(residual: str) -> str:
         r"\bcity average\b",
         r"\btop 5\b",
         r"\btop five\b",
+        r"\bday of the week\b",
         r"\bday of week\b",
+        r"\bbusiest day\b",
         r"\bweekdays?\b",
         r"\bweekends?\b",
     )
@@ -596,7 +613,7 @@ def _tool_opening(message: str) -> bool:
         return False
     if re.search(r"\bdensit", message) and _group_id(message):
         return False
-    if _year_pair(message) and re.search(r"\b(rose|risen|grew|grown|increased|increase|change|changed|trend)\b", message):
+    if _year_pair(message) and _CHANGE_RE.search(message):
         return _group_id(message) != "conflict"
     if re.search(r"\brank\b", message) and re.search(r"\bvenues\b", message):
         return True
@@ -607,7 +624,7 @@ def _tool_opening(message: str) -> bool:
         _group_id(message) or re.search(r"\b(crime|crimes|incident|incidents|report|reports|group|groups|type|types|categor)\b", message)
     ):
         return True
-    if _since_span(message) and re.search(r"\b(rose|risen|grew|grown|increased|increase|change|changed|trend)\b", message):
+    if _since_span(message) and _CHANGE_RE.search(message):
         return True
     return bool(
         _density_compare_shape(message)
@@ -620,7 +637,7 @@ def _tool_opening(message: str) -> bool:
 def _tool_from_question(message: str) -> Interpretation | None:
     """Arguments Python can read when the question already has a supported tool shape."""
     pair = _year_pair(message)
-    if pair and re.search(r"\b(rose|risen|grew|grown|increased|increase|change|changed|trend)\b", message):
+    if pair and _CHANGE_RE.search(message):
         if _group_id(message) == "conflict":
             return None
         return Interpretation(
@@ -646,7 +663,7 @@ def _tool_from_question(message: str) -> Interpretation | None:
             arguments=ToolArguments(days="all", group=_group_id(message)),
         )
     since = _since_span(message)
-    if since and re.search(r"\b(rose|risen|grew|grown|increased|increase|change|changed|trend)\b", message):
+    if since and _CHANGE_RE.search(message):
         if _group_id(message) == "conflict":
             return None
         return Interpretation(
@@ -713,9 +730,9 @@ def _outside_scope(message: str, mentions: list) -> bool:
     if _tool_opening(message):
         return False
     if _since_span(message) and (
-        re.search(r"\b(rose|risen|grew|grown|increased|increase|change|changed|trend)\b", message)
+        _CHANGE_RE.search(message)
         or _group_id(message) not in (None, "conflict")
-        or re.search(r"\b(how many|number of|counts?|totals?|incidents?|crimes?|reports?|records?)\b", message)
+        or re.search(r"\b(how many|number of|count of|counts?|totals?)\b", message)
     ):
         return False
     if _period_question(message) and not re.search(r"\b(rate|rates|densit)\b", message):
@@ -889,18 +906,19 @@ def _choose_intent(message: str, mentions: list) -> str | None:
     if _period_id(message) not in (None, "conflict") and re.search(r"\b(worse|worst|better|best|compared|comparison)\b", message):
         return "time_of_day"
     if _period_question(message) and re.search(
-        r"\b(?:which|what) crimes\b|\bcrimes (?:happen|happened|occur|occurred)\b|\btypes of crime\b",
+        r"\b(?:which|what) (?:crimes|kinds|types)\b"
+        r"|\b(?:kinds|types|categories|groups) of (?:crime|crimes)\b"
+        r"|\bcrimes (?:happen|happened|occur|occurred|show)\b"
+        r"|\btypes of crime\b|\bmost common\b",
         message,
     ):
         return "period_groups"
     if _period_question(message):
         return "period"
     if _since_span(message):
-        if re.search(r"\b(rose|risen|grew|grown|increased|increase|change|changed|trend)\b", message):
+        if _CHANGE_RE.search(message):
             return None
-        if _group_id(message) not in (None, "conflict") or re.search(
-            r"\b(how many|number of|counts?|totals?|incidents?|crimes?|reports?|records?)\b", message
-        ):
+        if re.search(r"\b(how many|number of|count of|counts?|totals?)\b", message):
             return "since_count"
     if _weekday_group_all(message):
         return None
@@ -1130,9 +1148,10 @@ def _tool_trend(venue: dict, args) -> dict | None:
     through = str((baseline.get("present") or {}).get("through") or "")
     partial = f" {end} runs through {through}, not a full year." if through.startswith(end) else ""
     name = venue["venue_name"]
+    break_note = _series_break_note(args.from_year, args.to_year)
     if rows:
         caption = (
-            f"Offense groups near {name} from {start} to {end}, ranked by the change in records.{partial}"
+            f"Offense groups near {name} from {start} to {end}, ranked by the change in records.{partial}{break_note}"
         )
     else:
         caption = f"No offense group near {name} had more records in {end} than in {start}."
@@ -1965,23 +1984,43 @@ def _answer_question(message: str, venue_id: str | None, engine: dict, prior_mes
             )
         return _reply("answered", answer, results=results, intent=intent)
 
+    if intent == "compare":
+        figures = [_present_figures(venue) for venue in selected]
+        if any(item is None for item in figures):
+            return _reply(
+                "unavailable",
+                "The 2020–present venue figures are missing. Rebuild them with `python -m pipeline.merge_crime`.",
+                intent=intent,
+                sources=[dict(PRESENT_SOURCE)],
+                provenance_text=PRESENT_PROVENANCE,
+            )
+        results = [_result(venue, "2020–present", count) for venue, (count, _rate) in zip(selected, figures)]
+        answer = "\n".join(
+            f"{row['venue_name']} — {row['count']:,} records, 2020–present."
+            for row in results
+        )
+        first, second = results
+        difference = abs(first["count"] - second["count"])
+        if difference:
+            larger = max(results, key=lambda row: row["count"])
+            answer += f"\n{larger['venue_name']} has {difference:,} more records (absolute difference)."
+        else:
+            answer += "\nThe counts are equal (absolute difference: 0 records)."
+        answer += (
+            "\nThese are the same 2020–present totals as a venue count, not the 2020–2024 report totals. "
+            "Venue areas can overlap, so the same incident may appear under both venues. "
+            "These counts are not added into a unique citywide total."
+        )
+        return _reply(
+            "answered", answer, results=results, intent=intent,
+            sources=[dict(PRESENT_SOURCE)], provenance_text=PRESENT_PROVENANCE,
+        )
+
     results = [_result(venue, "All categories", venue["crime_count_nearby"]) for venue in selected]
     answer = "\n".join(
         f"{row['venue_name']} — {row['category']}: {row['count']:,} reported incidents, 2020–2024."
         for row in results
     )
-    if intent == "compare":
-        first, second = results
-        difference = abs(first["count"] - second["count"])
-        if difference:
-            larger = max(results, key=lambda row: row["count"])
-            answer += f"\n{larger['venue_name']} has {difference:,} more reports (absolute difference)."
-        else:
-            answer += "\nThe counts are equal (absolute difference: 0 reports)."
-        answer += (
-            "\nVenue areas can overlap, so the same incident may appear under both venues. "
-            "These counts are not added into a unique citywide total."
-        )
     return _reply("answered", answer, results=results, intent=intent)
 
 
@@ -2073,16 +2112,34 @@ def _with_home_game_schedule(detail: dict, estimates: list[dict]) -> tuple[list[
     return estimates, note
 
 
+_seasonal_cache: dict[str, dict] = {}
+
+
+def _series_break_note(start: int, end: int) -> str:
+    """A year span that includes both sides of the report/NIBRS change."""
+    if start <= 2023 and end >= 2024:
+        return (
+            " This comparison crosses March 7, 2024, so it mixes LAPD reports with NIBRS offenses. "
+            "One NIBRS case can count more than once."
+        )
+    return ""
+
+
 def _seasonal_answer(venue: dict) -> dict:
+    cached = _seasonal_cache.get(venue["venue_id"])
+    if cached is not None:
+        return cached
     detail = get_venue(venue["venue_id"]) or venue
     estimates = seasonal_estimates(_venue_month_counts(detail))
     name = venue["venue_name"]
     if not estimates:
-        return _reply(
+        reply = _reply(
             "answered",
             f"There are not enough earlier years to estimate the next months near {name}.",
             intent="seasonal_estimate",
         )
+        _seasonal_cache[venue["venue_id"]] = reply
+        return reply
     estimates, schedule_note = _with_home_game_schedule(detail, estimates)
     lines = [
         (
@@ -2099,7 +2156,7 @@ def _seasonal_answer(venue: dict) -> dict:
         + " This does not say a crime will occur, and it is not a forecast for 2028."
     )
     results = [_result(venue, f"Estimate {item['key']}", item["count"]) for item in estimates]
-    return _reply(
+    reply = _reply(
         "answered",
         answer,
         results=results,
@@ -2107,6 +2164,8 @@ def _seasonal_answer(venue: dict) -> dict:
         sources=[dict(PRESENT_SOURCE)],
         provenance_text=PRESENT_PROVENANCE,
     )
+    _seasonal_cache[venue["venue_id"]] = reply
+    return reply
 
 
 def _group_totals(months: dict, year: str | None = None) -> dict[str, int]:
@@ -2271,6 +2330,7 @@ def _pattern_answer(intent: str, venue: dict, message: str = "") -> dict:
             f"{partial} "
             "A group can rise from the first year to the last and still sit below a peak in between. "
             "2020 had little or no event crowd."
+            f"{_series_break_note(int(start), int(end))}"
         )
         if not rows:
             caption = f"No offense group near {name} had more records in {end} than in {start}."

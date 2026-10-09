@@ -23,7 +23,7 @@ from backend.chat import (
     answer_deterministic,
     answer_routed,
 )
-from backend.claude import ClaudeUnavailable, explain_figures, explanation_uses_only, interpret_question, settings
+from backend.claude import ClaudeUnavailable, _PATTERN_LABELS, explain_figures, explanation_uses_only, interpret_question, settings
 from backend.datasets import load_summary
 from backend.metro_alerts import metro_reply
 from backend.event_baseline import fit_count_model, weekday_standardized
@@ -56,6 +56,9 @@ def _table_source(template: str, table: dict | None) -> tuple[str, list[str]]:
     parts.extend(cells)
     labels.extend(columns)
     labels.extend(cell for cell in cells if not re.fullmatch(r"[\d,% ]+", cell.strip()))
+    for label in _PATTERN_LABELS:
+        if re.search(rf"\b{re.escape(label)}\b", template, re.IGNORECASE):
+            labels.append(label)
     return " ".join(parts), labels
 
 
@@ -111,6 +114,8 @@ def _links(venue_id: str | None, venue_name: str | None) -> list[dict]:
 def _confidence(intent: str | None, caveat: str) -> dict:
     if intent == "seasonal_estimate":
         return {"kind": "seasonal", "text": "Seasonal estimate, not a recorded count."}
+    if intent in {"trend", "rose"}:
+        return {"kind": "recorded", "text": "Recorded change across years. Not a forecast."}
     if intent == "event_lift":
         return {"kind": "association", "text": "Association. A range, when shown, is the count-model interval."}
     if intent == "weather_association":
@@ -458,14 +463,26 @@ def _interval_confidence(fitted: list[tuple[str, dict | None]]) -> dict:
     return {"kind": "interval", "text": text, "intervals": intervals}
 
 
+_weather_answer: dict[tuple[str, str], dict] = {}
+
+
 def _historical_weather(message: str, venue: dict) -> dict:
-    joined = load_joined_days().get(venue["venue_id"]) or []
-    reports = report_daily_counts().get(venue["venue_id"]) or {}
-    present = present_days(joined, reports)
     want_wet = bool(re.search(r"\b(wet|dry|weather|rain)\b", message))
     want_hot = bool(re.search(r"\b(hot|cooler)\b", message))
     if not want_wet and not want_hot:
         want_wet = True
+    if want_wet and want_hot:
+        facet = "both"
+    elif want_hot:
+        facet = "hot"
+    else:
+        facet = "wet"
+    cached = _weather_answer.get((venue["venue_id"], facet))
+    if cached is not None:
+        return cached
+    joined = load_joined_days().get(venue["venue_id"]) or []
+    reports = report_daily_counts().get(venue["venue_id"]) or {}
+    present = present_days(joined, reports)
     parts = []
     fitted = []
     if want_wet:
@@ -494,13 +511,7 @@ def _historical_weather(message: str, venue: dict) -> dict:
         "Weekday-adjusted association inside the 800 m buffer. "
         "This is not a cause, not a forecast, and not a statement about today's weather."
     )
-    if want_wet and want_hot:
-        facet = "both"
-    elif want_hot:
-        facet = "hot"
-    else:
-        facet = "wet"
-    return {
+    payload = {
         "status": "answered",
         "answer": " ".join(parts),
         "caveat": caveat,
@@ -508,6 +519,8 @@ def _historical_weather(message: str, venue: dict) -> dict:
         "tool": "weather_association",
         "facet": facet,
     }
+    _weather_answer[(venue["venue_id"], facet)] = payload
+    return payload
 
 
 def _finish_weather(payload: dict, venue: dict) -> dict:
