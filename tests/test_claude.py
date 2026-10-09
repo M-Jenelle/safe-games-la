@@ -30,9 +30,11 @@ class ClaudeTests(unittest.TestCase):
 
     def setUp(self):
         environment = patch.dict(os.environ, {
-            "ANTHROPIC_API_KEY": FAKE_KEY,
+            "ANTHROPIC_API_KEY": "",
             "ANTHROPIC_MODEL": "",
-            "GOOGLE_CLOUD_PROJECT": "",
+            "GOOGLE_CLOUD_PROJECT": "test-project",
+            "GOOGLE_CLOUD_LOCATION": "us-west1",
+            "GEMINI_MODEL": "",
         })
         environment.start()
         self.addCleanup(environment.stop)
@@ -52,13 +54,16 @@ class ClaudeTests(unittest.TestCase):
                 raise error
             if status != 200:
                 return httpx.Response(status, json={"error": {"message": "upstream-secret-should-not-be-shown"}})
-            content = raw if raw is not None else json.dumps(output or {"intent": "total", "scope_supported": True})
-            return httpx.Response(200, json={"stop_reason": stop, "content": [{"type": "text", "text": content}]})
+            content = raw if raw is not None else json.dumps(output or {"intent": "total", "scope_supported": True, "tool": None, "arguments": None})
+            finish = {"end_turn": "STOP", "max_tokens": "MAX_TOKENS", "refusal": "SAFETY"}.get(stop, stop)
+            return httpx.Response(200, json={
+                "candidates": [{"finishReason": finish, "content": {"parts": [{"text": content}]}}],
+            })
 
         def make_client(**kwargs):
             return real_client(transport=httpx.MockTransport(handle), **kwargs)
 
-        with patch("backend.claude.httpx.Client", side_effect=make_client):
+        with patch("backend.claude.httpx.Client", side_effect=make_client), patch("backend.claude._access_token", return_value="test-token"):
             yield requests
 
     def post(self, message, **context):
@@ -71,20 +76,19 @@ class ClaudeTests(unittest.TestCase):
         return body
 
     def test_messages_api_request_and_model_setting(self):
-        os.environ["ANTHROPIC_MODEL"] = "test-model-choice"
-        with self.api({"intent": "present_total", "scope_supported": True}) as requests:
+        os.environ["GEMINI_MODEL"] = "test-model-choice"
+        with self.api({"intent": "present_total", "scope_supported": True, "tool": None, "arguments": None}) as requests:
             body = self.post("How many incidents near this venue?", venue_id=self.venues[0]["venue_id"])
-        self.assertEqual(body["engine"], "claude")
+        self.assertEqual(body["engine"], "gemini")
         self.assertEqual(body["model"], "test-model-choice")
         self.assertEqual(len(requests), 1)
         request = requests[0]
-        self.assertEqual(str(request.url), API_URL)
-        self.assertEqual(request.headers["x-api-key"], FAKE_KEY)
-        self.assertEqual(request.headers["anthropic-version"], "2023-06-01")
+        self.assertIn("/models/test-model-choice:generateContent", str(request.url))
+        self.assertEqual(request.headers["authorization"], "Bearer test-token")
+        self.assertNotIn("x-api-key", request.headers)
         payload = json.loads(request.content)
-        self.assertEqual(payload["model"], "test-model-choice")
-        self.assertEqual(payload["max_tokens"], 256)
-        schema = payload["output_config"]["format"]["schema"]
+        self.assertEqual(payload["generationConfig"]["maxOutputTokens"], 1024)
+        schema = payload["generationConfig"]["responseSchema"]
         self.assertEqual(set(schema["properties"]), {"intent", "scope_supported", "tool", "arguments"})
         self.assertIn("tool", schema["properties"]["intent"]["enum"])
         self.assertIn("rank_venues", schema["properties"]["tool"]["anyOf"][0]["enum"])
@@ -96,8 +100,8 @@ class ClaudeTests(unittest.TestCase):
         self.assertIn("present_total", schema["properties"]["intent"]["enum"])
         self.assertIn("weekend", schema["properties"]["intent"]["enum"])
         self.assertIn("rose", schema["properties"]["intent"]["enum"])
-        self.assertFalse(schema["additionalProperties"])
-        content = json.loads(payload["messages"][0]["content"])
+        self.assertNotIn("additionalProperties", schema)
+        content = json.loads(payload["contents"][0]["parts"][0]["text"])
         self.assertEqual(content["selected_venue_id"], self.venues[0]["venue_id"])
         self.assertEqual(len(content["venue_roster"]), len(self.venues))
         self.assertTrue(all(set(v) == {"venue_id", "venue_name"} for v in content["venue_roster"]))
@@ -114,7 +118,7 @@ class ClaudeTests(unittest.TestCase):
                 categories = Counter(point["category"] for point in self.points[venue["venue_id"]]["points"])
                 maximum = max(categories.values())
                 winners = {category for category, count in categories.items() if count == maximum}
-                self.assertEqual(body["engine"], "claude")
+                self.assertEqual(body["engine"], "gemini")
                 self.assertEqual(body["status"], "answered")
                 self.assertEqual({row["category"] for row in body["results"]}, winners)
                 self.assertTrue(all(row["count"] == maximum for row in body["results"]))
@@ -124,7 +128,7 @@ class ClaudeTests(unittest.TestCase):
         with self.api({"intent": "compare", "scope_supported": True}):
             body = self.post(f"How does the volume of reports around {first['venue_name']} stack up against {second['venue_name']}?")
         expected = {v["venue_id"]: get_venue(v["venue_id"])["present"]["count"] for v in (first, second)}
-        self.assertEqual(body["engine"], "claude")
+        self.assertEqual(body["engine"], "gemini")
         self.assertEqual({row["venue_id"]: row["count"] for row in body["results"]}, expected)
         self.assertIn("overlap", body["answer"])
         self.assertIn("not added into a unique citywide total", body["answer"])
@@ -132,7 +136,7 @@ class ClaudeTests(unittest.TestCase):
     def test_ambiguous_venue_still_requires_a_choice(self):
         with self.api({"intent": "present_total", "scope_supported": True}):
             body = self.post("How many incidents near Venice?", venue_id=self.venues[0]["venue_id"])
-        self.assertEqual(body["engine"], "claude")
+        self.assertEqual(body["engine"], "gemini")
         self.assertEqual(body["status"], "clarification")
         self.assertEqual(body["results"], [])
         self.assertEqual({c["venue_name"] for c in body["choices"]}, {"Venice Beach", "Venice Beach Boardwalk"})
@@ -182,7 +186,7 @@ class ClaudeTests(unittest.TestCase):
         present = get_venue("V01")["present"]
         with self.api({"intent": "present_total", "scope_supported": True}):
             body = self.post("Could you share the page count around Dodger Stadium?")
-        self.assertEqual(body["engine"], "claude")
+        self.assertEqual(body["engine"], "gemini")
         self.assertEqual(body["question_type"], "present_total")
         self.assertEqual(body["results"][0]["count"], present["count"])
         self.assertIn("2020–present", body["answer"])
@@ -209,7 +213,7 @@ class ClaudeTests(unittest.TestCase):
             with self.subTest(intent=intent), self.api({"intent": intent, "scope_supported": True}) as requests:
                 body = self.post(question)
                 self.assertEqual(body["status"], "answered")
-                self.assertEqual(body["engine"], "claude")
+                self.assertEqual(body["engine"], "gemini")
                 self.assertEqual(body["question_type"], intent)
                 self.assertTrue(all(row["venue_id"] == venue["venue_id"] for row in body["results"]))
                 payload = json.loads(requests[0].content)
@@ -281,11 +285,11 @@ class ClaudeTests(unittest.TestCase):
                 self.assertEqual(body["engine"], "fallback")
                 self.assertEqual(body["status"], "answered")
                 self.assertEqual(body["results"][0]["count"], get_venue("V01")["present"]["count"])
-                self.assertIn("Claude is unavailable", body["engine_note"])
+                self.assertIn("model is unavailable", body["engine_note"])
                 self.assertNotIn("upstream-secret", json.dumps(body))
 
     def test_no_key_means_no_api_call(self):
-        os.environ["ANTHROPIC_API_KEY"] = ""
+        os.environ["GOOGLE_CLOUD_PROJECT"] = ""
         with self.api() as requests:
             body = self.post("How many incidents near Dodger Stadium?")
         self.assertEqual(body["engine"], "data")
@@ -308,40 +312,39 @@ class ClaudeTests(unittest.TestCase):
     def test_public_config_contains_no_secret(self):
         config = self.client.get("/api/chat/config")
         self.assertEqual(config.status_code, 200)
-        self.assertEqual(config.json(), {"claude_configured": True, "model": DEFAULT_MODEL})
+        self.assertEqual(config.json(), {"claude_configured": True, "model": DEFAULT_MODEL, "provider": "gemini"})
         self.assertNotIn(FAKE_KEY, config.text)
         self.assertNotIn(FAKE_KEY, self.client.get("/api/config").text)
         self.assertNotIn(FAKE_KEY, self.client.get("/").text)
 
-    def test_local_env_changes_activate_claude_without_restart(self):
-        os.environ["ANTHROPIC_API_KEY"] = ""
+    def test_local_env_changes_activate_gemini_without_restart(self):
+        os.environ["GOOGLE_CLOUD_PROJECT"] = ""
         with TemporaryDirectory() as directory:
             path = Path(directory) / ".env"
             with patch("backend.claude.ENV_PATH", path):
                 self.assertFalse(self.client.get("/api/chat/config").json()["claude_configured"])
-                path.write_text('ANTHROPIC_API_KEY = "test-local-key"\nANTHROPIC_MODEL = test-local-model\n')
+                path.write_text("GOOGLE_CLOUD_PROJECT=local-project\nGEMINI_MODEL=test-local-model\n")
                 config = self.client.get("/api/chat/config")
-                self.assertEqual(config.json(), {"claude_configured": True, "model": "test-local-model"})
-                self.assertNotIn("test-local-key", config.text)
-                with self.api({"intent": "present_total", "scope_supported": True}) as requests:
+                self.assertEqual(config.json(), {"claude_configured": True, "model": "test-local-model", "provider": "gemini"})
+                with self.api({"intent": "present_total", "scope_supported": True, "tool": None, "arguments": None}) as requests:
                     body = self.post("How many incidents near Dodger Stadium?")
-                self.assertEqual(body["engine"], "claude")
-                self.assertEqual(requests[0].headers["x-api-key"], "test-local-key")
-                path.write_text("ANTHROPIC_API_KEY=\nANTHROPIC_MODEL=test-updated-model\n")
+                self.assertEqual(body["engine"], "gemini")
+                self.assertIn("/projects/local-project/", str(requests[0].url))
+                path.write_text("GOOGLE_CLOUD_PROJECT=\nGEMINI_MODEL=test-updated-model\n")
                 self.assertEqual(self.client.get("/api/chat/config").json(), {
-                    "claude_configured": False, "model": "test-updated-model",
+                    "claude_configured": False, "model": "test-updated-model", "provider": "gemini",
                 })
 
     def test_process_environment_takes_precedence_over_local_file(self):
-        os.environ["ANTHROPIC_MODEL"] = "test-process-model"
+        os.environ["GEMINI_MODEL"] = "test-process-model"
         with TemporaryDirectory() as directory:
             path = Path(directory) / ".env"
-            path.write_text("ANTHROPIC_API_KEY=test-local-key\nANTHROPIC_MODEL=test-local-model\n")
-            with patch("backend.claude.ENV_PATH", path), self.api({"intent": "present_total", "scope_supported": True}) as requests:
+            path.write_text("GOOGLE_CLOUD_PROJECT=file-project\nGEMINI_MODEL=test-local-model\n")
+            with patch("backend.claude.ENV_PATH", path), self.api({"intent": "present_total", "scope_supported": True, "tool": None, "arguments": None}) as requests:
                 body = self.post("How many incidents near Dodger Stadium?")
         self.assertEqual(body["model"], "test-process-model")
-        self.assertEqual(requests[0].headers["x-api-key"], FAKE_KEY)
-        self.assertEqual(json.loads(requests[0].content)["model"], "test-process-model")
+        self.assertIn("/projects/test-project/", str(requests[0].url))
+        self.assertIn("/models/test-process-model:generateContent", str(requests[0].url))
 
     def test_tools_use_validated_arguments_and_processed_numbers(self):
         detail = get_venue("V01")
@@ -360,7 +363,7 @@ class ClaudeTests(unittest.TestCase):
             "arguments": {"venue_id": "V01", "n": 4, "period": "present"},
         }):
             listed = self.post("Could you list the leading offence groups around Dodger Stadium?")
-        self.assertEqual(listed["engine"], "claude")
+        self.assertEqual(listed["engine"], "gemini")
         self.assertEqual(listed["question_type"], "top_groups")
         self.assertEqual(len(listed["results"]), 4)
         overall = {}
@@ -483,6 +486,7 @@ class ClaudeTests(unittest.TestCase):
 
     def test_key_off_answers_a_custom_year_span_from_the_question(self):
         os.environ["ANTHROPIC_API_KEY"] = ""
+        os.environ["GOOGLE_CLOUD_PROJECT"] = ""
         body = self.client.post("/api/chat", json={"message": "Which groups rose from 2021 to 2025 near Dodger Stadium?"})
         self.assertEqual(body.status_code, 200)
         payload = body.json()

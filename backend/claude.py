@@ -1,11 +1,13 @@
-"""Optional Claude question interpretation; credentials stay on the server.
+"""Optional model interpretation. Gemini is the default, using Application Default Credentials.
 
-Claude returns an intent, or a tool name and arguments, never figures or answer prose.
+The model returns an intent, or a tool name and arguments, never figures or answer prose.
 Python validates the arguments and calculates from processed data.
+Claude remains callable for the comparison script.
 """
 
 from __future__ import annotations
 
+import contextvars
 import json
 import os
 import re
@@ -16,13 +18,18 @@ import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 API_URL = "https://api.anthropic.com/v1/messages"
-DEFAULT_MODEL = "claude-haiku-4-5"
+DEFAULT_MODEL = "gemini-2.5-flash"
+CLAUDE_MODEL = "claude-haiku-4-5"
+DEFAULT_LOCATION = "us-west1"
 ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 _API_MODELS = {
-    "claude-haiku-4-5@20251001": DEFAULT_MODEL,
-    "claude-haiku-4-5-20251001": DEFAULT_MODEL,
+    "claude-haiku-4-5@20251001": CLAUDE_MODEL,
+    "claude-haiku-4-5-20251001": CLAUDE_MODEL,
 }
-_SETTINGS = {"ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"}
+_GEMINI_KEYS = {"GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION", "GEMINI_MODEL"}
+_CLAUDE_KEYS = {"ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"}
+provider: contextvars.ContextVar[str] = contextvars.ContextVar("model_provider", default="gemini")
+_credentials = None
 
 
 class ClaudeUnavailable(Exception):
@@ -72,8 +79,7 @@ class Explanation(BaseModel):
     explanation: str
 
 
-def _configuration() -> tuple[str, str]:
-    """API key and model. A value already in the process wins over .env."""
+def _env_values(allowed: set[str]) -> dict[str, str]:
     values = {}
     try:
         lines = ENV_PATH.read_text(encoding="utf-8").splitlines()
@@ -82,26 +88,108 @@ def _configuration() -> tuple[str, str]:
     for line in lines:
         key, separator, value = line.strip().partition("=")
         key = key.strip()
-        if separator and key in _SETTINGS:
+        if separator and key in allowed:
             values[key] = value.strip().strip('"').strip("'")
+    return values
 
-    def pick(name: str, default: str = "") -> str:
-        return os.environ.get(name, "").strip() or values.get(name, "") or default
 
-    raw_model = pick("ANTHROPIC_MODEL", DEFAULT_MODEL)
-    return pick("ANTHROPIC_API_KEY"), _API_MODELS.get(raw_model, raw_model)
+def _pick(name: str, values: dict[str, str], default: str = "") -> str:
+    return os.environ.get(name, "").strip() or values.get(name, "") or default
+
+
+def _gemini_configuration() -> tuple[str, str, str]:
+    values = _env_values(_GEMINI_KEYS)
+    project = _pick("GOOGLE_CLOUD_PROJECT", values)
+    location = _pick("GOOGLE_CLOUD_LOCATION", values, DEFAULT_LOCATION)
+    model = _pick("GEMINI_MODEL", values, DEFAULT_MODEL)
+    return project, location, model
+
+
+def _claude_configuration() -> tuple[str, str]:
+    values = _env_values(_CLAUDE_KEYS)
+    raw_model = _pick("ANTHROPIC_MODEL", values, CLAUDE_MODEL)
+    return _pick("ANTHROPIC_API_KEY", values), _API_MODELS.get(raw_model, raw_model)
 
 
 def settings() -> dict:
-    _api_key, model = _configuration()
-    return {
-        "claude_configured": bool(_api_key),
-        "model": model,
+    """Public status. claude_configured means a model is available for this provider."""
+    if provider.get() == "claude":
+        api_key, model = _claude_configuration()
+        return {"claude_configured": bool(api_key), "model": model, "provider": "claude"}
+    project, _location, model = _gemini_configuration()
+    return {"claude_configured": bool(project), "model": model, "provider": "gemini"}
+
+
+def _access_token() -> str:
+    """ADC token. Tests patch this so they never refresh real credentials."""
+    global _credentials
+    import google.auth
+    from google.auth.transport.requests import Request
+
+    if _credentials is None or not _credentials.valid:
+        _credentials, _discovered = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+    if not _credentials.valid:
+        _credentials.refresh(Request())
+    token = getattr(_credentials, "token", "") or ""
+    if not token:
+        raise ClaudeUnavailable("Gemini is not configured")
+    return token
+
+
+def _gemini_schema(schema: dict) -> dict:
+    """Vertex rejects additionalProperties. Drop it and keep the constraint list."""
+    if isinstance(schema, dict):
+        return {
+            key: _gemini_schema(value)
+            for key, value in schema.items()
+            if key != "additionalProperties"
+        }
+    if isinstance(schema, list):
+        return [_gemini_schema(item) for item in schema]
+    return schema
+
+
+def _send_gemini(system: str, messages: list, schema: dict, failure: str) -> str:
+    project, location, model = _gemini_configuration()
+    if not project:
+        raise ClaudeUnavailable("Gemini is not configured")
+    user_text = messages[-1]["content"] if messages else ""
+    url = (
+        f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}"
+        f"/locations/{location}/publishers/google/models/{model}:generateContent"
+    )
+    payload = {
+        "systemInstruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": user_text}]}],
+        "generationConfig": {
+            "maxOutputTokens": 1024,
+            "temperature": 0,
+            "responseMimeType": "application/json",
+            "responseSchema": _gemini_schema(schema),
+            "thinkingConfig": {"thinkingBudget": 0},
+        },
     }
+    try:
+        with httpx.Client(timeout=httpx.Timeout(8.0, connect=3.0)) as client:
+            response = client.post(url, headers={
+                "Authorization": f"Bearer {_access_token()}",
+                "content-type": "application/json",
+            }, json=payload)
+            response.raise_for_status()
+        body = response.json()
+        candidates = body.get("candidates") or []
+        if not candidates or candidates[0].get("finishReason") not in {"STOP", "stop"}:
+            raise ValueError("Incomplete or refused response")
+        parts = ((candidates[0].get("content") or {}).get("parts")) or []
+        return "".join(part.get("text", "") for part in parts if not part.get("thought"))
+    except ClaudeUnavailable:
+        raise
+    except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise ClaudeUnavailable(failure) from exc
 
 
-def _send(system: str, messages: list, schema: dict, failure: str) -> str:
-    api_key, model = _configuration()
+def _send_claude(system: str, messages: list, schema: dict, failure: str) -> str:
+    api_key, model = _claude_configuration()
     if not api_key:
         raise ClaudeUnavailable("Claude is not configured")
     payload = {
@@ -127,6 +215,12 @@ def _send(system: str, messages: list, schema: dict, failure: str) -> str:
         raise
     except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError) as exc:
         raise ClaudeUnavailable(failure) from exc
+
+
+def _send(system: str, messages: list, schema: dict, failure: str) -> str:
+    if provider.get() == "claude":
+        return _send_claude(system, messages, schema, failure)
+    return _send_gemini(system, messages, schema, failure)
 
 
 def interpret_question(message: str, venues: list[dict], venue_id: str | None) -> Interpretation:

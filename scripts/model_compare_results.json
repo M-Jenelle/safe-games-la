@@ -1,0 +1,647 @@
+{
+  "summary": {
+    "gemini": 17,
+    "claude": 18,
+    "possible": {
+      "gemini": 21,
+      "claude": 21
+    },
+    "winner": "claude"
+  },
+  "rows": [
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "question": "How many incidents were reported near Dodger Stadium?",
+      "expected_type": "present_total",
+      "expected_route": "present_total",
+      "route": {
+        "ok": true,
+        "intent": "present_total",
+        "tool": null,
+        "scope_supported": true
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "present_total",
+        "engine": "gemini",
+        "counts": [
+          1418
+        ],
+        "explanation": false,
+        "answer": "Dodger Stadium \u2014 2020\u2013present: 1,418 records inside the 800 m circle. Dodger Stadium: 830 LAPD reports from 2020 through March 6, 2024, and 588 NIBRS offenses from March 7, 2024 through 2026-09-19. Reporting codes changed on March 7, 2024. "
+      },
+      "route_match": true,
+      "answer_match": true,
+      "points": 2
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "question": "Could you share the page count around Dodger Stadium?",
+      "expected_type": "present_total",
+      "expected_route": "present_total",
+      "route": {
+        "ok": true,
+        "intent": "present_total",
+        "tool": null,
+        "scope_supported": true
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "present_total",
+        "engine": "gemini",
+        "counts": [
+          1418
+        ],
+        "explanation": false,
+        "answer": "Dodger Stadium \u2014 2020\u2013present: 1,418 records inside the 800 m circle. Dodger Stadium: 830 LAPD reports from 2020 through March 6, 2024, and 588 NIBRS offenses from March 7, 2024 through 2026-09-19. Reporting codes changed on March 7, 2024. "
+      },
+      "route_match": true,
+      "answer_match": true,
+      "points": 2
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "question": "Could you check which offence shows up most around Dodger Stadium?",
+      "expected_type": "top_category",
+      "expected_route": "top_category",
+      "route": {
+        "ok": true,
+        "intent": "top_groups",
+        "tool": "top_groups",
+        "scope_supported": true
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "top_category",
+        "engine": "gemini",
+        "counts": [
+          154
+        ],
+        "explanation": false,
+        "answer": "The most common LAPD crime description near Dodger Stadium in 2020\u20132024 is BATTERY - SIMPLE ASSAULT: 154 reports. This is the raw report label for 2020\u20132024, not an offense group for 2020\u2013present."
+      },
+      "route_match": false,
+      "answer_match": true,
+      "points": 1
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "question": "Which day of the week is busiest near the Coliseum?",
+      "expected_type": "weekend",
+      "expected_route": "weekend",
+      "route": {
+        "ok": true,
+        "intent": "tool",
+        "tool": "weekday_pattern",
+        "scope_supported": true
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "weekend",
+        "engine": "fallback",
+        "counts": [
+          930,
+          940,
+          974,
+          915,
+          1001,
+          1187,
+          958
+        ],
+        "explanation": true,
+        "answer": "Saturday is the busiest day, 1,187 records. Weekend days are 2,145 (31%). LA Memorial Coliseum: 4,487 LAPD reports from 2020 through March 6, 2024, and 2,418 NIBRS offenses from March 7, 2024 through 2026-09-19. Reporting codes changed on M"
+      },
+      "route_match": false,
+      "answer_match": true,
+      "points": 1
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "question": "Which crimes rose the most near Peacock Theater?",
+      "expected_type": "rose",
+      "expected_route": "rose",
+      "route": {
+        "ok": true,
+        "intent": "rose",
+        "tool": null,
+        "scope_supported": true
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "rose",
+        "engine": "gemini",
+        "counts": [
+          643,
+          456,
+          154,
+          53,
+          38
+        ],
+        "explanation": false,
+        "answer": "Near Peacock Theater, Theft rose the most from 2020 to 2023, from 361 to 1,004 (+643). 2020 had little or no event crowd. 2026 runs through 2026-09-19, not a full year. The change stops at 2023. Counts through March 6, 2024 use the older re"
+      },
+      "route_match": true,
+      "answer_match": true,
+      "points": 2
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "question": "Where is the nearest Metro station to Peacock Theater?",
+      "expected_type": "rail",
+      "expected_route": "rail",
+      "route": {
+        "ok": true,
+        "intent": "rail",
+        "tool": null,
+        "scope_supported": true
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "rail",
+        "engine": "fallback",
+        "counts": [
+          1
+        ],
+        "explanation": false,
+        "answer": "Nearest recorded rail station within 800 m of Peacock Theater: Pico Station. Lines: A;E. Straight-line distance: 424.8 m. This is the closest station in the 800 m list, not a search of the whole rail system."
+      },
+      "route_match": true,
+      "answer_match": true,
+      "points": 2
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "question": "Could you point me toward the nearest firehouse for Dodger Stadium?",
+      "expected_type": "fire",
+      "expected_route": "tool",
+      "route": {
+        "ok": true,
+        "intent": "tool",
+        "tool": "nearest_facility",
+        "scope_supported": true
+      },
+      "answer": {
+        "status": "unsupported",
+        "question_type": null,
+        "engine": "gemini",
+        "counts": [],
+        "explanation": false,
+        "answer": "I cannot answer that question from the supported processed-data calculations. I can answer a venue's 2020\u2013present record count, a single year from 2020 through 2026, the 2020\u20132024 report total when that period is named, NIBRS offense totals"
+      },
+      "route_match": true,
+      "answer_match": false,
+      "points": 1
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "question": "Compare crime near Peacock Theater and Dodger Stadium",
+      "expected_type": "compare",
+      "expected_route": "compare",
+      "route": {
+        "ok": true,
+        "intent": "tool",
+        "tool": "compare",
+        "scope_supported": true
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "compare",
+        "engine": "fallback",
+        "counts": [
+          18537,
+          1418
+        ],
+        "explanation": false,
+        "answer": "Peacock Theater \u2014 18,537 records, 2020\u2013present."
+      },
+      "route_match": false,
+      "answer_match": true,
+      "points": 1
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "question": "What crimes does Other entail near Peacock Theater?",
+      "expected_type": "other_contents",
+      "expected_route": null,
+      "route": {
+        "ok": true,
+        "intent": "unsupported",
+        "tool": null,
+        "scope_supported": false
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "other_contents",
+        "engine": "fallback",
+        "counts": [
+          1514
+        ],
+        "explanation": false,
+        "answer": "Other near Peacock Theater is not one crime. It is every record the nine group rules did not claim: 482 LAPD reports through March 6, 2024, and 1,032 NIBRS offenses from March 7, 2024."
+      },
+      "route_match": null,
+      "answer_match": true,
+      "points": 1
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "question": "How many crimes are near the Metro station at Peacock Theater?",
+      "expected_type": "station_crime",
+      "expected_route": null,
+      "route": {
+        "ok": true,
+        "intent": "present_total",
+        "tool": null,
+        "scope_supported": true
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "station_crime",
+        "engine": "fallback",
+        "counts": [
+          3182
+        ],
+        "explanation": false,
+        "answer": "Near Peacock Theater, pins within 200 m of Pico Station: 1,839 LAPD reports through March 6, 2024, and 1,343 NIBRS offenses from March 7, 2024. Lines: A;E. The station is 424.8 m from the venue pin, inside the 800 m circle. Locations are ro"
+      },
+      "route_match": null,
+      "answer_match": true,
+      "points": 1
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "question": "How old are theft victims near Dodger Stadium?",
+      "expected_type": "victim_age",
+      "expected_route": null,
+      "route": {
+        "ok": true,
+        "intent": "unsupported",
+        "tool": null,
+        "scope_supported": false
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "victim_age",
+        "engine": "fallback",
+        "counts": [],
+        "explanation": false,
+        "answer": "Victim age is not in these files. Each processed record keeps the offense, the date, and a rounded location. Age and the rest of the victim record were left out, so I cannot group crimes by age."
+      },
+      "route_match": null,
+      "answer_match": true,
+      "points": 1
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "question": "Which venue is safest in 2028?",
+      "expected_type": null,
+      "expected_route": "unsupported",
+      "route": {
+        "ok": true,
+        "intent": "unsupported",
+        "tool": null,
+        "scope_supported": false
+      },
+      "answer": {
+        "status": "unsupported",
+        "question_type": null,
+        "engine": "data",
+        "counts": [],
+        "explanation": false,
+        "answer": "I cannot answer that question from the supported processed-data calculations. I can answer a venue's 2020\u2013present record count, a single year from 2020 through 2026, the 2020\u20132024 report total when that period is named, NIBRS offense totals"
+      },
+      "route_match": true,
+      "answer_match": true,
+      "points": 2
+    },
+    {
+      "provider": "claude",
+      "model": "claude-haiku-4-5",
+      "question": "How many incidents were reported near Dodger Stadium?",
+      "expected_type": "present_total",
+      "expected_route": "present_total",
+      "route": {
+        "ok": true,
+        "intent": "present_total",
+        "tool": null,
+        "scope_supported": true
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "present_total",
+        "engine": "claude",
+        "counts": [
+          1418
+        ],
+        "explanation": false,
+        "answer": "Dodger Stadium \u2014 2020\u2013present: 1,418 records inside the 800 m circle. Dodger Stadium: 830 LAPD reports from 2020 through March 6, 2024, and 588 NIBRS offenses from March 7, 2024 through 2026-09-19. Reporting codes changed on March 7, 2024. "
+      },
+      "route_match": true,
+      "answer_match": true,
+      "points": 2
+    },
+    {
+      "provider": "claude",
+      "model": "claude-haiku-4-5",
+      "question": "Could you share the page count around Dodger Stadium?",
+      "expected_type": "present_total",
+      "expected_route": "present_total",
+      "route": {
+        "ok": true,
+        "intent": "present_total",
+        "tool": null,
+        "scope_supported": true
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "present_total",
+        "engine": "claude",
+        "counts": [
+          1418
+        ],
+        "explanation": false,
+        "answer": "Dodger Stadium \u2014 2020\u2013present: 1,418 records inside the 800 m circle. Dodger Stadium: 830 LAPD reports from 2020 through March 6, 2024, and 588 NIBRS offenses from March 7, 2024 through 2026-09-19. Reporting codes changed on March 7, 2024. "
+      },
+      "route_match": true,
+      "answer_match": true,
+      "points": 2
+    },
+    {
+      "provider": "claude",
+      "model": "claude-haiku-4-5",
+      "question": "Could you check which offence shows up most around Dodger Stadium?",
+      "expected_type": "top_category",
+      "expected_route": "top_category",
+      "route": {
+        "ok": true,
+        "intent": "top_category",
+        "tool": null,
+        "scope_supported": true
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "top_category",
+        "engine": "claude",
+        "counts": [
+          154
+        ],
+        "explanation": false,
+        "answer": "The most common LAPD crime description near Dodger Stadium in 2020\u20132024 is BATTERY - SIMPLE ASSAULT: 154 reports. This is the raw report label for 2020\u20132024, not an offense group for 2020\u2013present."
+      },
+      "route_match": true,
+      "answer_match": true,
+      "points": 2
+    },
+    {
+      "provider": "claude",
+      "model": "claude-haiku-4-5",
+      "question": "Which day of the week is busiest near the Coliseum?",
+      "expected_type": "weekend",
+      "expected_route": "weekend",
+      "route": {
+        "ok": true,
+        "intent": "weekend_groups",
+        "tool": "weekday_pattern",
+        "scope_supported": true
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "weekend",
+        "engine": "fallback",
+        "counts": [
+          930,
+          940,
+          974,
+          915,
+          1001,
+          1187,
+          958
+        ],
+        "explanation": true,
+        "answer": "Saturday is the busiest day, 1,187 records. Weekend days are 2,145 (31%). LA Memorial Coliseum: 4,487 LAPD reports from 2020 through March 6, 2024, and 2,418 NIBRS offenses from March 7, 2024 through 2026-09-19. Reporting codes changed on M"
+      },
+      "route_match": false,
+      "answer_match": true,
+      "points": 1
+    },
+    {
+      "provider": "claude",
+      "model": "claude-haiku-4-5",
+      "question": "Which crimes rose the most near Peacock Theater?",
+      "expected_type": "rose",
+      "expected_route": "rose",
+      "route": {
+        "ok": true,
+        "intent": "rose",
+        "tool": null,
+        "scope_supported": true
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "rose",
+        "engine": "claude",
+        "counts": [
+          643,
+          456,
+          154,
+          53,
+          38
+        ],
+        "explanation": false,
+        "answer": "Near Peacock Theater, Theft rose the most from 2020 to 2023, from 361 to 1,004 (+643). 2020 had little or no event crowd. 2026 runs through 2026-09-19, not a full year. The change stops at 2023. Counts through March 6, 2024 use the older re"
+      },
+      "route_match": true,
+      "answer_match": true,
+      "points": 2
+    },
+    {
+      "provider": "claude",
+      "model": "claude-haiku-4-5",
+      "question": "Where is the nearest Metro station to Peacock Theater?",
+      "expected_type": "rail",
+      "expected_route": "rail",
+      "route": {
+        "ok": true,
+        "intent": "unsupported",
+        "tool": null,
+        "scope_supported": false
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "rail",
+        "engine": "fallback",
+        "counts": [
+          1
+        ],
+        "explanation": false,
+        "answer": "Nearest recorded rail station within 800 m of Peacock Theater: Pico Station. Lines: A;E. Straight-line distance: 424.8 m. This is the closest station in the 800 m list, not a search of the whole rail system."
+      },
+      "route_match": false,
+      "answer_match": true,
+      "points": 1
+    },
+    {
+      "provider": "claude",
+      "model": "claude-haiku-4-5",
+      "question": "Could you point me toward the nearest firehouse for Dodger Stadium?",
+      "expected_type": "fire",
+      "expected_route": "tool",
+      "route": {
+        "ok": true,
+        "intent": "fire",
+        "tool": "nearest_facility",
+        "scope_supported": true
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "fire",
+        "engine": "claude",
+        "counts": [],
+        "explanation": false,
+        "answer": "Nearest recorded fire station to Dodger Stadium: Fire Station 1. Straight-line distance: 2,003.1 m. Availability, travel time, and response time are not recorded."
+      },
+      "route_match": false,
+      "answer_match": true,
+      "points": 1
+    },
+    {
+      "provider": "claude",
+      "model": "claude-haiku-4-5",
+      "question": "Compare crime near Peacock Theater and Dodger Stadium",
+      "expected_type": "compare",
+      "expected_route": "compare",
+      "route": {
+        "ok": true,
+        "intent": "compare",
+        "tool": "compare",
+        "scope_supported": true
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "compare",
+        "engine": "claude",
+        "counts": [
+          18537,
+          1418
+        ],
+        "explanation": false,
+        "answer": "Peacock Theater \u2014 18,537 records, 2020\u2013present."
+      },
+      "route_match": true,
+      "answer_match": true,
+      "points": 2
+    },
+    {
+      "provider": "claude",
+      "model": "claude-haiku-4-5",
+      "question": "What crimes does Other entail near Peacock Theater?",
+      "expected_type": "other_contents",
+      "expected_route": null,
+      "route": {
+        "ok": true,
+        "intent": "unsupported",
+        "tool": null,
+        "scope_supported": false
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "other_contents",
+        "engine": "fallback",
+        "counts": [
+          1514
+        ],
+        "explanation": false,
+        "answer": "Other near Peacock Theater is not one crime. It is every record the nine group rules did not claim: 482 LAPD reports through March 6, 2024, and 1,032 NIBRS offenses from March 7, 2024."
+      },
+      "route_match": null,
+      "answer_match": true,
+      "points": 1
+    },
+    {
+      "provider": "claude",
+      "model": "claude-haiku-4-5",
+      "question": "How many crimes are near the Metro station at Peacock Theater?",
+      "expected_type": "station_crime",
+      "expected_route": null,
+      "route": {
+        "ok": true,
+        "intent": "present_total",
+        "tool": null,
+        "scope_supported": true
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "station_crime",
+        "engine": "fallback",
+        "counts": [
+          3182
+        ],
+        "explanation": false,
+        "answer": "Near Peacock Theater, pins within 200 m of Pico Station: 1,839 LAPD reports through March 6, 2024, and 1,343 NIBRS offenses from March 7, 2024. Lines: A;E. The station is 424.8 m from the venue pin, inside the 800 m circle. Locations are ro"
+      },
+      "route_match": null,
+      "answer_match": true,
+      "points": 1
+    },
+    {
+      "provider": "claude",
+      "model": "claude-haiku-4-5",
+      "question": "How old are theft victims near Dodger Stadium?",
+      "expected_type": "victim_age",
+      "expected_route": null,
+      "route": {
+        "ok": true,
+        "intent": "unsupported",
+        "tool": null,
+        "scope_supported": false
+      },
+      "answer": {
+        "status": "answered",
+        "question_type": "victim_age",
+        "engine": "fallback",
+        "counts": [],
+        "explanation": false,
+        "answer": "Victim age is not in these files. Each processed record keeps the offense, the date, and a rounded location. Age and the rest of the victim record were left out, so I cannot group crimes by age."
+      },
+      "route_match": null,
+      "answer_match": true,
+      "points": 1
+    },
+    {
+      "provider": "claude",
+      "model": "claude-haiku-4-5",
+      "question": "Which venue is safest in 2028?",
+      "expected_type": null,
+      "expected_route": "unsupported",
+      "route": {
+        "ok": true,
+        "intent": "unsupported",
+        "tool": null,
+        "scope_supported": false
+      },
+      "answer": {
+        "status": "unsupported",
+        "question_type": null,
+        "engine": "data",
+        "counts": [],
+        "explanation": false,
+        "answer": "I cannot answer that question from the supported processed-data calculations. I can answer a venue's 2020\u2013present record count, a single year from 2020 through 2026, the 2020\u20132024 report total when that period is named, NIBRS offense totals"
+      },
+      "route_match": true,
+      "answer_match": true,
+      "points": 2
+    }
+  ]
+}
