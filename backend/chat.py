@@ -2109,7 +2109,7 @@ def _answer_question(message: str, venue_id: str | None, engine: dict, prior_mes
     elif settings()["claude_configured"]:
         try:
             interpretation = interpret_question(message, venues, venue_id)
-            engine.update(engine="claude", model=settings()["model"])
+            engine.update(engine=settings()["provider"], model=settings()["model"])
             accepted = interpretation.scope_supported and interpretation.intent != "unsupported"
             if intent is not None:
                 # A parsed question keeps its calculation. Claude only fills in wording the word list missed.
@@ -2126,7 +2126,7 @@ def _answer_question(message: str, venue_id: str | None, engine: dict, prior_mes
             else:
                 intent = None
         except ClaudeUnavailable:
-            engine.update(engine="fallback", engine_note="Claude is unavailable; using the data parser.")
+            engine.update(engine="fallback", engine_note="The model is unavailable; using the data parser.")
             if intent is None and _tool_opening(normalized):
                 tool_call = _tool_from_question(normalized)
     elif intent is None and _tool_opening(normalized):

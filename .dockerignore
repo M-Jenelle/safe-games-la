@@ -1,0 +1,11 @@
+.git
+.venv
+**/__pycache__
+**/*.pyc
+.env
+.env.*
+!.env.example
+tests
+*.md
+data/2018-district8- TRAFFIC.xlsx
+data/raw/nibrs/*.partial

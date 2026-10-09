@@ -9,8 +9,10 @@ The portal publishes two views:
   plus the earlier NIBRS rows.
 
 Each run reads ``rowsUpdatedAt`` from the Socrata view metadata. A dataset is
-downloaded only when that timestamp differs from the local manifest, which is
-what the daily scheduled task checks.
+downloaded only when that timestamp differs from the local manifest. The
+Windows task runs that check every day at 06:15. A new download rebuilds the
+merged file, the NIBRS charts, and the city baseline. An unchanged morning
+does not.
 
 NIBRS stores one row per offense. A single case can appear more than once.
 These extracts are not added to the 2020–2024 incident file.
@@ -38,6 +40,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = REPO_ROOT / "data" / "raw" / "nibrs"
 MANIFEST_NAME = "manifest.json"
+TASK_NAME = "Safe Games LA NIBRS sync"
 PORTAL = "https://data.lacity.org"
 PAGE_SIZE = 50_000
 # Socrata sometimes ignores a large $limit and returns one of these instead.
@@ -266,27 +269,44 @@ def sync_all(directory: Path = DEFAULT_DIR, *, force: bool = False) -> dict:
     return manifest
 
 
+def schedule_create_args() -> list[str]:
+    """Daily 06:15 task. The check itself downloads only when the portal timestamp changes."""
+    python = sys.executable
+    script = Path(__file__).resolve()
+    command = f'"{python}" "{script}"'
+    return [
+        "schtasks",
+        "/Create",
+        "/F",
+        "/TN",
+        TASK_NAME,
+        "/SC",
+        "DAILY",
+        "/ST",
+        "06:15",
+        "/TR",
+        command,
+    ]
+
+
+def task_installed() -> bool:
+    import subprocess
+
+    result = subprocess.run(
+        ["schtasks", "/Query", "/TN", TASK_NAME],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+
 def install_schedule() -> None:
     """Register a daily Windows task that runs this check."""
     import subprocess
 
-    python = sys.executable
-    script = Path(__file__).resolve()
-    command = f'"{python}" "{script}"'
     result = subprocess.run(
-        [
-            "schtasks",
-            "/Create",
-            "/F",
-            "/TN",
-            "Safe Games LA NIBRS sync",
-            "/SC",
-            "DAILY",
-            "/ST",
-            "06:15",
-            "/TR",
-            command,
-        ],
+        schedule_create_args(),
         check=False,
         capture_output=True,
         text=True,
@@ -310,6 +330,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.install_schedule:
         install_schedule()
     manifest = sync_all(args.output_dir, force=args.force)
+    if args.output_dir.resolve() == DEFAULT_DIR.resolve():
+        from pipeline.refresh import after_sync
+
+        after_sync(manifest)
     current = manifest.get("datasets", {}).get("k7nn-b2ep", {})
     if current.get("status") == "unavailable":
         return 1

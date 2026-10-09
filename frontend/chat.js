@@ -123,7 +123,7 @@
         ? "Claude · answers calculated from venue data"
         : body.engine === "fallback"
           ? (body.engine_note === "Verified by local rules." ? "Verified by local rules" : "Venue data mode")
-        : claudeConfigured ? "Claude enabled · answers calculated from venue data" : "Venue data mode";
+        : claudeConfigured ? "Gemini enabled · answers calculated from venue data" : "Venue data mode";
       if (body.engine_note) {
         const note = document.createElement("p");
         note.className = "chat-engine";
@@ -218,8 +218,8 @@
     .then((config) => {
       claudeConfigured = Boolean(config?.claude_configured);
       engineLabel.textContent = claudeConfigured
-        ? "Claude enabled · answers calculated from venue data"
-        : "Venue data mode · Claude not configured";
+        ? "Gemini enabled · answers calculated from venue data"
+        : "Venue data mode · Gemini not configured";
     })
     .catch(() => { engineLabel.textContent = "Venue data mode"; });
   if (new URLSearchParams(window.location.search).get("chat") === "1") {
