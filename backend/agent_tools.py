@@ -1,7 +1,6 @@
 """The calculations Torchy can run. Warnings are attached here, not by the model.
 
-describe_data, run_sql, correlate, and forecast are the whole tool list.
-run_sql is read-only. A new way of asking a question uses these tools again.
+The model chooses a tool. Python computes the figure. run_sql is read-only.
 """
 
 from __future__ import annotations
@@ -74,9 +73,42 @@ def run_sql(query: str) -> dict:
         return {"error": "Only a single SELECT is allowed.", "rows": [], "warnings": []}
     if text.count(";") > 0:
         return {"error": "Only a single SELECT is allowed.", "rows": [], "warnings": []}
+    if re.search(r"\bcount\s*\(", text, re.IGNORECASE) and re.search(r"\bincidents\b", text, re.IGNORECASE):
+        return {
+            "error": (
+                "Do not count the incidents table for a headline. "
+                "venues.present_records is the 2020-present count, and venues.present_per_km2 is the density. "
+                "Group counts are in offense_counts. explain_page with topic overview also returns the headline."
+            ),
+            "rows": [],
+            "warnings": [],
+        }
+    unknown = _unknown_venue_id(text)
+    if unknown:
+        return {
+            "error": (
+                f"No venue has venue_id {unknown}. Ids are V01 through V14. "
+                "Pass the venue name to explain_page for a page count, density, or weekday."
+            ),
+            "rows": [],
+            "warnings": [],
+        }
     wrapped = f"SELECT * FROM ({text}) AS agent_query LIMIT {ROW_LIMIT}"
     frame, error = _execute(wrapped)
     if error:
+        if re.search(r"\bvenue\b", text, re.IGNORECASE) and "venue_id" not in text.lower():
+            error = f"{error} The venue key is venue_id."
+        if "not found" in error.lower() and re.search(r"rail|stop|station|fire|police|hospital|\bbus\b", text, re.IGNORECASE):
+            error = (
+                f"{error} Places within 800 m are in nearby "
+                "(venue_id, venue_name, kind, name, distance_m). "
+                "kind is rail, bus, fire, police, or hospital."
+            )
+        elif "not found" in error.lower():
+            error = (
+                f"{error} For a headline count, call explain_page with the venue name and topic overview. "
+                "offense_counts.records is the group count. venues.present_records is the 2020-present total."
+            )
         return {"error": error, "rows": [], "warnings": []}
     rows = _records(frame)
     return {
@@ -192,6 +224,170 @@ _PAGE_SOURCE = (
     "LAPD crime reports via the LA Open Data Portal, then LAPD NIBRS offenses. "
     "Period: 2020–present. Circle: 800 m. This is the venue page headline, not the 2020–2024 report total."
 )
+
+
+def compare_conditions(venue: str = "", factor: str = "wet_day") -> dict:
+    """Weekday-adjusted gap for wet days, hot days, or permit days. Not a cause."""
+    field = _condition_field(factor)
+    if field is None:
+        return {
+            "error": "factor is wet_day, hot_day, or is_permit_event_day.",
+            "warnings": [ASSOCIATION_WARNING],
+        }
+    from backend.datasets import load_summary
+
+    venues = load_summary()["venues"]
+    key = str(venue or "").strip().lower()
+    if key in {"", "all", "any", "every"}:
+        rows = [_one_condition(item, field) for item in venues]
+        clear = [row["venue"] for row in rows if row.get("clear_difference")]
+        return {
+            "factor": field,
+            "clear_difference_at": clear,
+            "venues": [
+                {name: row[name] for name in ("venue", "event_day_mean", "other_day_mean", "event_days", "interval", "clear_difference")}
+                for row in rows
+            ],
+            "warnings": [ASSOCIATION_WARNING, REPORTED_WARNING],
+        }
+    found = _summary_venue(venue)
+    if found is None:
+        return {"error": f"No venue matched {venue}.", "warnings": []}
+    return _one_condition(found, field)
+
+
+def rank_venues(metric: str = "records") -> dict:
+    """Order the 14 venues by the 2020–present record count or by records per km²."""
+    from backend.datasets import load_summary
+    from backend.venues import present_headlines
+
+    density = str(metric or "").strip().lower() in {"density", "rate", "per_km2", "crime_per_km2"}
+    names = {item["venue_id"]: item["venue_name"] for item in load_summary()["venues"]}
+    ranked = []
+    for venue_id, row in present_headlines().items():
+        ranked.append({
+            "venue_id": venue_id,
+            "venue": names.get(venue_id, venue_id),
+            "records": int(row.get("count") or 0),
+            "records_per_km2": row.get("crime_per_km2"),
+        })
+    ranked.sort(key=lambda item: item["records_per_km2"] if density else item["records"], reverse=True)
+    return {
+        "metric": "density" if density else "records",
+        "period": "2020-present",
+        "highest": ranked[0] if ranked else None,
+        "lowest": ranked[-1] if ranked else None,
+        "ranked": ranked,
+        "warnings": [REPORTED_WARNING, OVERLAP_WARNING],
+    }
+
+
+def rank_nearby(kind: str = "rail") -> dict:
+    """Which venues have the most places of one kind inside the 800 m circle. Ties stay in the list."""
+    chosen = str(kind or "").strip().lower()
+    aliases = {
+        "rail": "rail", "station": "rail", "stations": "rail", "metro": "rail",
+        "bus": "bus", "stops": "bus",
+        "fire": "fire", "police": "police", "hospital": "hospital", "hospitals": "hospital",
+    }
+    field = aliases.get(chosen)
+    if field is None:
+        return {"error": "kind is rail, bus, fire, police, or hospital.", "warnings": []}
+    counted = run_sql(
+        "SELECT venue_name, count(*) AS places FROM nearby "
+        f"WHERE kind = '{field}' GROUP BY venue_name ORDER BY places DESC"
+    )
+    rows = counted.get("rows") or []
+    top = int(rows[0]["places"]) if rows else 0
+    leaders = [row["venue_name"] for row in rows if int(row["places"]) == top]
+    return {
+        "kind": field,
+        "within_m": 800,
+        "highest_count": top,
+        "tied": leaders,
+        "ranked": rows,
+        "warnings": [],
+    }
+
+
+def _condition_field(factor: str) -> str | None:
+    key = str(factor or "wet_day").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "wet": "wet_day",
+        "wet_day": "wet_day",
+        "dry": "wet_day",
+        "rain": "wet_day",
+        "hot": "hot_day",
+        "hot_day": "hot_day",
+        "permit": "is_permit_event_day",
+        "permits": "is_permit_event_day",
+        "is_permit_event_day": "is_permit_event_day",
+    }
+    return aliases.get(key)
+
+
+def _one_condition(venue: dict, field: str) -> dict:
+    from pipeline.weather_compare import HOT_MEAN_F, load_joined_days, present_days, report_daily_counts
+
+    present = present_days(
+        load_joined_days().get(venue["venue_id"]) or [],
+        report_daily_counts().get(venue["venue_id"]) or {},
+    )
+    flags = _condition_flags(venue["venue_id"], field) if field == "is_permit_event_day" else {}
+    rows = []
+    for row in present:
+        if field == "wet_day":
+            event = int(bool(row["wet_day"]))
+        elif field == "hot_day":
+            event = int(float(row["temp_f_mean"]) >= HOT_MEAN_F)
+        else:
+            event = int(flags.get(str(row["date"])[:10], 0))
+        rows.append({"date": row["date"], "incident_count": row["incident_count"], "event": event})
+    stats = weekday_standardized(rows, "event") if rows else None
+    fitted = fit_count_model(rows, "event") if stats else None
+    low = None if not fitted else fitted.get("low")
+    high = None if not fitted else fitted.get("high")
+    clear = bool(fitted) and low is not None and high is not None and not (low <= 1 <= high)
+    label = {"wet_day": "wet days", "hot_day": "hot days"}.get(field, "permit days")
+    if not stats:
+        summary = f"Near {venue['venue_name']}, there are not enough {label} on matching weekdays to quote a gap."
+    else:
+        if fitted and low is not None and high is not None and low <= 1 <= high:
+            lead = "No clear difference. "
+        elif fitted and high is not None and high < 1:
+            lead = "The count model stays below 1.00. "
+        elif fitted and low is not None and low > 1:
+            lead = "The count model stays above 1.00. "
+        else:
+            lead = ""
+        summary = (
+            f"{lead}Near {venue['venue_name']}, {label} average {stats['event_day_mean']:.2f} records "
+            f"and other days of the same weekday average {stats['other_day_mean']:.2f}, "
+            f"from {stats['event_day_count']} {label}."
+        )
+    return {
+        "venue": venue["venue_name"],
+        "venue_id": venue["venue_id"],
+        "factor": field,
+        "event_day_mean": None if not stats else round(float(stats["event_day_mean"]), 2),
+        "other_day_mean": None if not stats else round(float(stats["other_day_mean"]), 2),
+        "event_days": None if not stats else int(stats["event_day_count"]),
+        "multiplier": None if not fitted else fitted.get("multiplier"),
+        "interval": None if low is None or high is None else [low, high],
+        "clear_difference": clear,
+        "summary": summary,
+        "warnings": [ASSOCIATION_WARNING, REPORTED_WARNING],
+    }
+
+
+def _condition_flags(venue_id: str, column: str) -> dict[str, int]:
+    if column not in {"wet_day", "hot_day", "is_permit_event_day"}:
+        return {}
+    rows = connect().execute(
+        f"SELECT CAST(date AS VARCHAR), max({column}) FROM venue_days WHERE venue_id = ? GROUP BY 1",
+        [venue_id],
+    ).fetchall()
+    return {str(day)[:10]: int(flag or 0) for day, flag in rows}
 
 
 def explain_page(venue: str = "", topic: str = "overview") -> dict:
@@ -486,9 +682,12 @@ def _care_entries(detail: dict | None) -> list[dict]:
 
 def forecast(venue: str, horizon: int, regressors: list[str] | None = None, scenario: dict | None = None) -> dict:
     """A count-model interval and a holdout error. The horizon is past the recorded days."""
-    fields = [name for name in (regressors or ["wet_day"]) if name in {"wet_day", "hot_day", "is_permit_event_day"}]
+    fields = [name for name in (regressors or []) if name in {"wet_day", "hot_day", "is_permit_event_day"}]
     if not fields:
-        fields = ["wet_day"]
+        return {
+            "error": "Name a regressor: wet_day, hot_day, or is_permit_event_day. Set scenario to 1 for that condition.",
+            "warnings": [FORECAST_WARNING],
+        }
     scenario = scenario or {}
     days = max(1, min(90, int(horizon or 30)))
     frame = _venue_frame(venue)
@@ -520,6 +719,14 @@ def forecast(venue: str, horizon: int, regressors: list[str] | None = None, scen
         "n": int(len(train)),
         "warnings": warnings,
     }
+
+
+def _unknown_venue_id(query: str) -> str:
+    known = {row[0] for row in connect().execute("SELECT venue_id FROM venues").fetchall()}
+    for found in re.findall(r"venue_id\s*=\s*'([^']*)'", query, re.IGNORECASE):
+        if found not in known:
+            return found
+    return ""
 
 
 def _execute(sql: str, timeout_s: float = 5.0):

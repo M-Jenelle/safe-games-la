@@ -232,6 +232,7 @@ def connect() -> duckdb.DuckDBPyConnection:
     connection = duckdb.connect(":memory:")
     connection.register("venues_frame", venues)
     connection.execute("CREATE TABLE venues AS SELECT * FROM venues_frame")
+    _attach_headlines(connection)
     if days_path.is_file():
         connection.execute(
             f"""
@@ -307,8 +308,56 @@ def connect() -> duckdb.DuckDBPyConnection:
         columns=["venue_a", "venue_b", "name_a", "name_b", "distance_m"]
     ))
     connection.execute("CREATE TABLE overlap_pairs AS SELECT * FROM overlap_frame")
+    _load_nearby(connection)
     _connection = connection
     return connection
+
+
+def _attach_headlines(connection: duckdb.DuckDBPyConnection) -> None:
+    """2020–present record count on venues, so a headline is not a raw incident count."""
+    from backend.venues import present_headlines
+
+    connection.execute("ALTER TABLE venues ADD COLUMN present_records INTEGER")
+    connection.execute("ALTER TABLE venues ADD COLUMN present_per_km2 DOUBLE")
+    for venue_id, row in present_headlines().items():
+        connection.execute(
+            "UPDATE venues SET present_records = ?, present_per_km2 = ? WHERE venue_id = ?",
+            [int(row.get("count") or 0), row.get("crime_per_km2"), venue_id],
+        )
+
+
+def _load_nearby(connection: duckdb.DuckDBPyConnection) -> None:
+    """Places inside each venue circle. transit_stops and facilities have no venue_id."""
+    venues = connection.execute(
+        "SELECT venue_id, venue_name, latitude, longitude, buffer_radius_m FROM venues"
+    ).fetchall()
+    places = connection.execute(
+        """
+        SELECT kind, name, latitude, longitude FROM transit_stops
+        UNION ALL
+        SELECT kind, name, latitude, longitude FROM facilities
+        """
+    ).fetchall()
+    rows = []
+    for venue_id, venue_name, vlat, vlon, radius in venues:
+        if vlat is None or vlon is None:
+            continue
+        limit = float(radius or 800)
+        for kind, name, lat, lon in places:
+            if lat is None or lon is None:
+                continue
+            distance = _haversine_m(float(vlat), float(vlon), float(lat), float(lon))
+            if distance <= limit:
+                rows.append({
+                    "venue_id": venue_id,
+                    "venue_name": venue_name,
+                    "kind": kind,
+                    "name": name,
+                    "distance_m": round(distance, 1),
+                })
+    frame = pd.DataFrame(rows, columns=["venue_id", "venue_name", "kind", "name", "distance_m"])
+    connection.register("nearby_frame", frame)
+    connection.execute("CREATE TABLE nearby AS SELECT * FROM nearby_frame")
 
 
 def reset() -> None:

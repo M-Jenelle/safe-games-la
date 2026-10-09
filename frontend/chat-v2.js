@@ -22,10 +22,11 @@
 
   function renderContext() {
     const venue = selectedVenue || discussedVenue;
-    contextLabel.textContent = venue
-      ? `“This venue” refers to ${venue.venue_name}.`
-      : "Name a venue, or ask a question that covers all of them.";
+    contextLabel.hidden = !venue;
+    contextLabel.textContent = venue ? `“This venue” refers to ${venue.venue_name}.` : "";
   }
+
+  renderContext();
 
   window.addEventListener("venue-context", (event) => {
     selectedVenue = event.detail;
@@ -101,7 +102,23 @@
     panel.querySelectorAll("[data-chat-v2-message]").forEach((button) => {
       button.disabled = value;
     });
-    status.textContent = value ? "Calculating from venue data…" : "";
+    status.textContent = "";
+  }
+
+  function typingNode() {
+    const article = document.createElement("article");
+    article.className = "chat-message chat-message-assistant";
+    article.setAttribute("aria-label", "Torchy is writing");
+    const author = document.createElement("strong");
+    author.className = "chat-author";
+    author.textContent = "Torchy";
+    const dots = document.createElement("p");
+    dots.className = "chat-dots";
+    for (let i = 0; i < 3; i += 1) dots.append(document.createElement("span"));
+    article.append(author, dots);
+    log.append(article);
+    log.scrollTop = log.scrollHeight;
+    return article;
   }
 
   async function send(message) {
@@ -110,6 +127,7 @@
     messageNode("user", message);
     input.value = "";
     setBusy(true);
+    const typing = typingNode();
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 70000);
     try {
@@ -131,6 +149,31 @@
       let article = null;
       let prose = null;
       let body = null;
+      let queued = "";
+      let shown = "";
+      let pumping = false;
+      const hideTyping = () => { if (typing.isConnected) typing.remove(); };
+      const ensureProse = () => {
+        hideTyping();
+        if (!article) {
+          article = messageNode("assistant", "");
+          prose = article.querySelector("p");
+        }
+      };
+      const pump = async () => {
+        if (pumping) return;
+        pumping = true;
+        while (shown.length < queued.length) {
+          ensureProse();
+          const step = queued[shown.length] === " " ? 1 : Math.min(2, queued.length - shown.length);
+          shown = queued.slice(0, shown.length + step);
+          prose.textContent = shown;
+          log.scrollTop = log.scrollHeight;
+          await new Promise((resolve) => window.setTimeout(resolve, 12));
+        }
+        pumping = false;
+        if (shown.length < queued.length) pump();
+      };
       while (true) {
         const step = await reader.read();
         buffer += decoder.decode(step.value || new Uint8Array(), { stream: !step.done });
@@ -140,26 +183,24 @@
           const line = chunk.split("\n").find((item) => item.startsWith("data: "));
           if (!line) continue;
           const event = JSON.parse(line.slice(6));
-          if (event.event === "status") {
-            status.textContent = event.text || "Looking that up…";
-          } else if (event.event === "delta") {
-            if (!article) {
-              article = messageNode("assistant", "");
-              prose = article.querySelector("p");
-            }
-            prose.textContent += event.text || "";
-            log.scrollTop = log.scrollHeight;
-          } else if (event.event === "clear" && prose) {
-            prose.textContent = "";
+          if (event.event === "delta") {
+            queued += event.text || "";
+            pump();
+          } else if (event.event === "clear") {
+            queued = "";
+            shown = "";
+            if (prose) prose.textContent = "";
+            if (!typing.isConnected) log.append(typing);
           } else if (event.event === "template") {
             body = event;
             if (!body.answer) throw new Error("empty");
-            if (!article) {
-              article = messageNode("assistant", body.answer);
-              prose = article.querySelector("p");
-            } else if (prose) {
-              prose.textContent = body.answer;
+            queued = body.answer;
+            if (!body.answer.startsWith(shown)) {
+              shown = "";
+              if (prose) prose.textContent = "";
             }
+            ensureProse();
+            pump();
             if (body.table?.columns && body.table.rows) {
               const table = document.createElement("table");
               table.className = "chat-table";
@@ -199,6 +240,11 @@
         if (step.done) break;
       }
       if (!body?.answer) throw new Error("empty");
+      await pump();
+      while (shown.length < queued.length) {
+        await new Promise((resolve) => window.setTimeout(resolve, 16));
+      }
+      hideTyping();
       if (body.choices?.length) {
         const choices = document.createElement("div");
         choices.className = "chat-choices";
@@ -220,6 +266,7 @@
       }
       log.scrollTop = log.scrollHeight;
     } catch (error) {
+      if (typing.isConnected) typing.remove();
       const reason = error.name === "AbortError"
         ? "That took too long. Ask it again, a little shorter if you can."
         : "I couldn't reach the server just now. Ask again in a moment.";

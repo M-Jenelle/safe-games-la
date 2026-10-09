@@ -15,11 +15,14 @@ from backend.agent_tools import (
     FORECAST_WARNING,
     LABEL_WARNING,
     SERIES_WARNING,
+    compare_conditions,
     compare_with_city,
     explain_page,
     correlate,
     describe_data,
     forecast,
+    rank_nearby,
+    rank_venues,
     run_sql,
 )
 from backend.warehouse import reset
@@ -29,6 +32,15 @@ class AgentToolTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         reset()
+
+    def setUp(self):
+        self._model = patch("backend.claude.settings", return_value={
+            "claude_configured": False, "model": "", "provider": "gemini",
+        })
+        self._model.start()
+
+    def tearDown(self):
+        self._model.stop()
 
     def test_describe_lists_the_daily_table_and_the_series_break(self):
         described = describe_data()
@@ -163,6 +175,87 @@ class AgentToolTests(unittest.TestCase):
         self.assertIn("1,418", kept)
         self.assertNotIn("area is unsafe", kept)
         self.assertIn("without a number against the citywide rate.", kept)
+
+    def test_a_greeting_stays_a_greeting(self):
+        events = list(answer_events("Hi"))
+        self.assertEqual(events[0]["event"], "status")
+        hi = next(event for event in events if event["event"] == "template")
+        self.assertEqual(hi["answer"], "Hi. What can I do for you?")
+        doing = next(event for event in answer_events("How are you?") if event["event"] == "template")
+        self.assertEqual(doing["answer"], "I'm doing well. What can I do for you?")
+
+    def test_a_configured_model_receives_the_question(self):
+        seen = []
+
+        def fake(message, venue_id, history):
+            seen.append(message)
+            yield {
+                "event": "template",
+                "answer": "from the tools",
+                "tool": "agent",
+                "status": "answered",
+            }
+
+        questions = [
+            "Hi",
+            "Wet days versus dry days near Peacock Theater",
+            "How many incidents were reported near Dodger Stadium?",
+            "If the next 30 days at Dodger Stadium are hot, what daily range does the count model give?",
+            "Which venue has the most rail stops?",
+        ]
+        with patch("backend.claude.settings", return_value={"claude_configured": True, "model": "gemini", "provider": "gemini"}), \
+             patch("backend.agent._agent_events", fake):
+            for question in questions:
+                events = list(answer_events(question))
+                template = next(event for event in events if event["event"] == "template")
+                self.assertEqual(template["tool"], "agent")
+                self.assertEqual(template["answer"], "from the tools")
+        self.assertEqual(seen, questions)
+
+    def test_compare_conditions_returns_the_weekday_gap(self):
+        result = compare_conditions("Peacock Theater", "wet_day")
+        self.assertEqual(result["venue"], "Peacock Theater")
+        self.assertEqual(result["event_day_mean"], 8.0)
+        self.assertEqual(result["other_day_mean"], 7.43)
+        self.assertEqual(result["event_days"], 435)
+        self.assertFalse(result["clear_difference"])
+        self.assertIn("not a cause", " ".join(result["warnings"]))
+
+    def test_rank_venues_uses_the_present_count(self):
+        result = rank_venues("records")
+        self.assertEqual(result["highest"]["venue"], "Peacock Theater")
+        self.assertEqual(result["highest"]["records"], 18537)
+        self.assertEqual(len(result["ranked"]), 14)
+        nearby = rank_nearby("rail")
+        self.assertEqual(nearby["highest_count"], 2)
+        self.assertEqual(
+            set(nearby["tied"]),
+            {"Galen Center", "LA Memorial Coliseum", "LA Convention Center"},
+        )
+
+    def test_sql_names_the_venue_key_when_the_column_is_wrong(self):
+        result = run_sql("SELECT venue, incident_count FROM venue_days LIMIT 1")
+        self.assertIn("venue_id", result["error"])
+        self.assertEqual(result["rows"], [])
+        unknown = run_sql("SELECT count(*) FROM incidents WHERE venue_id = 'ven_DodgerStadium'")
+        self.assertIn("present_records", unknown["error"])
+        self.assertEqual(unknown["rows"], [])
+        headline = run_sql("SELECT present_records FROM venues WHERE venue_id = 'V01'")
+        self.assertEqual(headline["rows"][0]["present_records"], 1418)
+        nearby = run_sql(
+            "SELECT venue_name, count(*) AS stops FROM nearby WHERE kind = 'rail' GROUP BY venue_name ORDER BY stops DESC"
+        )
+        self.assertGreater(nearby["row_count"], 0)
+        self.assertNotIn("error", nearby)
+
+    def test_wet_versus_dry_uses_the_weekday_comparison(self):
+        events = list(answer_events("Wet days versus dry days near Peacock Theater"))
+        template = next(event for event in events if event["event"] == "template")
+        self.assertEqual(template["tool"], "weather")
+        self.assertIn("Peacock Theater", template["answer"])
+        self.assertIn("wet days", template["answer"].lower())
+        self.assertNotIn("cannot answer", template["answer"].lower())
+        self.assertNotIn("column", template["answer"].lower())
 
     def test_a_wet_forecast_uses_the_count_model(self):
         events = list(answer_events(
