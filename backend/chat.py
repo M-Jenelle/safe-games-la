@@ -1319,7 +1319,7 @@ def _tool_venue(args, venues: list, selected_id: str | None, mentions: list) -> 
 
 
 def _tool_refused() -> dict:
-    return _reply("unsupported", f"I cannot answer that question from the supported processed-data calculations. {HELP}")
+    return _reply("unsupported", "I can't answer that from these tables. Ask about one venue, a comparison, or a number on the page.")
 
 
 def _present_figures(venue: dict) -> tuple[int, float] | None:
@@ -2150,7 +2150,7 @@ def _answer_question(message: str, venue_id: str | None, engine: dict, prior_mes
                 )
         return _run_tool(tool_call, venues, venue_id, mentions, summary, normalized)
     if intent is None:
-        return _reply("unsupported", f"I cannot answer that question from the supported processed-data calculations. {HELP}")
+        return _reply("unsupported", "I can't answer that from these tables. Ask about one venue, a comparison, or a number on the page.")
     if intent == "citywide":
         return _citywide_answer()
     if intent == "rank_group":
@@ -2395,12 +2395,8 @@ _seasonal_cache: dict[str, dict] = {}
 
 
 _CODE_CHANGE = (
-    " Reporting codes changed on March 7, 2024. "
-    "Through March 6, 2024 the counts are LAPD reports. "
-    "From March 7, 2024 they are NIBRS offenses, and one case can count more than once. "
-    "The group labels also move: Grand Theft Auto is counted as Theft in NIBRS and as Vehicle in the older reports, "
-    "and criminal threats move into Other. "
-    "A rise in Other, or a drop in Theft, across that date is a coding change."
+    " That split is a coding change: through March 6, 2024 a row is one police report, "
+    "and from March 7 it is one NIBRS offense."
 )
 _SWITCH_INTENTS = {
     "present_total", "density", "city", "busiest_month", "top_groups", "weekend",
@@ -2598,6 +2594,8 @@ def _note_switch(response: dict, message: str) -> dict:
     if span is not None and not _spans_switch(*span):
         return response
     if span is None and intent == "year_count":
+        return response
+    if intent in {"city", "density"}:
         return response
     results = response.get("results") or []
     venue_ids = []
@@ -3164,7 +3162,7 @@ def _slice_answer(intent: str, venue: dict, message: str) -> dict:
     if intent == "since_count":
         span = _since_span(message)
         if span is None:
-            return _reply("unsupported", f"I cannot answer that question from the supported processed-data calculations. {HELP}")
+            return _reply("unsupported", "I can't answer that from these tables. Ask about one venue, a comparison, or a number on the page.")
         start, end = span
         count = 0
         for month, groups in months.items():

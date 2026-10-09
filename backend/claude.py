@@ -120,17 +120,31 @@ def settings() -> dict:
     return {"claude_configured": bool(project), "model": model, "provider": "gemini"}
 
 
+_token_unavailable_until = 0.0
+
+
 def _access_token() -> str:
     """ADC token. Tests patch this so they never refresh real credentials."""
-    global _credentials
+    global _credentials, _token_unavailable_until
+    import time
+
     import google.auth
     from google.auth.transport.requests import Request
 
-    if _credentials is None or not _credentials.valid:
-        _credentials, _discovered = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-    if not _credentials.valid:
-        _credentials.refresh(Request())
-    token = getattr(_credentials, "token", "") or ""
+    if time.monotonic() < _token_unavailable_until:
+        raise ClaudeUnavailable("The model is unavailable")
+    try:
+        if _credentials is None or not _credentials.valid:
+            _credentials, _discovered = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        if not _credentials.valid:
+            _credentials.refresh(Request())
+        token = getattr(_credentials, "token", "") or ""
+    except ClaudeUnavailable:
+        raise
+    except Exception as exc:
+        _credentials = None
+        _token_unavailable_until = time.monotonic() + 60
+        raise ClaudeUnavailable("The model is unavailable") from exc
     if not token:
         raise ClaudeUnavailable("Gemini is not configured")
     return token

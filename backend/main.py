@@ -19,8 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from backend.chat import answer_question, suggested_questions
-from backend.chat_v2 import answer_v2, narrate_answer
+from backend.chat_v2 import narrate_answer
 from backend.claude import settings as claude_settings
 
 from backend.store import (
@@ -73,6 +72,12 @@ async def _lifespan(_app):
         from pipeline.prepare import prepare
 
         prepare()
+        try:
+            from backend.warehouse import connect
+
+            connect()
+        except Exception as exc:
+            print(f"warehouse skip: {exc}")
     yield
 
 
@@ -121,17 +126,12 @@ def read_meta() -> dict:
         raise _missing(exc) from exc
 
 
-class ChatRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=2000)
-    venue_id: str | None = Field(default=None, min_length=1, max_length=80)
-    prior_message: str | None = Field(default=None, max_length=2000)
-
-
 class ChatV2Turn(BaseModel):
-    """Earlier user text and the tool that answered it. Model prose is ignored."""
+    """One earlier turn. The agent uses the question and the answer it gave."""
 
     model_config = {"extra": "ignore"}
     user_text: str = Field(default="", max_length=2000)
+    answer: str = Field(default="", max_length=2000)
     tool: str | None = Field(default=None, max_length=80)
     arguments: dict | None = None
 
@@ -142,34 +142,55 @@ class ChatV2Request(BaseModel):
     history: list[ChatV2Turn] = Field(default_factory=list, max_length=6)
 
 
-@app.get("/api/chat/suggestions")
-def chat_suggestions() -> dict:
-    try:
-        return suggested_questions()
-    except DatasetNotFound as exc:
-        raise _missing(exc) from exc
-
-
 @app.get("/api/chat/config")
 def chat_config() -> dict:
-    """Public status only. The Anthropic API key never leaves the server."""
+    """Public status only. The API key never leaves the server."""
     return claude_settings()
-
-
-@app.post("/api/chat")
-def chat(request: ChatRequest):
-    response = answer_question(request.message, request.venue_id, request.prior_message)
-    return JSONResponse(response, status_code=503 if response["status"] == "unavailable" else 200)
 
 
 def _v2_history(request: ChatV2Request) -> list[dict]:
     return [turn.model_dump() for turn in request.history]
 
 
+def _v2_answer(request: ChatV2Request, narrate: bool = True) -> dict:
+    """Tools for the page figures. The model answers anything those tools do not cover."""
+    from backend.agent import agent_answer, brief_reply, facts_reply, wet_reply
+    from backend.claude import ClaudeUnavailable, settings
+
+    for reply in (wet_reply, facts_reply):
+        body = reply(request.message, request.venue_id)
+        if body is not None:
+            return body
+    if settings()["claude_configured"]:
+        try:
+            return agent_answer(request.message, request.venue_id, _v2_history(request))
+        except ClaudeUnavailable:
+            pass
+
+    short = brief_reply(request.message, request.venue_id)
+    if short is not None:
+        return short
+    return {
+        "version": "v2",
+        "status": "answered",
+        "answer": "The model is not available for that. Ask for a count, the city comparison, weekdays, current weather, or a Metro alert, and name a venue.",
+        "caveat": "",
+        "confidence": {"kind": "none", "text": ""},
+        "narration": None,
+        "table": None,
+        "links": [],
+        "choices": [],
+        "results": [],
+        "tool": "conversation",
+        "arguments": {},
+        "engine": "v2",
+    }
+
+
 @app.post("/api/chat/v2")
 def chat_v2(request: ChatV2Request):
-    """The trial bot. Torchy remains on /api/chat."""
-    response = answer_v2(request.message, request.venue_id, _v2_history(request))
+    """The trial bot. The agent answers when Gemini is configured; the pattern path is the fallback."""
+    response = _v2_answer(request)
     return JSONResponse(response, status_code=503 if response["status"] == "unavailable" else 200)
 
 
@@ -177,9 +198,29 @@ def chat_v2(request: ChatV2Request):
 def chat_v2_stream(request: ChatV2Request):
     """Template first. A narration event follows only for a pattern table."""
     def generate():
-        payload = answer_v2(request.message, request.venue_id, _v2_history(request), narrate=False)
+        try:
+            payload = _v2_answer(request, narrate=False)
+        except Exception:
+            payload = {
+                "version": "v2",
+                "status": "answered",
+                "answer": "I didn't get that one out. Ask it again in a short sentence, and name a venue if it is about just one place.",
+                "caveat": "",
+                "confidence": {"kind": "none", "text": ""},
+                "narration": None,
+                "table": None,
+                "links": [],
+                "choices": [],
+                "results": [],
+                "tool": "conversation",
+                "arguments": {},
+                "engine": "v2",
+            }
         yield f"data: {json.dumps({'event': 'template', **payload}, ensure_ascii=False)}\n\n"
-        narration = narrate_answer(payload)
+        try:
+            narration = narrate_answer(payload)
+        except Exception:
+            narration = None
         yield f"data: {json.dumps({'event': 'narration', 'narration': narration}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")

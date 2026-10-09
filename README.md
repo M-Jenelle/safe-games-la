@@ -137,7 +137,7 @@ GEMINI_MODEL=gemini-2.5-flash
 
 The account needs `roles/aiplatform.user` on that project. The model name and location can be omitted. Those two defaults are `gemini-2.5-flash` and `us-west1`.
 
-Useful endpoints: `/api/health`, `/api/meta`, `/api/map`, `/api/map/crime`, `/api/venues`, `/api/venues/{venue_id}`, `/api/chat`, `/api/chat/v2/stream`.
+Useful endpoints: `/api/health`, `/api/meta`, `/api/map`, `/api/map/crime`, `/api/venues`, `/api/venues/{venue_id}`, `/api/chat/v2`, `/api/chat/v2/stream`.
 
 Checks:
 

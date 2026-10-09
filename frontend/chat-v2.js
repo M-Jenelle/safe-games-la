@@ -1,4 +1,4 @@
-/* Trial bot. Torchy stays on /api/chat and in chat.js. */
+/* Torchy. Answers come from /api/chat/v2/stream. */
 (() => {
   const panel = document.querySelector("#chat-panel-v2");
   const launcher = document.querySelector("#chat-launcher-v2");
@@ -24,7 +24,7 @@
     const venue = selectedVenue || discussedVenue;
     contextLabel.textContent = venue
       ? `“This venue” refers to ${venue.venue_name}.`
-      : "No venue selected. Include a venue name in your question.";
+      : "Name a venue, or ask a question that covers all of them.";
   }
 
   window.addEventListener("venue-context", (event) => {
@@ -36,15 +36,17 @@
     panel.hidden = !open;
     launcher.hidden = open;
     launcher.setAttribute("aria-expanded", open ? "true" : "false");
-    if (open) {
-      const other = document.querySelector("#chat-panel");
-      if (other) other.hidden = true;
-      input.focus();
-    } else launcher.focus();
+    if (open) input.focus();
+    else launcher.focus();
   }
 
   launcher.addEventListener("click", () => setOpen(true));
   document.querySelector("#chat-close-v2").addEventListener("click", () => setOpen(false));
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || panel.hidden) return;
+    setOpen(false);
+    event.stopImmediatePropagation();
+  });
 
   function messageNode(role, content) {
     const article = document.createElement("article");
@@ -190,6 +192,7 @@
       }
       history.push({
         user_text: message,
+        answer: (body.answer || "").slice(0, 800),
         tool: body.tool || null,
         arguments: body.arguments || {},
       });
@@ -201,8 +204,8 @@
       log.scrollTop = log.scrollHeight;
     } catch (error) {
       const reason = error.name === "AbortError"
-        ? "The request timed out. The venue page still has the same figures."
-        : "Torchy could not be reached. The venue page still has the same figures.";
+        ? "That took too long. Ask it again, a little shorter if you can."
+        : "I couldn't reach the server just now. Ask again in a moment.";
       messageNode("assistant", reason);
       input.value = message;
     } finally {

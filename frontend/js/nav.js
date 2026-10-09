@@ -3,19 +3,12 @@ import { el, text } from "./dom.js";
 import { renderMap, syncCrimeHint } from "./map.js";
 import { renderRoster } from "./roster.js";
 import { resizeMap } from "./shell.js";
-import { analysisLead, chatContext, comparePage, detail, mapHint, overview, requests, state } from "./state.js";
+import { comparePage, detail, mapHint, overview, requests, state } from "./state.js";
 import { renderDetail } from "./venue.js";
 
 export function renderChatContext() {
   const venue = state.venues.find((item) => item.venue_id === state.selectedId);
   window.dispatchEvent(new CustomEvent("venue-context", { detail: venue || null }));
-  if (!venue) {
-    chatContext.textContent = "No venue selected. Include a venue name in your question.";
-    analysisLead.hidden = false;
-    return;
-  }
-  analysisLead.hidden = true;
-  chatContext.textContent = `“This venue” refers to ${venue.venue_name}.`;
 }
 
 export function venueIdFromLocation() {
