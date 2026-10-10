@@ -238,17 +238,33 @@ function shareLabel(count, total) {
   return `${Math.round(share)}%`;
 }
 
-function pieSlicePath(cx, cy, radius, start, end) {
-  const sweep = end - start;
-  if (sweep >= Math.PI * 2 - 0.0001) {
-    return `M ${cx - radius} ${cy} A ${radius} ${radius} 0 1 1 ${cx + radius} ${cy} A ${radius} ${radius} 0 1 1 ${cx - radius} ${cy} Z`;
+function waffleCells(entries) {
+  const slices = entries.filter((entry) => entry.count > 0);
+  const total = slices.reduce((sum, entry) => sum + entry.count, 0) || 1;
+  const rows = slices.map((entry) => {
+    const exact = (entry.count / total) * 100;
+    return { entry, cells: Math.floor(exact), remainder: exact - Math.floor(exact) };
+  });
+  let used = rows.reduce((sum, row) => sum + row.cells, 0);
+  const byRemainder = [...rows].sort((left, right) => right.remainder - left.remainder || right.entry.count - left.entry.count);
+  let index = 0;
+  while (used < 100 && byRemainder.length) {
+    byRemainder[index % byRemainder.length].cells += 1;
+    used += 1;
+    index += 1;
   }
-  const x1 = cx + radius * Math.cos(start);
-  const y1 = cy + radius * Math.sin(start);
-  const x2 = cx + radius * Math.cos(end);
-  const y2 = cy + radius * Math.sin(end);
-  const large = sweep > Math.PI ? 1 : 0;
-  return `M ${cx} ${cy} L ${x1} ${y1} A ${radius} ${radius} 0 ${large} 1 ${x2} ${y2} Z`;
+  for (const row of rows) {
+    if (row.cells > 0) continue;
+    const donor = [...rows].sort((left, right) => right.cells - left.cells)[0];
+    if (!donor || donor.cells < 2) break;
+    donor.cells -= 1;
+    row.cells = 1;
+  }
+  const cells = [];
+  for (const row of rows) {
+    for (let count = 0; count < row.cells; count += 1) cells.push(row.entry);
+  }
+  return cells;
 }
 
 function showSliceTip(event, title, detailText) {
@@ -261,43 +277,32 @@ function showSliceTip(event, title, detailText) {
 }
 
 function pieBlock(entries, total, options = {}) {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("class", "pie-chart");
-  svg.setAttribute("viewBox", "0 0 200 200");
-  svg.setAttribute("role", "img");
   const slices = entries.filter((entry) => entry.count > 0);
-  svg.setAttribute(
-    "aria-label",
-    slices.map((entry) => `${entry.label}, ${formatNumber(entry.count)}`).join(". "),
-  );
-  const radius = 86;
-  let angle = -Math.PI / 2;
-  const sliceTotal = slices.reduce((sum, entry) => sum + entry.count, 0) || 1;
-  for (const entry of slices) {
-    const sweep = (entry.count / sliceTotal) * Math.PI * 2;
-    const start = angle;
-    angle += sweep;
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  const grid = el("div", {
+    className: "waffle",
+    role: "group",
+    "aria-label": slices.map((entry) => `${entry.label}, ${formatNumber(entry.count)}`).join(". "),
+  });
+  for (const entry of waffleCells(slices)) {
     const selected = options.selectedId === entry.id;
-    path.setAttribute("d", pieSlicePath(100, 100, selected ? radius + 6 : radius, start, angle));
-    path.setAttribute("fill", entry.color);
-    const selectedStroke = entry.color.toLowerCase() === "#000000" ? "#ffffff" : "#1a1a1a";
-    path.setAttribute("stroke", selected ? selectedStroke : "#f7f6f4");
-    path.setAttribute("stroke-width", selected ? "2" : "1");
+    const ink = entry.color.toLowerCase() === "#000000";
+    const cell = el(options.onPick ? "button" : "span", {
+      className: `waffle-cell${selected ? " is-selected" : ""}${ink ? " is-ink" : ""}`,
+      style: `background:${entry.color}`,
+      title: entry.label,
+    });
+    if (options.onPick) cell.type = "button";
     const detailText = `${formatNumber(entry.count)} ${options.countWord || "incidents"} · ${shareLabel(entry.count, total)}`;
     const show = (event) => showSliceTip(event, entry.label, detailText);
-    path.addEventListener("mouseenter", show);
-    path.addEventListener("mousemove", (event) => {
+    cell.addEventListener("mouseenter", show);
+    cell.addEventListener("mousemove", (event) => {
       if (!chartTip || chartTip.hidden) show(event);
       else placeChartTip(event);
     });
-    if (options.onPick) {
-      path.style.cursor = "pointer";
-      path.addEventListener("click", () => options.onPick(entry.id));
-    }
-    svg.append(path);
+    if (options.onPick) cell.addEventListener("click", () => options.onPick(entry.id));
+    grid.append(cell);
   }
-  svg.addEventListener("mouseleave", hideChartTip);
+  grid.addEventListener("mouseleave", hideChartTip);
 
   const legend = el("div", { className: "pie-legend" });
   if (options.caption) {
@@ -326,7 +331,7 @@ function pieBlock(entries, total, options = {}) {
     if (options.onPick) row.addEventListener("click", () => options.onPick(entry.id));
     legend.append(row);
   }
-  return el("div", { className: "pie-block" }, [svg, legend]);
+  return el("div", { className: "pie-block" }, [grid, legend]);
 }
 
 function groupEntries(groups) {
@@ -428,7 +433,7 @@ function mountPairedPies(host, options) {
   }));
   const blank = panels.map((panel) => !panel.slices.length);
   const hint = blank[0] !== blank[1]
-    ? "Click a slice to see the crimes in the open space. Click it again to clear."
+    ? "Click a square to see the crimes in the open space. Click it again to clear."
     : options.hint;
 
   if (blank[0] && blank[1]) {
@@ -511,7 +516,7 @@ export function mountTimeSection(crimeTime, host, countWord, guide, monthLabel) 
   const periods = crimeTime?.periods || [];
   mountDrillPie(host, {
     title: "Crimes by Time of Day",
-    hint: "Click a slice to see the crimes in that part of the day. Click it again to clear.",
+    hint: "Click a square to see the crimes in that part of the day. Click it again to clear.",
     disclaimer: crimeTime?.disclaimer || "",
     guide,
     monthLabel,
@@ -774,7 +779,7 @@ export function mountDistanceSection(crimeDistance, host, countWord, guide, mont
   const bands = crimeDistance?.bands || [];
   mountDrillPie(host, {
     title: "Distance from the Venue",
-    hint: "Click a slice to see the crimes in that distance. Click it again to clear.",
+    hint: "Click a square to see the crimes in that distance. Click it again to clear.",
     disclaimer: crimeDistance?.disclaimer || "",
     guide,
     monthLabel,
@@ -798,7 +803,7 @@ export function mountTimePair(host, reports, nibrs, month) {
   mountPairedPies(host, {
     title: "Crimes by Time of Day",
     month,
-    hint: "Click a slice to see the crimes below that chart. Click it again to clear.",
+    hint: "Click a square to see the crimes below that chart. Click it again to clear.",
     panels: [
       {
         label: "2020–2024 reports",
@@ -822,7 +827,7 @@ export function mountDistancePair(host, reports, nibrs, month) {
   mountPairedPies(host, {
     title: "Distance from the Venue",
     month,
-    hint: "Click a slice to see the crimes below that chart. Click it again to clear.",
+    hint: "Click a square to see the crimes below that chart. Click it again to clear.",
     panels: [
       {
         label: "2020–2024 reports",

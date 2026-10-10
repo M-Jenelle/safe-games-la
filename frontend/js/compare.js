@@ -137,7 +137,7 @@ function weekdayLine(block) {
 function quietCompareChart(host) {
   host.querySelectorAll(".section-title, .pie-guide").forEach((node) => node.remove());
   host.querySelectorAll(".time-section > .muted").forEach((node) => {
-    if (node.textContent.startsWith("Click a slice")) node.remove();
+    if (node.textContent.startsWith("Click a square")) node.remove();
   });
 }
 
