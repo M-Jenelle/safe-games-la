@@ -227,7 +227,7 @@ def compare_with_city(venue: str) -> dict:
 
 
 _PAGE_TOPICS = (
-    "overview", "categories", "weekday", "months", "weather", "permits", "transit", "care", "source", "density",
+    "overview", "categories", "weekday", "hours", "months", "weather", "permits", "transit", "care", "source", "density",
 )
 _PAGE_SOURCE = (
     "LAPD crime reports via the LA Open Data Portal, then LAPD NIBRS offenses. "
@@ -289,6 +289,19 @@ def rank_venues(metric: str = "records") -> dict:
         "ranked": ranked,
         "warnings": [REPORTED_WARNING, OVERLAP_WARNING],
     }
+
+
+def crime_around(
+    kind: str = "",
+    name: str = "",
+    latitude: float | None = None,
+    longitude: float | None = None,
+    offense: str = "",
+) -> dict:
+    """Records within 800 m of a station, stop, facility, or coordinate. Not a venue total."""
+    from backend.place_crime import crime_around as _crime_around
+
+    return _crime_around(kind, name, latitude, longitude, offense)
 
 
 def rank_nearby(kind: str = "rail") -> dict:
@@ -441,6 +454,12 @@ def _page_topic(topic: str) -> str:
         "weekday": "weekday",
         "weekend": "weekday",
         "day of week": "weekday",
+        "hour": "hours",
+        "hours": "hours",
+        "time": "hours",
+        "time of day": "hours",
+        "night": "hours",
+        "late": "hours",
         "month": "months",
         "months": "months",
         "weather": "weather",
@@ -473,6 +492,8 @@ def _page_entries(detail: dict | None, topic: str) -> list[dict]:
         return _category_entries(detail)
     if topic == "weekday":
         return _weekday_entries(detail)
+    if topic == "hours":
+        return _hour_entries(detail)
     if topic == "months":
         return _month_entries(detail)
     if topic == "weather":
@@ -578,6 +599,27 @@ def _weekday_entries(detail: dict | None) -> list[dict]:
         block.get("disclaimer") or "Monday through Sunday record counts, 2020–present.",
         _PAGE_SOURCE,
     )]
+
+
+def _hour_entries(detail: dict | None) -> list[dict]:
+    if detail is None:
+        return [_entry("Time of day", None, "Part of day inside one venue circle. Name a venue.", _PAGE_SOURCE)]
+    periods = (detail.get("crime_time") or {}).get("periods") or []
+    if not periods:
+        return [_entry(
+            "Time of day",
+            None,
+            "Part-of-day counts are not loaded for this venue.",
+            _PAGE_SOURCE,
+        )]
+    noon = int((detail.get("crime_time") or {}).get("noon_count") or 0)
+    note = "2020–2024 reports inside 800 m. 12:00 is often an unknown hour, so the clock is incomplete."
+    if noon:
+        note = f"{note} {noon:,} reports are stamped 12:00."
+    return [
+        _entry(period.get("label") or period.get("id"), period.get("count"), note, "LAPD TIME OCC on reports inside the circle. NIBRS hours are not included.")
+        for period in periods
+    ]
 
 
 def _month_entries(detail: dict | None) -> list[dict]:

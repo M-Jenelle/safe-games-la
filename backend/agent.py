@@ -16,6 +16,7 @@ from backend.agent_tools import (
     compare_conditions,
     compare_with_city,
     correlate,
+    crime_around,
     describe_data,
     explain_page,
     forecast,
@@ -48,6 +49,13 @@ _TOOLS = {
     ),
     "rank_venues": lambda arguments: rank_venues(str(arguments.get("metric") or "records")),
     "rank_nearby": lambda arguments: rank_nearby(str(arguments.get("kind") or "rail")),
+    "crime_around": lambda arguments: crime_around(
+        str(arguments.get("kind") or ""),
+        str(arguments.get("name") or ""),
+        arguments.get("latitude"),
+        arguments.get("longitude"),
+        str(arguments.get("offense") or ""),
+    ),
     "live_weather": lambda arguments: live_weather(str(arguments.get("venue") or "")),
     "metro_alerts": lambda arguments: metro_alerts(str(arguments.get("venue") or "")),
     "compare_with_city": lambda arguments: compare_with_city(str(arguments.get("venue") or "")),
@@ -107,7 +115,7 @@ _DECLARATIONS = [
     },
     {
         "name": "metro_alerts",
-        "description": "Current Metro alerts on rail or bus lines recorded near one venue. This is not a crime finding.",
+        "description": "Current Metro service alerts near one venue. Not historical crime, not a safety assessment, and not which line has the most crime.",
         "parameters": {
             "type": "object",
             "properties": {"venue": {"type": "string"}},
@@ -125,7 +133,7 @@ _DECLARATIONS = [
     },
     {
         "name": "explain_page",
-        "description": "The 2020-present headline for one venue. Use this for how many incidents or records, density, weekdays, months, offense groups, permits, and what a page label means. Pass the venue name. Topics: overview, density, categories, weekday, months, weather, permits, transit, care, source. Topic overview is the incident count.",
+        "description": "The 2020-present headline for one venue. Use this for how many incidents, density, the top offense groups, weekdays, hours, months, permits, the nearest station, and what a page label means. Pass the venue name. Topics: overview, density, categories, weekday, hours, months, weather, permits, transit, care, source. Hours are 2020–2024 only, and 12:00 is often an unknown hour. Weapons is its own offense group, not a flag on other offenses. Topic overview is the incident count.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -148,7 +156,7 @@ _DECLARATIONS = [
     },
     {
         "name": "rank_nearby",
-        "description": "Which venues have the most rail stations, bus stops, fire stations, police stations, or hospitals inside the 800 m circle. kind is rail, bus, fire, police, or hospital. The tied list includes every venue that shares the top count.",
+        "description": "Which venues have the most rail stations, bus stops, fire stations, police stations, or hospitals inside the 800 m circle. kind is rail, bus, fire, police, or hospital. This does not rank those places by crime. Crime around a station or facility is crime_around.",
         "parameters": {
             "type": "object",
             "properties": {"kind": {"type": "string"}},
@@ -156,8 +164,22 @@ _DECLARATIONS = [
         },
     },
     {
+        "name": "crime_around",
+        "description": "Reported records within 800 m of a rail station, bus stop, fire station, police station, hospital, or a latitude and longitude. kind is rail, bus, fire, police, or hospital. Omit name to rank that kind. Pass name to count one pin. offense is an optional group such as assault, theft, or weapons. Narcotics, scams, and crimes against society are not groups. This is not crimes on a train or inside the building, and it is not a venue total. city_comparison is the circle against the citywide rate.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string"},
+                "name": {"type": "string"},
+                "latitude": {"type": "number"},
+                "longitude": {"type": "number"},
+                "offense": {"type": "string"},
+            },
+        },
+    },
+    {
         "name": "rank_venues",
-        "description": "Rank all 14 venues by present record count or by records per km². metric is records or density. Use this only for crime records or density. Rail, bus, and facilities use the nearby table. Do not add venue totals together.",
+        "description": "Rank all 14 venues by present record count or by records per km². metric is records or density. Use this only when the question is which venue has the most records. A train station, bus stop, fire station, hospital, or police station is crime_around, not this tool. Do not add venue totals together.",
         "parameters": {
             "type": "object",
             "properties": {"metric": {"type": "string"}},
@@ -174,7 +196,13 @@ _SYSTEM = (
     "and the Games are refused. Do not present that multiplier as a forecast. There is no code interpreter. "
     "Venue ids are in the question payload. The venue key is venue_id. Do not invent an id. "
     "Do not invent a cause. A follow-up may name a different venue or drop the venue. Answer the new question. "
-    "You may call a circle comparatively safe or unsafe only when compare_with_city returned a ratio "
+    "Crime near a rail station, bus stop, fire station, police station, hospital, or a coordinate uses crime_around. "
+    "That count is records within 800 m of the pin, not crimes on a train or inside the building. "
+    "rank_nearby only counts how many of those places sit near a venue. "
+    "A safety question about a venue uses compare_with_city. metro_alerts is only a live service alert. "
+    "Hours of the day are explain_page topic hours, for a venue circle only. "
+    "There is no victim age, no emergency response time, and no crime table for a Metro line. "
+    "You may call a circle comparatively safe or unsafe only when a tool returned a city comparison "
     "and you include that number against the citywide rate. Otherwise do not use those words. "
     "If a tool result includes warnings, you may mention them; the server will attach them again."
 )
