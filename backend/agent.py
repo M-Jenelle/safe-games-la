@@ -17,6 +17,7 @@ from backend.agent_tools import (
     compare_with_city,
     correlate,
     crime_around,
+    crime_detail,
     describe_data,
     explain_page,
     forecast,
@@ -49,6 +50,15 @@ _TOOLS = {
     ),
     "rank_venues": lambda arguments: rank_venues(str(arguments.get("metric") or "records")),
     "rank_nearby": lambda arguments: rank_nearby(str(arguments.get("kind") or "rail")),
+    "crime_detail": lambda arguments: crime_detail(
+        str(arguments.get("topic") or ""),
+        str(arguments.get("kind") or ""),
+        str(arguments.get("name") or ""),
+        arguments.get("latitude"),
+        arguments.get("longitude"),
+        str(arguments.get("period") or ""),
+        str(arguments.get("bucket") or ""),
+    ),
     "crime_around": lambda arguments: crime_around(
         str(arguments.get("kind") or ""),
         str(arguments.get("name") or ""),
@@ -164,8 +174,25 @@ _DECLARATIONS = [
         },
     },
     {
+        "name": "crime_detail",
+        "description": "Raw-report slices that are not the nine offense groups. topic is hours, premise, weapon, officer, bunco, pickpocket, drugs, area, or lag. Hours returns LAPD and NIBRS separately; do not add them. period is night, morning, afternoon, or evening. premise bucket is street, parking, bus, rail, mta, or fire station. Pass kind and period or bucket to rank stations or facilities. Pass a venue or place name, or latitude and longitude, for one pin. area and lag are citywide. LAPD topics run through March 6, 2024. Drugs are NIBRS codes 35A and 35B from March 7, 2024. Weapon is a weapon description on the report, not the Weapons group. No victim age, sex, or descent.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "topic": {"type": "string"},
+                "kind": {"type": "string"},
+                "name": {"type": "string"},
+                "latitude": {"type": "number"},
+                "longitude": {"type": "number"},
+                "period": {"type": "string"},
+                "bucket": {"type": "string"},
+            },
+            "required": ["topic"],
+        },
+    },
+    {
         "name": "crime_around",
-        "description": "Reported records within 800 m of a rail station, bus stop, fire station, police station, hospital, or a latitude and longitude. kind is rail, bus, fire, police, or hospital. Omit name to rank that kind. Pass name to count one pin. offense is an optional group such as assault, theft, or weapons. Narcotics, scams, and crimes against society are not groups. This is not crimes on a train or inside the building, and it is not a venue total. city_comparison is the circle against the citywide rate.",
+        "description": "Reported records within 800 m of a rail station, bus stop, fire station, police station, hospital, or a latitude and longitude. kind is rail, bus, fire, police, or hospital. Omit name to rank that kind. Pass name to count one pin. offense is an optional group such as assault, theft, or weapons. Drugs, bunco, pickpocket wording, a weapon description, premise, hour, area, and reporting lag are crime_detail, not this tool. This is not crimes on a train or inside the building, and it is not a venue total. city_comparison is the circle against the citywide rate.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -200,8 +227,9 @@ _SYSTEM = (
     "That count is records within 800 m of the pin, not crimes on a train or inside the building. "
     "rank_nearby only counts how many of those places sit near a venue. "
     "A safety question about a venue uses compare_with_city. metro_alerts is only a live service alert. "
-    "Hours of the day are explain_page topic hours, for a venue circle only. "
-    "There is no victim age, no emergency response time, and no crime table for a Metro line. "
+    "Hours, premise, a weapon description, officer wording, bunco, pickpocket, drug codes, LAPD area, and reporting lag use crime_detail. "
+    "Do not add the LAPD and NIBRS hour figures. explain_page topic hours is only the venue page clock for 2020–2024. "
+    "There is no victim age, sex, or descent, no emergency response time, and no Metro line disruption table. "
     "You may call a circle comparatively safe or unsafe only when a tool returned a city comparison "
     "and you include that number against the citywide rate. Otherwise do not use those words. "
     "If a tool result includes warnings, you may mention them; the server will attach them again."

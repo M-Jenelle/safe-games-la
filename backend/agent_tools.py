@@ -291,6 +291,21 @@ def rank_venues(metric: str = "records") -> dict:
     }
 
 
+def crime_detail(
+    topic: str,
+    kind: str = "",
+    name: str = "",
+    latitude: float | None = None,
+    longitude: float | None = None,
+    period: str = "",
+    bucket: str = "",
+) -> dict:
+    """Hour, premise, weapon, officer wording, bunco, pickpocket, drugs, area, or reporting lag."""
+    from backend.crime_detail import crime_detail as _crime_detail
+
+    return _crime_detail(topic, kind, name, latitude, longitude, period, bucket)
+
+
 def crime_around(
     kind: str = "",
     name: str = "",

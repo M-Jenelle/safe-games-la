@@ -45,12 +45,12 @@ _GROUP_ALIASES.update({
     "car": "vehicle",
 })
 _UNSUPPORTED = {
-    "narcotics": "Narcotics is not its own group in these tables.",
-    "drugs": "Narcotics is not its own group in these tables.",
-    "drug": "Narcotics is not its own group in these tables.",
-    "scam": "Scams are not a group in these tables.",
-    "scams": "Scams are not a group in these tables.",
-    "society": "Crimes against society is not a group in these tables. Weapons is a group. Narcotics is not separate.",
+    "narcotics": "Narcotics is not one of the nine offense groups. Use crime_detail topic drugs for NIBRS codes 35A and 35B.",
+    "drugs": "Narcotics is not one of the nine offense groups. Use crime_detail topic drugs for NIBRS codes 35A and 35B.",
+    "drug": "Narcotics is not one of the nine offense groups. Use crime_detail topic drugs for NIBRS codes 35A and 35B.",
+    "scam": "Scams are not one of the nine offense groups. Use crime_detail topic bunco for the LAPD bunco wording.",
+    "scams": "Scams are not one of the nine offense groups. Use crime_detail topic bunco for the LAPD bunco wording.",
+    "society": "Crimes against society is not one of the nine offense groups. Drug codes are crime_detail topic drugs.",
 }
 _NOTE = (
     "Reported records in map cells within 800 m of the pin, 2020–present. "

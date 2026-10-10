@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 import duckdb
+import numpy as np
 import pandas as pd
 
 from backend.datasets import REPO_ROOT, DatasetNotFound, load_summary
@@ -26,6 +27,7 @@ _LOCK = threading.Lock()
 _stamp: tuple | None = None
 _report: dict | None = None
 _nibrs: dict | None = None
+_details: dict | None = None
 
 
 def _crime_csv() -> Path:
@@ -124,10 +126,43 @@ def _near_sql(lat_col: str, lon_col: str, radius_m: float) -> str:
     """
 
 
+def _csv_columns(connection: duckdb.DuckDBPyConnection, quoted: str) -> set[str]:
+    described = connection.execute(
+        f"SELECT * FROM read_csv('{quoted}', header=true, all_varchar=true) LIMIT 0"
+    ).description
+    return {column[0] for column in described}
+
+
+def _text_expr(columns: set[str], name: str) -> str:
+    if name not in columns:
+        return "''"
+    return f"upper(trim(coalesce(\"{name}\", '')))"
+
+
 def _load_lapd(connection: duckdb.DuckDBPyConnection, path: Path, radius_m: float) -> None:
     quoted = _quote_path(path)
+    columns = _csv_columns(connection, quoted)
     group = _group_sql("descr")
     near = _near_sql("lat", "lon", radius_m)
+    clock = 'try_cast("TIME OCC" AS INTEGER)' if "TIME OCC" in columns else "NULL"
+    premis = _text_expr(columns, "Premis Desc")
+    area = _text_expr(columns, "AREA NAME")
+    district = f"trim(coalesce(\"Rpt Dist No\", ''))" if "Rpt Dist No" in columns else "''"
+    weapon = (
+        "coalesce(trim(\"Weapon Desc\"), '') <> ''"
+        if "Weapon Desc" in columns
+        else "FALSE"
+    )
+    if "Date Rptd" in columns:
+        reported = """
+        coalesce(
+          try_strptime("Date Rptd", '%m/%d/%Y %I:%M:%S %p'),
+          try_strptime("Date Rptd", '%m/%d/%Y'),
+          try_cast("Date Rptd" AS TIMESTAMP)
+        )
+        """
+    else:
+        reported = "NULL"
     connection.execute(
         f"""
         CREATE TABLE lapd AS
@@ -136,19 +171,77 @@ def _load_lapd(connection: duckdb.DuckDBPyConnection, path: Path, radius_m: floa
           heat_round4(lon) AS longitude,
           crime_type,
           CASE WHEN occurred IS NULL THEN NULL ELSE strftime(occurred, '%Y-%m') END AS month,
+          period,
+          noon,
+          premise_bucket,
+          premis,
+          detail_kind,
+          weapon,
+          area_name,
+          district,
+          lag_days,
+          CASE
+            WHEN lag_days IS NULL THEN 'undated'
+            WHEN lag_days < 0 THEN 'reported_before'
+            WHEN lag_days = 0 THEN 'same_day'
+            WHEN lag_days <= 7 THEN '1_to_7_days'
+            WHEN lag_days <= 30 THEN '8_to_30_days'
+            WHEN lag_days <= 90 THEN '31_to_90_days'
+            ELSE 'over_90_days'
+          END AS lag_bucket,
           {near} AS near
         FROM (
           SELECT
             lat,
             lon,
             occurred,
-            {group} AS crime_type
+            {group} AS crime_type,
+            CASE
+              WHEN clock IS NULL OR clock < 0 OR clock > 2359 OR mod(clock, 100) > 59 THEN NULL
+              WHEN clock < 600 THEN 'night'
+              WHEN clock < 1200 THEN 'morning'
+              WHEN clock < 1800 THEN 'afternoon'
+              ELSE 'evening'
+            END AS period,
+            coalesce(clock = 1200, false) AS noon,
+            CASE
+              WHEN premis = '' THEN NULL
+              WHEN premis = 'STREET' THEN 'street'
+              WHEN starts_with(premis, 'PARKING') THEN 'parking'
+              WHEN premis LIKE 'MTA BUS%' OR premis LIKE 'BUS STOP%' OR premis LIKE 'MUNICIPAL BUS%'
+                OR premis LIKE 'BUS-CHARTER%' OR premis LIKE 'BUS, SCHOOL%'
+                OR premis LIKE 'GREYHOUND%' OR premis LIKE 'BUS DEPOT%' THEN 'bus'
+              WHEN premis LIKE 'LA UNION STATION%' OR premis LIKE 'MTA - %LINE%'
+                OR premis LIKE 'METROLINK%' OR premis LIKE 'TRAIN TRACKS%'
+                OR premis LIKE 'OTHER RR TRAIN%' THEN 'rail'
+              WHEN premis LIKE 'MTA PROPERTY%' THEN 'mta_property'
+              WHEN premis LIKE 'FIRE STATION%' THEN 'fire_station'
+              ELSE NULL
+            END AS premise_bucket,
+            premis,
+            CASE
+              WHEN descr LIKE '%ASSAULT WITH DEADLY WEAPON ON POLICE OFFICER%' THEN 'officer_adw'
+              WHEN descr LIKE '%BATTERY POLICE%' THEN 'officer_battery'
+              WHEN descr LIKE '%BUNCO%' THEN 'bunco'
+              WHEN descr LIKE '%PICKPOCKET%' THEN 'pickpocket'
+              ELSE NULL
+            END AS detail_kind,
+            weapon,
+            nullif(area_name, '') AS area_name,
+            nullif(district, '') AS district,
+            date_diff('day', CAST(occurred AS DATE), CAST(reported AS DATE)) AS lag_days
           FROM (
             SELECT
               try_cast(LAT AS DOUBLE) AS lat,
               try_cast(LON AS DOUBLE) AS lon,
               upper(coalesce("Crm Cd Desc", '')) AS descr,
-              try_strptime("DATE OCC", '%m/%d/%Y %I:%M:%S %p') AS occurred
+              try_strptime("DATE OCC", '%m/%d/%Y %I:%M:%S %p') AS occurred,
+              {clock} AS clock,
+              {premis} AS premis,
+              {weapon} AS weapon,
+              {area} AS area_name,
+              {district} AS district,
+              {reported} AS reported
             FROM read_csv('{quoted}', header=true, all_varchar=true)
           )
           WHERE lat BETWEEN {LAT_MIN} AND {LAT_MAX}
@@ -174,12 +267,25 @@ def _load_nibrs(connection: duckdb.DuckDBPyConnection, path: Path, radius_m: flo
           heat_round4(lat) AS latitude,
           heat_round4(lon) AS longitude,
           {group} AS crime_type,
-          strftime(occurred, '%Y-%m') AS month
+          strftime(occurred, '%Y-%m') AS month,
+          CASE
+            WHEN hour(occurred) < 6 THEN 'night'
+            WHEN hour(occurred) < 12 THEN 'morning'
+            WHEN hour(occurred) < 18 THEN 'afternoon'
+            ELSE 'evening'
+          END AS period,
+          hour(occurred) = 0 AND minute(occurred) = 0 AS midnight,
+          CASE
+            WHEN regexp_extract(descr, '([0-9]{{2,3}}[A-Z]?)\\s*$', 1) IN ('35A', '35B')
+            THEN regexp_extract(descr, '([0-9]{{2,3}}[A-Z]?)\\s*$', 1)
+            ELSE NULL
+          END AS drug_code
         FROM (
           SELECT
             try_cast(hndrdth_lat AS DOUBLE) AS lat,
             try_cast(hndrdth_lon AS DOUBLE) AS lon,
             try_cast(date_occ AS TIMESTAMP) AS occurred,
+            upper(trim(coalesce(nibr_description, ''))) AS descr,
             nibr_description
           FROM read_csv('{quoted}', header=true, all_varchar=true)
         )
@@ -198,6 +304,9 @@ def _load_nibrs(connection: duckdb.DuckDBPyConnection, path: Path, radius_m: flo
           n.longitude,
           n.crime_type,
           n.month,
+          n.period,
+          n.midnight,
+          n.drug_code,
           EXISTS (
             SELECT 1 FROM venues v
             WHERE n.latitude BETWEEN v.latitude - 0.02 AND v.latitude + 0.02
@@ -344,13 +453,172 @@ def _nibrs_from(connection: duckdb.DuckDBPyConnection) -> dict:
     }
 
 
+def _cell_arrays(frame: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    if frame.empty:
+        return (np.empty(0), np.empty(0), np.empty(0, dtype=np.int64))
+    grouped = frame.groupby(["latitude", "longitude"], sort=False)["weight"].sum()
+    return (
+        grouped.index.get_level_values(0).to_numpy(dtype=np.float64),
+        grouped.index.get_level_values(1).to_numpy(dtype=np.float64),
+        grouped.to_numpy(dtype=np.int64),
+    )
+
+
+def _grids_by(frame: pd.DataFrame, key: str) -> dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    if frame.empty or key not in frame.columns:
+        return {}
+    found = {}
+    for value, part in frame.groupby(key, sort=False):
+        found[str(value)] = _cell_arrays(part)
+    return found
+
+
+def _named_counts(frame: pd.DataFrame, key: str, limit: int) -> list[dict]:
+    if frame.empty or key not in frame.columns:
+        return []
+    totals = frame.groupby(key, sort=False)["weight"].sum().sort_values(ascending=False).head(limit)
+    return [{"name": str(name), "records": int(weight)} for name, weight in totals.items() if str(name)]
+
+
+def _details_from(connection: duckdb.DuckDBPyConnection) -> dict:
+    """Hour, premise, weapon, area, lag, and drug aggregates. Victim fields are not read."""
+    hours = _frame(
+        connection,
+        """
+        SELECT period, latitude, longitude, count(*)::BIGINT AS weight
+        FROM lapd WHERE period IS NOT NULL
+        GROUP BY 1, 2, 3
+        """,
+    )
+    noon = _frame(
+        connection,
+        """
+        SELECT latitude, longitude, count(*)::BIGINT AS weight
+        FROM lapd WHERE noon GROUP BY 1, 2
+        """,
+    )
+    premises = _frame(
+        connection,
+        """
+        SELECT premise_bucket, latitude, longitude, count(*)::BIGINT AS weight
+        FROM lapd WHERE premise_bucket IS NOT NULL
+        GROUP BY 1, 2, 3
+        """,
+    )
+    premise_names = _frame(
+        connection,
+        """
+        SELECT premis AS name, count(*)::BIGINT AS weight
+        FROM lapd WHERE premis <> ''
+        GROUP BY 1
+        """,
+    )
+    weapon = _frame(
+        connection,
+        """
+        SELECT latitude, longitude, count(*)::BIGINT AS weight
+        FROM lapd WHERE weapon GROUP BY 1, 2
+        """,
+    )
+    lapd_cells = _frame(
+        connection,
+        "SELECT latitude, longitude, count(*)::BIGINT AS weight FROM lapd GROUP BY 1, 2",
+    )
+    flagged = _frame(
+        connection,
+        """
+        SELECT detail_kind, latitude, longitude, count(*)::BIGINT AS weight
+        FROM lapd WHERE detail_kind IS NOT NULL
+        GROUP BY 1, 2, 3
+        """,
+    )
+    areas = _frame(
+        connection,
+        """
+        SELECT area_name AS name, count(*)::BIGINT AS weight
+        FROM lapd WHERE area_name IS NOT NULL GROUP BY 1
+        """,
+    )
+    districts = _frame(
+        connection,
+        """
+        SELECT district AS name, count(*)::BIGINT AS weight
+        FROM lapd WHERE district IS NOT NULL GROUP BY 1
+        """,
+    )
+    lag = _frame(
+        connection,
+        "SELECT lag_bucket AS name, count(*)::BIGINT AS weight FROM lapd GROUP BY 1",
+    )
+    median = connection.execute(
+        "SELECT median(lag_days) FROM lapd WHERE lag_days >= 0"
+    ).fetchone()
+    tables = {row[0] for row in connection.execute("SHOW TABLES").fetchall()}
+    if "nibrs" in tables:
+        nibrs_hours = _frame(
+            connection,
+            """
+            SELECT period, latitude, longitude, count(*)::BIGINT AS weight
+            FROM nibrs WHERE period IS NOT NULL
+            GROUP BY 1, 2, 3
+            """,
+        )
+        midnight = _frame(
+            connection,
+            """
+            SELECT latitude, longitude, count(*)::BIGINT AS weight
+            FROM nibrs WHERE midnight GROUP BY 1, 2
+            """,
+        )
+        drugs = _frame(
+            connection,
+            """
+            SELECT drug_code, period, latitude, longitude, count(*)::BIGINT AS weight
+            FROM nibrs WHERE drug_code IS NOT NULL
+            GROUP BY 1, 2, 3, 4
+            """,
+        )
+        nibrs_cells = _frame(
+            connection,
+            "SELECT latitude, longitude, count(*)::BIGINT AS weight FROM nibrs GROUP BY 1, 2",
+        )
+    else:
+        nibrs_hours = pd.DataFrame()
+        midnight = pd.DataFrame()
+        drugs = pd.DataFrame()
+        nibrs_cells = pd.DataFrame()
+    drug_totals = []
+    if not drugs.empty:
+        grouped = drugs.groupby("drug_code")["weight"].sum().sort_values(ascending=False)
+        drug_totals = [{"name": str(code), "records": int(weight)} for code, weight in grouped.items()]
+    return {
+        "lapd_hours": _grids_by(hours, "period"),
+        "lapd_noon": _cell_arrays(noon),
+        "premise": _grids_by(premises, "premise_bucket"),
+        "premise_names": _named_counts(premise_names, "name", 12),
+        "weapon": _cell_arrays(weapon),
+        "lapd_cells": _cell_arrays(lapd_cells),
+        "flags": _grids_by(flagged, "detail_kind"),
+        "areas": _named_counts(areas, "name", 8),
+        "districts": _named_counts(districts, "name", 8),
+        "lag": _named_counts(lag, "name", 10),
+        "lag_median_days": None if median is None or median[0] is None else round(float(median[0]), 1),
+        "nibrs_hours": _grids_by(nibrs_hours, "period"),
+        "nibrs_midnight": _cell_arrays(midnight),
+        "drugs": _grids_by(drugs, "drug_code"),
+        "drug_hours": _grids_by(drugs, "period"),
+        "drug_totals": drug_totals,
+        "nibrs_cells": _cell_arrays(nibrs_cells),
+    }
+
+
 def build_grids(
     lapd_csv: Path,
     nibrs_csv: Path | None,
     venues: list[dict],
     radius_m: float,
-) -> tuple[dict, dict]:
-    """Scan both extracts and return the LAPD grids and the NIBRS month grids."""
+) -> tuple[dict, dict, dict]:
+    """Scan both extracts and return the LAPD grids, NIBRS month grids, and detail slices."""
     connection = duckdb.connect()
     try:
         _install(connection)
@@ -360,7 +628,7 @@ def build_grids(
             _load_nibrs(connection, nibrs_csv, radius_m)
         connection.execute("SET enable_external_access = false")
         connection.execute("SET lock_configuration = true")
-        return _report_from(connection), _nibrs_from(connection)
+        return _report_from(connection), _nibrs_from(connection), _details_from(connection)
     finally:
         connection.close()
 
@@ -383,17 +651,18 @@ def _origins() -> tuple[list[dict], float]:
 
 def ensure() -> None:
     """Build the grids when the source files have changed."""
-    global _stamp, _report, _nibrs
+    global _stamp, _report, _nibrs, _details
     stamp = grid_stamp()
     with _LOCK:
-        if _stamp == stamp and _report is not None and _nibrs is not None:
+        if _stamp == stamp and _report is not None and _nibrs is not None and _details is not None:
             return
         started = time.perf_counter()
         venues, radius = _origins()
         nibrs = NIBRS_PATH if NIBRS_PATH.exists() else None
-        report, nibrs_grids = build_grids(_crime_csv(), nibrs, venues, radius)
+        report, nibrs_grids, details = build_grids(_crime_csv(), nibrs, venues, radius)
         _report = report
         _nibrs = nibrs_grids
+        _details = details
         _stamp = stamp
         elapsed = time.perf_counter() - started
         print(f"heatmap warehouse: built in {elapsed:.1f}s", flush=True)
@@ -407,6 +676,11 @@ def report_bundle() -> dict:
 def nibrs_bundle() -> dict:
     ensure()
     return _nibrs
+
+
+def details_bundle() -> dict:
+    ensure()
+    return _details
 
 
 def warm() -> None:
@@ -423,8 +697,9 @@ def warm() -> None:
 
 def reset() -> None:
     """Drop the cached grids. Tests use build_grids directly."""
-    global _stamp, _report, _nibrs
+    global _stamp, _report, _nibrs, _details
     with _LOCK:
         _stamp = None
         _report = None
         _nibrs = None
+        _details = None

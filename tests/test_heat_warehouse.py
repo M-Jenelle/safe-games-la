@@ -38,7 +38,7 @@ class HeatWarehouseTests(unittest.TestCase):
                 {"latitude": 34.05, "longitude": -118.25},
                 {"latitude": 34.05, "longitude": -118.25},
             ]
-            report, nibrs = build_grids(lapd, None, venues, 800)
+            report, nibrs, _details = build_grids(lapd, None, venues, 800)
         self.assertEqual(int(report["all"].sum()), 5)
         self.assertEqual(int(report["venues"].sum()), 4)
         self.assertEqual(int(report["types"]["theft"].sum()), 2)
@@ -74,7 +74,7 @@ class HeatWarehouseTests(unittest.TestCase):
                 )
                 + "\n",
             )
-            report, nibrs = build_grids(
+            report, nibrs, _details = build_grids(
                 lapd,
                 nibrs_path,
                 [{"latitude": 34.05, "longitude": -118.25}],
