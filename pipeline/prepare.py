@@ -1,4 +1,4 @@
-"""Build any processed file a fresh checkout is missing, then register the data check.
+"""Build any processed file a fresh checkout is missing.
 
 Existing files are left as they are. Starting the server does not reread the
 crime extracts when the outputs are already on disk.
@@ -8,7 +8,6 @@ crime extracts when the outputs are already on disk.
 
 from __future__ import annotations
 
-import os
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -139,24 +138,10 @@ def default_steps() -> list[Step]:
 
 
 def ensure_schedule() -> str:
-    """Register the daily 06:15 check when this machine can host it and it is absent."""
-    if os.name != "nt":
-        note = "skip   NIBRS schedule: this is not Windows"
-        print(note, flush=True)
-        return note
-    from pipeline.nibrs import install_schedule, task_installed
-
-    if task_installed():
-        note = "ready  NIBRS schedule (daily at 06:15)"
-        print(note, flush=True)
-        return note
-    try:
-        install_schedule()
-    except SystemExit as exc:
-        note = f"skip   NIBRS schedule: {exc}"
-        print(note, flush=True)
-        return note
-    return "build  NIBRS schedule"
+    """The extract check runs on Cloud Scheduler, not on this machine."""
+    note = "ready  NIBRS schedule (Cloud Scheduler, Tuesdays 18:00 America/Los_Angeles)"
+    print(note, flush=True)
+    return note
 
 
 def prepare() -> list[str]:

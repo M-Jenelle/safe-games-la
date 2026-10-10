@@ -1,9 +1,9 @@
 """Rebuild the files the site reads after a new NIBRS download.
 
-The morning task checks the city portal every day. A download happens only
-when that portal timestamp changes. This module then rebuilds the merged
-counts, the NIBRS charts, and the city baseline. An unchanged check does no
-rebuild.
+The Cloud Scheduler job checks the city portal on Tuesday evenings. A download
+happens only when that portal timestamp changes. This module then rebuilds the
+merged counts, the NIBRS charts, the city baseline, and the daily crime counts
+on the weather table. An unchanged check does no rebuild.
 """
 
 from __future__ import annotations
@@ -49,6 +49,17 @@ def after_sync(
     return True
 
 
+def refresh_venue_days() -> None:
+    """Rewrite daily crime counts from the new extract. Weather itself stays cached."""
+    from pipeline.weather import WEATHER_PATH, join_saved_weather
+
+    if not WEATHER_PATH.is_file():
+        print("weather join: skipped, weather_daily.csv is not on disk", flush=True)
+        return
+    join_saved_weather()
+    print("weather join: updated daily crime counts", flush=True)
+
+
 def rebuild_derived() -> None:
     from pipeline.city_baseline import main as baseline_main
     from pipeline.merge_crime import main as merge_main
@@ -60,3 +71,4 @@ def rebuild_derived() -> None:
         baseline_main()
     except FileNotFoundError as exc:
         print(f"city baseline: skipped ({exc})", flush=True)
+    refresh_venue_days()

@@ -12,13 +12,21 @@ This is a coordination tool for the Olympic committee and emergency services. It
 
 Open the map. Fourteen LA28 venues are already on it. The crime layer is a heatmap of LAPD reports, so concentrations show up as color rather than as a list of pins.
 
-Select a venue. The briefing under the map shows the 2020–present record count, density, how that circle compares with the city, nearby transit, and the nearest fire station, police station, and hospital. Expand opens the full page: offense groups, weekday pattern, month, time of day, distance from the venue, permit-day context, and weather.
+Select a venue. The briefing under the map shows the 2020–present record count, density, how that circle compares with the city, nearby transit, and the nearest fire station, police station, and hospital. Expand opens the full page: offense groups, weekday pattern, month, time of day, distance from the venue, permit-day context, and weather. Time of day and distance are waffle charts. Click a square to see the offense groups in that slice.
 
-Compare two venues side by side, including a weather view. Ask Torchy a plain-language question. Python calculates the number. The answer cites the dataset it used.
+Compare two venues side by side, including a weather view. Ask Torchy a plain-language question. The figures are calculated from the venue tables.
+
+## For reviewers
+
+The hosted briefing is on Google Cloud Run:
+
+[https://safe-games-la-dbev6ehrka-uw.a.run.app](https://safe-games-la-dbev6ehrka-uw.a.run.app)
+
+Open that address and sign in with a Google account on **kaygen.com**. The sign-in is required before the map loads. Accounts outside that domain are not granted access. The same briefing can be run locally, below, without that account.
 
 ## Demo path
 
-1. Start the app and open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+1. Open the hosted briefing above, or start the app and open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 2. Leave the crime view on **All crime**. The heatmap is the hotspot view.
 3. Select **Peacock Theater** or **Crypto.com Arena**, then **Dodger Stadium**. Downtown circles overlap, so the same report can belong to more than one venue. The compare page says so.
 4. Open **Ask Torchy** and try:
@@ -41,7 +49,7 @@ The assignment is to turn the Los Angeles crime file from 2020 to 2024 into some
 | Compare areas | Compare page for any two venues. Counts are kept separate. Overlapping downtown circles are labeled. |
 | Pattern on event days | Permit days, and Dodger home games, are compared with other days in the same months. |
 | Weather as a planning input | Wet-day and hot-day comparisons on the venue page and the compare page. |
-| Natural-language search | Ask Torchy. The model only classifies the question. The count comes from the processed tables, and the source can be opened under the answer. |
+| Natural-language search | Ask Torchy. Gemini calls the calculation tools. Python produces the count, and the answer stays on the recorded tables. |
 | Decision support | Nearest fire, police, and hospital, plus rail stations and bus stops inside the venue circle, so staffing and access can be discussed from the same screen. |
 
 ## How a number is made
@@ -52,13 +60,13 @@ Two crime files cover the period, and they are not added together. Through March
 
 The city rate uses Los Angeles city land area from the 2020 Census. Venue circles are not summed into it.
 
-Weather comes from the Open-Meteo archive at the venue pin. A wet day or a hot day is compared with other days in the same months. The chat can also give a seasonal figure for the next three months: the average of that month in earlier years. Both are labeled as comparisons with the record.
+Weather comes from the Open-Meteo archive at the venue pin. A wet day or a hot day is compared with other days in the same months. Months past the latest crime record, shown in gray on the venue page, are the average of that month in earlier years. They are estimates, not a forecast for the Games.
 
-Ask Torchy uses Gemini 2.5 Flash when Application Default Credentials are available. Gemini chooses an intent. If that intent disagrees with a question the local parser already understood, the parser's calculation is the one shown. Without Gemini, the parser still answers.
+Ask Torchy uses Gemini 2.5 Flash. Gemini decides which calculation to run. Python returns the count, the comparison, or the live reading, and Gemini writes the reply from that result. If Gemini is unavailable, a short reply is still calculated from the same tables.
 
 ## What this tool will not say
 
-It will not call a neighborhood safe or unsafe. It will not predict crime during the 2028 Games, name a cause, or give a travel time, a response time, a fare, or a live Metro alert. Victim age and sex are not in the loaded files. A count near a rail station is the neighborhood around the station pin, within 200 meters, and only when that station is inside the venue circle. It is not a count of crime on a train.
+It will not call a neighborhood safe or unsafe unless that sentence also includes the citywide rate. It will not predict a daily crime count for the 2028 Games, name a cause, or give a travel time, a response time, or a fare. A live Metro notice, when the transit feed is connected, is a service alert only. It is not a crime count on a train. Victim age and sex are not in the loaded files. A count near a station, stop, or facility is records within 800 meters of that pin. It is not a count of crime on a train or inside the building.
 
 Permit-day and home-game gaps are not weekday-adjusted. Weekend days carry more of both events and crime, and the page says so. The published comparison stays the unadjusted one.
 
@@ -68,8 +76,8 @@ The heatmap is LAPD. Places outside the LAPD reporting area have no crime cells.
 
 | Data | Source | Role |
 |---|---|---|
-| Crime, 2020–2024 | LA Open Data, Crime Data from 2020 to Present | One row per police report. Primary dataset named in the use case. |
-| NIBRS offenses | LA Open Data, view `k7nn-b2ep` | One row per offense from March 7, 2024. A daily 06:15 check downloads a new extract only when the portal timestamp changes. |
+| Crime, 2020–2024 | [LA Open Data, Crime Data from 2020 to 2024](https://data.lacity.org/Public-Safety/Crime-Data-from-2020-to-2024/2nrs-mtv8) · [CSV](https://data.lacity.org/api/v3/views/2nrs-mtv8/export.csv?accessType=DOWNLOAD) | One row per police report. Primary dataset named in the use case. |
+| NIBRS offenses | [LA Open Data, LAPD NIBRS Offenses Dataset](https://data.lacity.org/Public-Safety/LAPD-NIBRS-Offenses-Dataset/k7nn-b2ep) · [CSV](https://data.lacity.org/api/v3/views/k7nn-b2ep/export.csv?accessType=DOWNLOAD) | One row per offense from March 7, 2024. A Tuesday evening check downloads a new extract only when the portal timestamp changes. |
 | LA28 venues | Official LA28 venue list | Fourteen venues, geocoded. The map starts here. |
 | Metro rail and bus | LA Metro GTFS | Stations and stops inside the venue circle. Static, not live. |
 | Fire stations | data.lacity.org | Nearest station. |
@@ -105,9 +113,15 @@ That command is the whole setup. Before the site accepts a request, the server b
 
 Files that are already present are left alone. A restart, including a reload after a code change, does not reread the crime extracts or rewrite the published numbers.
 
-On Windows the same startup registers a task named `Safe Games LA NIBRS sync` if it is not there yet. The task runs every day at 06:15. It asks the city portal whether the NIBRS extract changed, downloads only when that timestamp is new, and then rebuilds the merged counts, the NIBRS charts, and the city baseline. An unchanged morning does nothing else. This is a daily check, not a biweekly rebuild.
+The hosted site checks the NIBRS extract on Cloud Scheduler, Tuesdays at 6:00 PM Pacific. The city portal does not publish a fixed biweekly calendar. The two updates still visible both landed on a Tuesday, and 6:00 PM is after that afternoon publish. The job downloads only when the portal timestamp is new. It then rebuilds the merged counts, the NIBRS charts, the city baseline, and the daily crime counts joined to weather, and starts a new revision so the map and Torchy read those files. An unchanged Tuesday does nothing else.
 
-The 2020–2024 crime file is not in git. Put `Crime_Data_from_2020_to_2024.csv` in `data/` before the first run on a new machine. Without it, the server still starts from any processed files that are already present, and the log names each build it skipped.
+Both crime extracts are too large for git. Download them from LA Open Data:
+
+[Crime Data from 2020 to 2024](https://data.lacity.org/Public-Safety/Crime-Data-from-2020-to-2024/2nrs-mtv8) · [CSV](https://data.lacity.org/api/v3/views/2nrs-mtv8/export.csv?accessType=DOWNLOAD). Save this as `data/Crime_Data_from_2020_to_2024.csv`.
+
+[LAPD NIBRS Offenses Dataset](https://data.lacity.org/Public-Safety/LAPD-NIBRS-Offenses-Dataset/k7nn-b2ep) · [CSV](https://data.lacity.org/api/v3/views/k7nn-b2ep/export.csv?accessType=DOWNLOAD). The app saves its extract as `data/raw/nibrs/nibrs_current.csv`.
+
+These are the city’s public files, datasets `2nrs-mtv8` and `k7nn-b2ep`. The hosted briefing already includes both. A fresh local machine needs the 2020–2024 file before the first full build. Without it, the server still starts from any processed files that are already present, and the log names each build it skipped. If the NIBRS file is not already there, the app downloads it from the same portal.
 
 The same prepare step can be run without opening the site:
 
@@ -121,9 +135,23 @@ The map needs a referrer-restricted Google Maps JavaScript key in `.env`:
 GOOGLE_MAPS_API_KEY=your_browser_key
 ```
 
-Allow `http://127.0.0.1:8000/*`. Restart the server after changing the key. Torchy answers without the key. The basemap does not draw without it.
+Allow `http://127.0.0.1:8000/*`. The hosted map also needs `https://safe-games-la-dbev6ehrka-uw.a.run.app/*` on that same key. Restart the local server after changing the key. Torchy answers without the key. The basemap does not draw without it.
 
-Gemini is optional. The parser answers either way. To let Gemini classify questions, sign in with Application Default Credentials and set the project:
+Publishing the hosted copy, from a machine signed in to the Google Cloud project:
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts/deploy_cloud_run.ps1
+```
+
+That publish keeps the Google sign-in and limits it to kaygen.com accounts. The Tuesday NIBRS check is separate:
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts/deploy_nibrs_job.ps1
+```
+
+Run it after the site publish. The service has to be the copy that knows how to load a new extract.
+
+Torchy uses Gemini when the machine can reach Vertex AI. Sign in with Application Default Credentials and set the project:
 
 ```bash
 gcloud auth application-default login

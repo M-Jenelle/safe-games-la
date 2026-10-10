@@ -2,9 +2,9 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from pipeline.nibrs import schedule_create_args
-from pipeline.prepare import Step, run_missing
-from pipeline.refresh import after_sync
+from pipeline.nibrs_cloud import SCHEDULE_CRON, SCHEDULE_ZONE
+from pipeline.prepare import Step, ensure_schedule, run_missing
+from pipeline.refresh import after_sync, rebuild_derived
 
 
 class PrepareTests(unittest.TestCase):
@@ -79,12 +79,28 @@ class PrepareTests(unittest.TestCase):
         self.assertTrue(ran)
         self.assertEqual(calls, ["rebuilt"])
 
-    def test_schedule_is_a_daily_morning_check(self):
-        args = schedule_create_args()
-        self.assertIn("DAILY", args)
-        self.assertIn("06:15", args)
-        self.assertNotIn("WEEKLY", args)
-        self.assertIn("Safe Games LA NIBRS sync", args)
+    def test_schedule_is_tuesday_evening_pacific(self):
+        self.assertEqual(SCHEDULE_CRON, "0 18 * * 2")
+        self.assertEqual(SCHEDULE_ZONE, "America/Los_Angeles")
+        self.assertEqual(
+            ensure_schedule(),
+            "ready  NIBRS schedule (Cloud Scheduler, Tuesdays 18:00 America/Los_Angeles)",
+        )
+
+    def test_rebuild_refreshes_daily_crime_counts(self):
+        from unittest.mock import patch
+
+        with (
+            patch("pipeline.merge_crime.main") as merge,
+            patch("pipeline.nibrs_charts.main") as charts,
+            patch("pipeline.city_baseline.main") as baseline,
+            patch("pipeline.refresh.refresh_venue_days") as days,
+        ):
+            rebuild_derived()
+        merge.assert_called_once()
+        charts.assert_called_once()
+        baseline.assert_called_once()
+        days.assert_called_once()
 
 
 if __name__ == "__main__":
