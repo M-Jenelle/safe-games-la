@@ -9,17 +9,17 @@ The portal publishes two views:
   plus the earlier NIBRS rows.
 
 Each run reads ``rowsUpdatedAt`` from the Socrata view metadata. A dataset is
-downloaded only when that timestamp differs from the local manifest. The
-Windows task runs that check every day at 06:15. A new download rebuilds the
-merged file, the NIBRS charts, and the city baseline. An unchanged morning
-does not.
+downloaded only when that timestamp differs from the last published manifest.
+Cloud Scheduler runs that check on Tuesdays at 18:00 America/Los_Angeles. A
+new download rebuilds the merged file, the NIBRS charts, the city baseline,
+and the daily crime counts, then reloads the hosted site. An unchanged
+Tuesday does not.
 
 NIBRS stores one row per offense. A single case can appear more than once.
 These extracts are not added to the 2020–2024 incident file.
 
     python -m pipeline.nibrs
     python -m pipeline.nibrs --force
-    python -m pipeline.nibrs --install-schedule
 """
 
 from __future__ import annotations
@@ -29,7 +29,6 @@ import csv
 import io
 import json
 import os
-import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -40,7 +39,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = REPO_ROOT / "data" / "raw" / "nibrs"
 MANIFEST_NAME = "manifest.json"
-TASK_NAME = "Safe Games LA NIBRS sync"
 PORTAL = "https://data.lacity.org"
 PAGE_SIZE = 50_000
 # Socrata sometimes ignores a large $limit and returns one of these instead.
@@ -269,71 +267,21 @@ def sync_all(directory: Path = DEFAULT_DIR, *, force: bool = False) -> dict:
     return manifest
 
 
-def schedule_create_args() -> list[str]:
-    """Daily 06:15 task. The check itself downloads only when the portal timestamp changes."""
-    python = sys.executable
-    script = Path(__file__).resolve()
-    command = f'"{python}" "{script}"'
-    return [
-        "schtasks",
-        "/Create",
-        "/F",
-        "/TN",
-        TASK_NAME,
-        "/SC",
-        "DAILY",
-        "/ST",
-        "06:15",
-        "/TR",
-        command,
-    ]
-
-
-def task_installed() -> bool:
-    import subprocess
-
-    result = subprocess.run(
-        ["schtasks", "/Query", "/TN", TASK_NAME],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    return result.returncode == 0
-
-
-def install_schedule() -> None:
-    """Register a daily Windows task that runs this check."""
-    import subprocess
-
-    result = subprocess.run(
-        schedule_create_args(),
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout or "schtasks failed").strip()
-        raise SystemExit(detail)
-    print((result.stdout or "Scheduled daily at 06:15.").strip())
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_DIR)
     parser.add_argument("--force", action="store_true", help="Download even when rowsUpdatedAt is unchanged")
-    parser.add_argument(
-        "--install-schedule",
-        action="store_true",
-        help="Register the daily Windows task, then run one check",
-    )
     args = parser.parse_args(argv)
-    if args.install_schedule:
-        install_schedule()
+    from pipeline.nibrs_cloud import prepare_job, publish_and_roll
+
+    prepare_job()
     manifest = sync_all(args.output_dir, force=args.force)
+    rebuilt = False
     if args.output_dir.resolve() == DEFAULT_DIR.resolve():
         from pipeline.refresh import after_sync
 
-        after_sync(manifest)
+        rebuilt = after_sync(manifest)
+    publish_and_roll(manifest, rebuilt)
     current = manifest.get("datasets", {}).get("k7nn-b2ep", {})
     if current.get("status") == "unavailable":
         return 1

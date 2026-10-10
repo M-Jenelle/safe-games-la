@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Safe Games LA</title>
-  <link rel="icon" type="image/svg+xml" href="/static/torch.svg">
+  <link rel="icon" type="image/svg+xml" href="/static/torch.svg?v=torch3">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,650&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=edge">
+  <link rel="stylesheet" href="/static/styles.css?v=torch">
 </head>
 <body>
   <div class="app">
@@ -147,7 +147,7 @@
     <div class="chat-dock">
     <aside class="chat-panel" id="chat-panel-v2" hidden aria-labelledby="chat-heading-v2">
       <div class="panel-label">
-        <h2 id="chat-heading-v2"><span class="chat-heading-icon bot-avatar" aria-hidden="true"><img src="/static/torch.svg" alt=""></span>Ask Torchy</h2>
+        <h2 id="chat-heading-v2"><span class="chat-heading-icon bot-avatar" aria-hidden="true"><img src="/static/torch.svg?v=torch3" alt=""></span>Ask Torchy</h2>
         <button type="button" class="chat-close" id="chat-close-v2" aria-label="Close chatbot">
           <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
             <path d="M3.2 3.2 12.8 12.8M12.8 3.2 3.2 12.8" fill="none" stroke="currentColor" stroke-width="1.4"/>
@@ -156,9 +156,8 @@
       </div>
       <div class="chat-log" id="chat-log-v2" role="log" aria-live="polite" aria-relevant="additions" aria-label="Torchy chat messages">
         <div class="chat-body">
-          <p class="analysis-lead">Name a venue or select one on the map to ask about “this venue.”</p>
-          <p>Answers are calculated in Python. The note under each answer is attached by the server.</p>
-          <p class="examples-label">Try a question</p>
+          <p class="analysis-lead">Ask about recorded crime, weather, transit, and permits at the LA28 venues. Select a venue on the map, or name it in your question.</p>
+          <p class="examples-label">Examples</p>
           <div class="chat-suggestions" id="chat-suggestions-v2"></div>
         </div>
       </div>
@@ -169,11 +168,10 @@
         <button type="submit">Send</button>
       </form>
       <p class="chat-context" id="chat-context-v2" hidden></p>
-      <p class="chat-edge">From the venue tables.</p>
     </aside>
     <div class="chat-launchers">
     <button type="button" class="chat-launcher" id="chat-launcher-v2" aria-expanded="false" aria-controls="chat-panel-v2" aria-label="Open Ask Torchy">
-      <span class="chat-launcher-icon bot-avatar" aria-hidden="true"><img src="/static/torch.svg" alt=""></span>
+      <span class="chat-launcher-icon bot-avatar" aria-hidden="true"><img src="/static/torch.svg?v=torch3" alt=""></span>
       <span>Ask Torchy</span>
     </button>
     </div>
@@ -182,6 +180,6 @@
   <script src="https://unpkg.com/deck.gl@9.2.0/dist.min.js"></script>
   <script src="https://unpkg.com/@deck.gl/google-maps@9.2.0/dist.min.js"></script>
   <script src="/static/chat-v2.js?v=dots"></script>
-  <script type="module" src="/static/js/main.js?v=one-torchy"></script>
+  <script type="module" src="/static/js/main.js?v=waffle"></script>
 </body>
 </html>

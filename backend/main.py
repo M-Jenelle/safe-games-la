@@ -68,8 +68,13 @@ def _skip_prepare() -> bool:
 @asynccontextmanager
 async def _lifespan(_app):
     if not _skip_prepare():
+        from pipeline.nibrs_cloud import pull_if_newer
         from pipeline.prepare import prepare
 
+        try:
+            pull_if_newer()
+        except Exception as exc:
+            print(f"NIBRS pull skip: {exc}")
         prepare()
         try:
             from backend.warehouse import connect

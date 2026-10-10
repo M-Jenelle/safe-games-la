@@ -22,7 +22,8 @@ foreach ($path in $needed) {
 
 $wanted = @(
     "GOOGLE_MAPS_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL",
-    "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION", "GEMINI_MODEL"
+    "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION", "GEMINI_MODEL",
+    "SWIFTLY_API_KEY"
 )
 $pairs = @{}
 if (Test-Path ".env") {
@@ -39,6 +40,7 @@ if (Test-Path ".env") {
 if (-not $pairs.ContainsKey("GOOGLE_MAPS_API_KEY")) {
     throw "GOOGLE_MAPS_API_KEY is missing from .env. The map cannot load without it."
 }
+$pairs["NIBRS_BUCKET"] = "uc4-predictive-crime-intel-nibrs"
 if (-not $pairs.ContainsKey("GOOGLE_CLOUD_PROJECT")) { $pairs["GOOGLE_CLOUD_PROJECT"] = "uc4-predictive-crime-intel" }
 if (-not $pairs.ContainsKey("GOOGLE_CLOUD_LOCATION")) { $pairs["GOOGLE_CLOUD_LOCATION"] = "us-west1" }
 if (-not $pairs.ContainsKey("GEMINI_MODEL")) { $pairs["GEMINI_MODEL"] = "gemini-2.5-flash" }
@@ -50,14 +52,15 @@ $yaml = foreach ($name in $pairs.Keys) {
 }
 Set-Content -Path $envFile -Value ($yaml -join "`n") -Encoding ascii
 
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com --project $project
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com iap.googleapis.com cloudresourcemanager.googleapis.com --project $project
 if ($LASTEXITCODE -ne 0) { throw "Could not enable Cloud Run APIs." }
 try {
-    gcloud run deploy $service `
+    gcloud beta run deploy $service `
         --source . `
         --project $project `
         --region $region `
-        --allow-unauthenticated `
+        --no-allow-unauthenticated `
+        --iap `
         --memory 8Gi `
         --cpu 2 `
         --timeout 600 `
@@ -69,6 +72,33 @@ try {
     if (Test-Path $envFile) { Remove-Item $envFile -Force }
 }
 
+$projectNumber = gcloud projects describe $project --format="value(projectNumber)"
+if ($LASTEXITCODE -ne 0 -or -not $projectNumber) { throw "Could not read the project number." }
+gcloud run services add-iam-policy-binding $service `
+    --project $project `
+    --region $region `
+    --member "serviceAccount:service-$projectNumber@gcp-sa-iap.iam.gserviceaccount.com" `
+    --role "roles/run.invoker"
+if ($LASTEXITCODE -ne 0) { throw "Could not let Identity-Aware Proxy call the service." }
+
+gcloud beta iap web add-iam-policy-binding `
+    --project $project `
+    --member "domain:kaygen.com" `
+    --role "roles/iap.httpsResourceAccessor" `
+    --region $region `
+    --resource-type cloud-run `
+    --service $service
+if ($LASTEXITCODE -ne 0) { throw "Could not grant kaygen.com access." }
+
+gcloud run services remove-iam-policy-binding $service `
+    --project $project `
+    --region $region `
+    --member "allUsers" `
+    --role "roles/run.invoker" `
+    --quiet
+if ($LASTEXITCODE -ne 0) { Write-Output "No public invoker binding to remove." }
+
 $url = gcloud run services describe $service --project $project --region $region --format="value(status.url)"
 Write-Output "Deployed: $url"
+Write-Output "Sign-in is limited to @kaygen.com Google accounts."
 Write-Output "Add that URL, and ${url}/* , to the Maps key's allowed referrers or the basemap stays blank."

@@ -717,7 +717,7 @@ def _agent_events(message: str, venue_id: str | None, history: list[dict] | None
         "status": "answered",
         "answer": answer,
         "caveat": " ".join(notes),
-        "confidence": {"kind": "recorded", "text": "From the venue tables."},
+        "confidence": {"kind": "recorded", "text": ""},
         "narration": None,
         "table": None,
         "links": [],
