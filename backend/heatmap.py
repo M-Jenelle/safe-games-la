@@ -1,4 +1,9 @@
-"""Citywide crime heatmap built from the LAPD extract."""
+"""Citywide crime heatmap.
+
+Cell weights come from a second in-memory DuckDB, separate from the chat
+warehouse. Reports before March 7, 2024 stay on the LAPD extract. Later
+months come from NIBRS.
+"""
 
 from __future__ import annotations
 
@@ -6,14 +11,13 @@ import csv
 import json
 import math
 import re
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from pipeline.geo import haversine_m, nearest_row
 from pipeline.city_baseline import compared_with_city
-from pipeline.crime_groups import GROUP_LABELS, crime_group
+from pipeline.crime_groups import GROUP_LABELS
 from pipeline.permit_event_days import (
     GROUP_IDS,
     MATERIAL_DAILY_DIFFERENCE,
@@ -35,10 +39,6 @@ from backend.briefing import (
 )
 from pipeline.weekday import combine_weekday, weekday_from_dates
 from pipeline.loaders import (
-    LAT_MAX,
-    LAT_MIN,
-    LON_MAX,
-    LON_MIN,
     load_bus_stops,
     load_fire_stations,
     load_hospitals,
@@ -46,34 +46,19 @@ from pipeline.loaders import (
     load_rail_stations,
     is_lapd_agency,
 )
-from pipeline.run import find_crime_csv, resolve_data_dir
 
-from backend.datasets import REPO_ROOT, DatasetNotFound, load_merged, load_summary
+from backend.datasets import DatasetNotFound, load_merged, load_summary
+from backend.heat_warehouse import grid_stamp, nibrs_bundle, report_bundle
 
 _crime_views: dict | None = None
 _crime_months: list[str] = []
 _crime_monthly: dict | None = None
 _crime_grids: dict | None = None
-_crime_heat_mtime: float | None = None
+_crime_heat_mtime: tuple | None = None
 _nibrs_monthly: dict | None = None
-_nibrs_monthly_mtime: float | None = None
+_nibrs_monthly_mtime: tuple | None = None
 _MONTH_RE = re.compile(r"^20\d{2}-(0[1-9]|1[0-2])$")
-_NIBRS_CUTOFF = pd.Timestamp("2024-03-07")
 
-
-def _crime_source_path() -> Path:
-    data_dir = resolve_data_dir(REPO_ROOT)
-    try:
-        return find_crime_csv(data_dir)
-    except FileNotFoundError:
-        fallback = REPO_ROOT / "data"
-        if fallback == data_dir:
-            raise
-        return find_crime_csv(fallback)
-
-def _crime_type_id(description: str) -> str | None:
-    group = crime_group(description)
-    return None if group == "other" else group
 
 def _grid_points(counts: pd.Series) -> list[dict]:
     return [
@@ -101,15 +86,6 @@ def _venue_mask(latitude: pd.Series, longitude: pd.Series) -> pd.Series:
         near |= haversine_m(origin_lat, origin_lon, lat_arr, lon_arr) <= radius
     return pd.Series(near, index=latitude.index)
 
-def _parse_occurred(values: pd.Series) -> pd.Series:
-    text = values.astype("string")
-    occurred = pd.to_datetime(text, format="%m/%d/%Y %I:%M:%S %p", errors="coerce")
-    missing = occurred.isna() & text.fillna("").str.strip().ne("")
-    if missing.any():
-        occurred.loc[missing] = pd.to_datetime(text.loc[missing], errors="coerce")
-    return occurred
-
-
 def _sum_range(counts: pd.Series, start: str, end: str) -> pd.Series:
     if counts is None or len(counts) == 0:
         return pd.Series(dtype="int64")
@@ -129,45 +105,30 @@ def _check_month(value: str | None, name: str) -> str | None:
 
 
 def _build_crime_views() -> dict[str, dict]:
+    """Assemble map views from the DuckDB grids. The scan lives in heat_warehouse."""
     global _crime_months, _crime_monthly, _crime_grids
-    path = _crime_source_path()
-    raw = pd.read_csv(path, usecols=["LAT", "LON", "DATE OCC", "Crm Cd Desc"], low_memory=False)
-    latitude = pd.to_numeric(raw["LAT"], errors="coerce")
-    longitude = pd.to_numeric(raw["LON"], errors="coerce")
-    valid = latitude.between(LAT_MIN, LAT_MAX) & longitude.between(LON_MIN, LON_MAX)
-    descriptions = raw.loc[valid, "Crm Cd Desc"].fillna("").astype(str)
-    type_by_label = {label: _crime_type_id(label) for label in descriptions.str.upper().unique()}
-    occurred = _parse_occurred(raw.loc[valid, "DATE OCC"])
-    # Reports on or after March 7, 2024 are replaced by NIBRS. Undated rows stay.
-    legacy = occurred.isna() | (occurred < _NIBRS_CUTOFF)
-    frame = pd.DataFrame(
-        {
-            "latitude": latitude[valid].round(4),
-            "longitude": longitude[valid].round(4),
-            "crime_type": descriptions.str.upper().map(type_by_label).to_numpy(),
-            "month": occurred.dt.strftime("%Y-%m").to_numpy(),
-            "near": _venue_mask(latitude[valid], longitude[valid]).to_numpy(),
-        }
-    ).loc[legacy.to_numpy()]
-    all_counts = frame.groupby(["latitude", "longitude"]).size()
-    hot_cutoff = max(int(all_counts.quantile(0.9)), 1)
-    high_counts = all_counts[all_counts >= hot_cutoff]
-    venue_rows = frame.loc[frame["near"].to_numpy()]
-    venue_counts = venue_rows.groupby(["latitude", "longitude"]).size()
+    bundle = report_bundle()
+    all_counts = bundle["all"]
+    venue_counts = bundle["venues"]
+    if len(all_counts):
+        hot_cutoff = max(int(all_counts.quantile(0.9)), 1)
+        high_counts = all_counts[all_counts >= hot_cutoff]
+    else:
+        high_counts = all_counts
 
     views: dict[str, dict] = {
         "all": {
             "label": "All crime",
             "group": None,
             "hot": False,
-            "incident_count": int(all_counts.sum()),
+            "incident_count": int(all_counts.sum()) if len(all_counts) else 0,
             "points": _grid_points(all_counts),
         },
         "high": {
             "label": "High amount (red)",
             "group": None,
             "hot": True,
-            "incident_count": int(high_counts.sum()),
+            "incident_count": int(high_counts.sum()) if len(high_counts) else 0,
             "points": _grid_points(high_counts),
         },
         "venues": {
@@ -178,47 +139,25 @@ def _build_crime_views() -> dict[str, dict]:
             "points": _grid_points(venue_counts),
         },
     }
-    typed = frame.dropna(subset=["crime_type"])
-    if len(typed):
-        type_counts = typed.groupby(["crime_type", "latitude", "longitude"]).size()
-        for type_id, label in GROUP_LABELS.items():
-            if type_id == "other":
-                continue
-            if type_id not in type_counts.index.get_level_values(0):
-                continue
-            counts = type_counts.xs(type_id)
-            views[f"type:{type_id}"] = {
-                "label": label,
-                "group": "Type of crime",
-                "hot": False,
-                "incident_count": int(counts.sum()),
-                "points": _grid_points(counts),
-            }
-    dated = frame.loc[frame["month"].astype("string").str.match(_MONTH_RE.pattern, na=False)]
-    _crime_months = sorted(dated["month"].unique())
-    type_monthly: dict[str, pd.Series] = {}
-    typed_dated = dated.dropna(subset=["crime_type"])
-    if len(typed_dated):
-        grouped = typed_dated.groupby(["crime_type", "month", "latitude", "longitude"]).size()
-        for type_id in grouped.index.get_level_values(0).unique():
-            type_monthly[str(type_id)] = grouped.xs(type_id)
-    venue_dated = dated.loc[dated["near"].to_numpy()]
-    _crime_monthly = {
-        "all": dated.groupby(["month", "latitude", "longitude"]).size(),
-        "venues": (
-            venue_dated.groupby(["month", "latitude", "longitude"]).size()
-            if len(venue_dated)
-            else pd.Series(dtype="int64")
-        ),
-        "types": type_monthly,
-    }
+    for type_id, label in GROUP_LABELS.items():
+        if type_id == "other":
+            continue
+        counts = bundle["types"].get(type_id)
+        if counts is None or len(counts) == 0:
+            continue
+        views[f"type:{type_id}"] = {
+            "label": label,
+            "group": "Type of crime",
+            "hot": False,
+            "incident_count": int(counts.sum()),
+            "points": _grid_points(counts),
+        }
+    _crime_months = list(bundle["months"])
+    _crime_monthly = bundle["monthly"]
     _crime_grids = {
         "all": all_counts,
         "venues": venue_counts,
-        "types": {
-            type_id: type_counts.xs(type_id)
-            for type_id in (type_counts.index.get_level_values(0).unique() if len(typed) else [])
-        },
+        "types": bundle["types"],
     }
     return views
 
@@ -251,47 +190,15 @@ def _views_with_nibrs(views: dict) -> dict:
 
 def _nibrs_month_index() -> dict:
     global _nibrs_monthly, _nibrs_monthly_mtime
-    from pipeline.merge_crime import NIBRS_PATH, _load_nibrs
-
-    if not NIBRS_PATH.exists():
+    try:
+        stamp = grid_stamp()
+    except FileNotFoundError:
         return {"months": [], "counts": pd.Series(dtype="int64")}
-    mtime = NIBRS_PATH.stat().st_mtime
-    if _nibrs_monthly is not None and mtime == _nibrs_monthly_mtime:
+    if _nibrs_monthly is not None and stamp == _nibrs_monthly_mtime:
         return _nibrs_monthly
-    frame = _load_nibrs(NIBRS_PATH)
-    if frame.empty:
-        cache = {"months": [], "counts": pd.Series(dtype="int64")}
-    else:
-        occurred = pd.to_datetime(frame["occurred_at"], errors="coerce")
-        kept = frame.loc[occurred.notna()].copy()
-        kept["month"] = occurred.loc[kept.index].dt.strftime("%Y-%m")
-        kept["latitude"] = pd.to_numeric(kept["latitude"], errors="coerce").round(4)
-        kept["longitude"] = pd.to_numeric(kept["longitude"], errors="coerce").round(4)
-        counts = kept.groupby(["month", "latitude", "longitude"]).size()
-        kept = kept.copy()
-        kept["crime_type"] = kept["category"].map(_crime_type_id)
-        typed = kept.dropna(subset=["crime_type"])
-        type_counts: dict[str, pd.Series] = {}
-        if len(typed):
-            grouped = typed.groupby(["crime_type", "month", "latitude", "longitude"]).size()
-            for type_id in grouped.index.get_level_values(0).unique():
-                type_counts[str(type_id)] = grouped.xs(type_id)
-        near = _venue_mask(kept["latitude"], kept["longitude"])
-        venue_rows = kept.loc[near.to_numpy()]
-        venue_counts = (
-            venue_rows.groupby(["month", "latitude", "longitude"]).size()
-            if len(venue_rows)
-            else pd.Series(dtype="int64")
-        )
-        cache = {
-            "months": sorted(counts.index.get_level_values(0).unique()),
-            "counts": counts,
-            "venues": venue_counts,
-            "types": type_counts,
-        }
-    _nibrs_monthly = cache
-    _nibrs_monthly_mtime = mtime
-    return cache
+    _nibrs_monthly = nibrs_bundle()
+    _nibrs_monthly_mtime = stamp
+    return _nibrs_monthly
 
 
 def _drop_month(counts: pd.Series | None) -> pd.Series:
@@ -445,13 +352,12 @@ def crime_heat_points(view: str = "all", start: str | None = None, end: str | No
     start = _check_month(start, "start")
     end = _check_month(end, "end")
     try:
-        path = _crime_source_path()
+        stamp = grid_stamp()
     except FileNotFoundError as exc:
         raise DatasetNotFound(str(exc)) from exc
-    mtime = path.stat().st_mtime
-    if _crime_views is None or mtime != _crime_heat_mtime:
+    if _crime_views is None or stamp != _crime_heat_mtime:
         _crime_views = _build_crime_views()
-        _crime_heat_mtime = mtime
+        _crime_heat_mtime = stamp
     views = _views_with_nibrs(_crime_views)
     if view not in views:
         known = ", ".join(views)

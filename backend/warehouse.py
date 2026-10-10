@@ -309,6 +309,8 @@ def connect() -> duckdb.DuckDBPyConnection:
     ))
     connection.execute("CREATE TABLE overlap_pairs AS SELECT * FROM overlap_frame")
     _load_nearby(connection)
+    connection.execute("SET enable_external_access = false")
+    connection.execute("SET lock_configuration = true")
     _connection = connection
     return connection
 

@@ -77,6 +77,12 @@ async def _lifespan(_app):
             connect()
         except Exception as exc:
             print(f"warehouse skip: {exc}")
+        try:
+            from backend.heat_warehouse import warm
+
+            warm()
+        except Exception as exc:
+            print(f"heatmap warehouse skip: {exc}")
     yield
 
 

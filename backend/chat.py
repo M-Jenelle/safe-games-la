@@ -1319,7 +1319,7 @@ def _tool_venue(args, venues: list, selected_id: str | None, mentions: list) -> 
 
 
 def _tool_refused() -> dict:
-    return _reply("unsupported", "I can't answer that from these tables. Ask about one venue, a comparison, or a number on the page.")
+    return _reply("unsupported", "I cannot answer that from these tables. Ask about one venue, a comparison, or a number on the page.")
 
 
 def _present_figures(venue: dict) -> tuple[int, float] | None:
@@ -2109,7 +2109,7 @@ def _answer_question(message: str, venue_id: str | None, engine: dict, prior_mes
     elif settings()["claude_configured"]:
         try:
             interpretation = interpret_question(message, venues, venue_id)
-            engine.update(engine=settings()["provider"], model=settings()["model"])
+            engine.update(engine=settings().get("provider") or "claude", model=settings().get("model"))
             accepted = interpretation.scope_supported and interpretation.intent != "unsupported"
             if intent is not None:
                 # A parsed question keeps its calculation. Claude only fills in wording the word list missed.
@@ -2150,7 +2150,7 @@ def _answer_question(message: str, venue_id: str | None, engine: dict, prior_mes
                 )
         return _run_tool(tool_call, venues, venue_id, mentions, summary, normalized)
     if intent is None:
-        return _reply("unsupported", "I can't answer that from these tables. Ask about one venue, a comparison, or a number on the page.")
+        return _reply("unsupported", "I cannot answer that from these tables. Ask about one venue, a comparison, or a number on the page.")
     if intent == "citywide":
         return _citywide_answer()
     if intent == "rank_group":
@@ -3162,7 +3162,7 @@ def _slice_answer(intent: str, venue: dict, message: str) -> dict:
     if intent == "since_count":
         span = _since_span(message)
         if span is None:
-            return _reply("unsupported", "I can't answer that from these tables. Ask about one venue, a comparison, or a number on the page.")
+            return _reply("unsupported", "I cannot answer that from these tables. Ask about one venue, a comparison, or a number on the page.")
         start, end = span
         count = 0
         for month, groups in months.items():

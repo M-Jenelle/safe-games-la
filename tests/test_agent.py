@@ -9,12 +9,15 @@ import unittest
 
 from unittest.mock import patch
 
+import pandas as pd
+
 from backend.agent import _join_gaps, _without_safety_judgment, answer_events, brief_reply
 from backend.claude import ClaudeUnavailable
 from backend.agent_tools import (
     FORECAST_WARNING,
     LABEL_WARNING,
     SERIES_WARNING,
+    _is_event_flag,
     compare_conditions,
     compare_with_city,
     explain_page,
@@ -53,6 +56,17 @@ class AgentToolTests(unittest.TestCase):
         self.assertIn("count_source", {column["name"] for column in days["columns"]})
         self.assertLessEqual(days["coverage"]["start"], "2024-03-07")
         self.assertGreaterEqual(days["coverage"]["end"], "2024-03-07")
+
+    def test_sql_cannot_read_files_outside_the_warehouse(self):
+        denied = run_sql("SELECT * FROM read_csv_auto('C:/Windows/win.ini')")
+        self.assertIn("error", denied)
+        self.assertEqual(denied["rows"], [])
+        from backend.warehouse import connect
+
+        with self.assertRaises(Exception):
+            connect().execute("SELECT * FROM read_csv_auto('C:/Windows/win.ini')").fetchall()
+        with self.assertRaises(Exception):
+            connect().execute("SET enable_external_access = true")
 
     def test_sql_rejects_a_write_and_caps_rows(self):
         denied = run_sql("DELETE FROM venues")
@@ -151,6 +165,15 @@ class AgentToolTests(unittest.TestCase):
         self.assertIsNotNone(result.get("count_model"))
         self.assertEqual(len(result["count_model"]["interval"]), 2)
         self.assertTrue(any("not a cause" in warning for warning in result["warnings"]))
+        self.assertTrue(any("not a formal test" in warning for warning in result["warnings"]))
+        rain = correlate(
+            "SELECT date, incident_count FROM venue_days WHERE venue_id = 'V02' AND count_source = 'report'",
+            "SELECT date, precip_in FROM venue_days WHERE venue_id = 'V02' AND count_source = 'report'",
+        )
+        self.assertNotIn("error", rain)
+        self.assertIsNone(rain.get("count_model"))
+        self.assertFalse(_is_event_flag(pd.Series([0.0, 0.6])))
+        self.assertTrue(_is_event_flag(pd.Series([0, 1, 0])))
 
     def test_forecast_includes_interval_backtest_and_the_precedent_warning(self):
         result = forecast("V01", 30, ["wet_day"], {"wet_day": 1})
@@ -158,8 +181,18 @@ class AgentToolTests(unittest.TestCase):
         self.assertIsNotNone(result["backtest"]["mae"])
         self.assertGreater(result["backtest"]["holdout_days"], 0)
         self.assertIn(FORECAST_WARNING, result["warnings"])
-        self.assertIn("no precedent", FORECAST_WARNING)
-        self.assertIn("proxy events", FORECAST_WARNING)
+        self.assertEqual(result["games_period"], "refused")
+        self.assertEqual(result["crime_data_through"], "2026-09-19")
+        self.assertNotIn("forecast_through", result)
+        self.assertFalse(result["projects_daily_counts"])
+        self.assertGreater(result["weather_rows_without_crime"], 0)
+        self.assertEqual(result["backtest"]["scored_days"], result["backtest"]["holdout_days"])
+        self.assertIsNotNone(result["backtest"]["baseline_mae"])
+        self.assertIn("not a forecast", FORECAST_WARNING)
+        refused = forecast("V01", 400, ["wet_day"], {"wet_day": 1})
+        self.assertIn("400", refused["error"])
+        self.assertIn("not applied", refused["error"])
+        self.assertNotIn("interval", refused)
 
     def test_a_safety_judgment_is_replaced(self):
         self.assertEqual(
@@ -242,6 +275,11 @@ class AgentToolTests(unittest.TestCase):
         self.assertEqual(unknown["rows"], [])
         headline = run_sql("SELECT present_records FROM venues WHERE venue_id = 'V01'")
         self.assertEqual(headline["rows"][0]["present_records"], 1418)
+        grouped = run_sql(
+            "SELECT offense_group, count(*) AS n FROM incidents WHERE venue_id = 'V01' GROUP BY offense_group"
+        )
+        self.assertNotIn("error", grouped)
+        self.assertGreater(grouped["row_count"], 1)
         nearby = run_sql(
             "SELECT venue_name, count(*) AS stops FROM nearby WHERE kind = 'rail' GROUP BY venue_name ORDER BY stops DESC"
         )
