@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 import threading
-from datetime import date, timedelta
+from datetime import date
 
 import pandas as pd
 from scipy.stats import spearmanr
@@ -27,8 +27,12 @@ OVERLAP_WARNING = (
 )
 SMALL_WARNING = "Fewer than 30 rows. A small count is a weak basis for a comparison."
 FORECAST_WARNING = (
-    "This forecast goes past the recorded days. There is no precedent at this venue for Olympic crowds; "
-    "earlier permit days and home games are the proxy events."
+    "This is a multiplier for one recorded condition, not a forecast of future daily counts. "
+    "The Games are refused: there is no precedent at this venue for Olympic crowds."
+)
+SPEARMAN_WARNING = (
+    "Spearman is the only correlation reported. Its p-value treats each day as independent. "
+    "Consecutive days are related, so the p-value is not a formal test."
 )
 ASSOCIATION_WARNING = "This is an association. It is not a cause."
 REPORTED_WARNING = "These are reported records, not a count of every crime that happened."
@@ -38,7 +42,8 @@ LABEL_WARNING = (
     "Ask for the latest labels only if you want the NIBRS series by itself."
 )
 _FORBIDDEN = re.compile(
-    r"\b(insert|update|delete|drop|alter|create|attach|copy|pragma|install|export|call|copy\s+from)\b",
+    r"\b(insert|update|delete|drop|alter|create|attach|copy|pragma|install|export|call|set)\b"
+    r"|copy\s+from|read_csv|read_text|read_blob|read_json|read_ndjson|read_parquet|parquet_scan|\bglob\s*\(",
     re.IGNORECASE,
 )
 
@@ -73,12 +78,16 @@ def run_sql(query: str) -> dict:
         return {"error": "Only a single SELECT is allowed.", "rows": [], "warnings": []}
     if text.count(";") > 0:
         return {"error": "Only a single SELECT is allowed.", "rows": [], "warnings": []}
-    if re.search(r"\bcount\s*\(", text, re.IGNORECASE) and re.search(r"\bincidents\b", text, re.IGNORECASE):
+    if (
+        re.search(r"\bcount\s*\(", text, re.IGNORECASE)
+        and re.search(r"\bincidents\b", text, re.IGNORECASE)
+        and not re.search(r"\bgroup\s+by\b", text, re.IGNORECASE)
+    ):
         return {
             "error": (
-                "Do not count the incidents table for a headline. "
-                "venues.present_records is the 2020-present count, and venues.present_per_km2 is the density. "
-                "Group counts are in offense_counts. explain_page with topic overview also returns the headline."
+                "A total count of the incidents table is not the 2020-present headline. "
+                "venues.present_records is that count. "
+                "A breakdown can group incidents by offense_group or another column."
             ),
             "rows": [],
             "warnings": [],
@@ -131,7 +140,7 @@ def correlate(sql_a: str, sql_b: str, lag_days: int = 0, control_weekday: bool =
     lag = max(-30, min(30, int(lag_days or 0)))
     right["date"] = pd.to_datetime(right["date"]) + pd.to_timedelta(lag, unit="D")
     joined = left.merge(right, on="date", suffixes=("_a", "_b")).dropna()
-    warnings = [ASSOCIATION_WARNING, REPORTED_WARNING]
+    warnings = [ASSOCIATION_WARNING, REPORTED_WARNING, SPEARMAN_WARNING]
     if len(joined) < SMALL_N:
         warnings.append(SMALL_WARNING)
     if _spans_break(joined["date"]):
@@ -146,7 +155,7 @@ def correlate(sql_a: str, sql_b: str, lag_days: int = 0, control_weekday: bool =
         "spearman_p": None if rho.pvalue is None or pd.isna(rho.pvalue) else round(float(rho.pvalue), 4),
         "warnings": warnings,
     }
-    binary = set(int(value) for value in joined["value_b"].round().tolist()) <= {0, 1}
+    binary = _is_event_flag(joined["value_b"])
     if control_weekday and binary:
         rows = [
             {"date": day.date().isoformat(), "incident_count": int(count), "event": int(flag)}
@@ -681,35 +690,52 @@ def _care_entries(detail: dict | None) -> list[dict]:
 
 
 def forecast(venue: str, horizon: int, regressors: list[str] | None = None, scenario: dict | None = None) -> dict:
-    """A count-model interval and a holdout error. The horizon is past the recorded days."""
+    """A multiplier for one recorded condition. Not a projection of future daily counts."""
     fields = [name for name in (regressors or []) if name in {"wet_day", "hot_day", "is_permit_event_day"}]
     if not fields:
         return {
             "error": "Name a regressor: wet_day, hot_day, or is_permit_event_day. Set scenario to 1 for that condition.",
+            "games_period": "refused",
             "warnings": [FORECAST_WARNING],
         }
     scenario = scenario or {}
-    days = max(1, min(90, int(horizon or 30)))
+    requested = int(horizon or 30)
+    if requested < 1 or requested > 90:
+        return {
+            "error": (
+                f"A horizon of {requested} days was not applied. "
+                "This tool does not project daily counts, and it does not clip a longer request to 90."
+            ),
+            "horizon_days_requested": requested,
+            "games_period": "refused",
+            "warnings": [FORECAST_WARNING],
+        }
     frame = _venue_frame(venue)
     warnings = [FORECAST_WARNING, ASSOCIATION_WARNING, REPORTED_WARNING]
     if frame.empty:
-        return {"error": f"No daily rows for {venue}.", "warnings": warnings}
-    if _spans_break(frame["date"]):
+        return {"error": f"No daily rows for {venue}.", "games_period": "refused", "warnings": warnings}
+    recorded = frame[frame["incident_count"].notna()].reset_index(drop=True)
+    if recorded.empty:
+        return {"error": f"No crime days for {venue}.", "games_period": "refused", "warnings": warnings}
+    if _spans_break(recorded["date"]):
         warnings.append(SERIES_WARNING)
-    holdout = 60 if len(frame) > 120 else max(14, len(frame) // 5)
-    train = frame.iloc[:-holdout]
-    hold = frame.iloc[-holdout:]
+    holdout = 60 if len(recorded) > 120 else max(14, len(recorded) // 5)
+    train = recorded.iloc[:-holdout]
+    hold = recorded.iloc[-holdout:]
     primary = fields[0]
     rows = _model_rows(train, primary)
     fitted = fit_count_model(rows, "event") if rows else None
     weekday = weekday_standardized(rows, "event") if rows else None
-    backtest = _backtest(hold, primary, weekday, fitted, scenario)
-    end = pd.to_datetime(frame["date"]).max().date()
+    backtest = _backtest(hold, primary, weekday, fitted, scenario, train)
+    end = pd.to_datetime(recorded["date"]).max().date()
     return {
         "venue": venue,
-        "horizon_days": days,
-        "training_end": end.isoformat(),
-        "forecast_through": (end + timedelta(days=days)).isoformat(),
+        "result_kind": "condition_multiplier",
+        "interval_means": "Range for the multiplier versus the other condition. Not a future daily count.",
+        "horizon_days_requested": requested,
+        "projects_daily_counts": False,
+        "games_period": "refused",
+        "crime_data_through": end.isoformat(),
         "regressor": primary,
         "scenario": {key: scenario.get(key) for key in fields},
         "count_model": fitted,
@@ -717,6 +743,7 @@ def forecast(venue: str, horizon: int, regressors: list[str] | None = None, scen
         "weekday_adjusted": weekday,
         "backtest": backtest,
         "n": int(len(train)),
+        "weather_rows_without_crime": int(len(frame) - len(recorded)),
         "warnings": warnings,
     }
 
@@ -812,21 +839,42 @@ def _model_rows(frame: pd.DataFrame, field: str) -> list[dict]:
     return rows
 
 
-def _backtest(hold: pd.DataFrame, field: str, weekday: dict | None, fitted: dict | None, scenario: dict) -> dict:
-    if hold.empty or not weekday:
-        return {"holdout_days": int(len(hold)), "mae": None}
-    baseline = float(weekday["other_day_mean"])
+def _is_event_flag(values: pd.Series) -> bool:
+    """True only when every value is exactly 0 or 1. Rounding is not enough."""
+    numeric = pd.to_numeric(values, errors="coerce").dropna()
+    if numeric.empty:
+        return False
+    return bool(((numeric == 0) | (numeric == 1)).all())
+
+
+def _backtest(hold: pd.DataFrame, field: str, weekday: dict | None, fitted: dict | None, scenario: dict, train: pd.DataFrame) -> dict:
+    scored = hold[hold["incident_count"].notna()]
+    if scored.empty or not weekday:
+        return {"holdout_days": 0, "scored_days": 0, "mae": None, "baseline_mae": None}
+    level = float(weekday["other_day_mean"])
     multiplier = float(fitted["multiplier"]) if fitted else 1.0
     wanted = scenario.get(field)
+    train_counts = pd.to_numeric(train["incident_count"], errors="coerce").dropna()
+    constant = float(train_counts.mean()) if not train_counts.empty else level
     errors = []
-    for record in hold.to_dict("records"):
+    baseline_errors = []
+    for record in scored.to_dict("records"):
         actual = float(record.get("incident_count") or 0)
         flag = int(record.get(field) or 0)
         use_multiplier = wanted is None or int(wanted) == flag
-        predicted = baseline * multiplier if use_multiplier and flag else baseline
+        predicted = level * multiplier if use_multiplier and flag else level
         errors.append(abs(actual - predicted))
+        baseline_errors.append(abs(actual - constant))
     mae = round(sum(errors) / len(errors), 2) if errors else None
-    return {"holdout_days": int(len(hold)), "mae": mae, "baseline_daily_mean": round(baseline, 2)}
+    baseline_mae = round(sum(baseline_errors) / len(baseline_errors), 2) if baseline_errors else None
+    return {
+        "holdout_days": int(len(scored)),
+        "scored_days": int(len(scored)),
+        "mae": mae,
+        "baseline_mae": baseline_mae,
+        "baseline": "training daily mean",
+        "baseline_daily_mean": round(constant, 2),
+    }
 
 
 def _series(query: str) -> dict | pd.DataFrame:
@@ -835,10 +883,23 @@ def _series(query: str) -> dict | pd.DataFrame:
         return {"error": result["error"], "warnings": result.get("warnings") or []}
     frame = pd.DataFrame(result["rows"])
     if frame.empty or "date" not in frame.columns:
-        return {"error": "The query must return a date column and a numeric value column.", "warnings": []}
-    value_column = next((name for name in frame.columns if name != "date" and pd.to_numeric(frame[name], errors="coerce").notna().any()), None)
-    if value_column is None:
-        return {"error": "The query must return a numeric value column.", "warnings": []}
+        return {
+            "error": "Return a date column and one numeric column. Alias that number AS value when the query has more than one number.",
+            "warnings": [],
+        }
+    numeric = [
+        name for name in frame.columns
+        if name != "date" and pd.to_numeric(frame[name], errors="coerce").notna().any()
+    ]
+    if "value" in numeric:
+        value_column = "value"
+    elif len(numeric) == 1:
+        value_column = numeric[0]
+    else:
+        return {
+            "error": "Return a date column and one numeric column. Alias that number AS value when the query has more than one number.",
+            "warnings": [],
+        }
     out = pd.DataFrame({
         "date": pd.to_datetime(frame["date"], errors="coerce"),
         "value": pd.to_numeric(frame[value_column], errors="coerce"),
