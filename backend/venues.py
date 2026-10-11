@@ -22,7 +22,13 @@ from pipeline.permit_event_days import (
     comparison_view,
     filter_permit_rows,
 )
-from backend.event_baseline import describe_baseline, future_home_game_dates, home_game_rows
+from backend.event_baseline import (
+    combined_home_rows,
+    combined_home_summary,
+    describe_baseline,
+    future_home_game_dates,
+    home_game_rows,
+)
 from backend.briefing import (
     PERMIT_INTRO,
     PERMIT_LOAD_INTRO,
@@ -71,7 +77,6 @@ from backend.datasets import (
     _merged_venue,
     load_summary,
     nibrs_charts_for,
-    ticketmaster_for,
 )
 
 _month_categories: dict[str, dict[str, dict[str, int]]] = {}
@@ -448,9 +453,6 @@ def get_venue(venue_id: str) -> dict | None:
             distance_block = crime_distance_for(venue_id)
             if distance_block:
                 enriched["crime_distance"] = distance_block
-            listings = ticketmaster_for(venue_id)
-            if listings:
-                enriched["ticketmaster"] = listings
             nibrs_charts = nibrs_charts_for(venue_id)
             nibrs_time = (nibrs_charts or {}).get("time") or {}
             nibrs_distance = (nibrs_charts or {}).get("distance") or {}
@@ -497,7 +499,7 @@ def get_venue(venue_id: str) -> dict | None:
             )
             enriched["home_games_available"] = bool(enriched["display"]["home_games_available"])
             if home_id == venue_id:
-                fitted = describe_baseline(home_game_rows(), "is_home_game", "home game")
+                fitted = describe_baseline(combined_home_rows(), "is_home_game", "home game", unit="records")
                 enriched["scheduled_home_games"] = future_home_game_dates()
                 enriched["home_game_multiplier"] = (fitted.get("model") or {}).get("multiplier")
             return enriched
@@ -610,7 +612,7 @@ def home_game_comparison(venue_id: str) -> dict | None:
     meta_block = (payload or {}).get("meta") or {}
     if payload is None or meta_block.get("venue_id") != venue_id:
         return {"available": False, "venue_id": venue_id, "venue_name": match["venue_name"]}
-    summary = _game_public(payload["lift"])
+    published = _game_public(payload["lift"])
     groups = []
     for group in payload.get("by_category") or []:
         if not group.get("significant"):
@@ -622,23 +624,48 @@ def home_game_comparison(venue_id: str) -> dict | None:
             public = {**public, "percent_shown": False, "lift_pct": None}
         groups.append({"group": group["group"], "label": group["label"], **public})
     groups.sort(key=lambda item: abs(item["absolute_difference"]), reverse=True)
+    combined = combined_home_summary()
+    summary = (combined or {}).get("summary") or published
+    label = (combined or {}).get("label") or "2020–2024"
+    through = (combined or {}).get("through_label") or "2024"
+    if combined:
+        note = (
+            f"Completed Dodgers regular-season home games versus other March–October days, 2020 through {through}. "
+            "Police reports through March 6, 2024; NIBRS offenses from March 7, 2024. "
+            "Games after that day are left out."
+        )
+        disclaimer = (
+            "800 m buffer. One offense is not one report.\n"
+            "2020 games had little or no crowd. Group bars are 2020–2024 reports.\n"
+            "A large percentage can be less than one extra record a day.\n"
+            "This is a past comparison, not a forecast."
+        )
+        baseline = describe_baseline(combined_home_rows(), "is_home_game", "home game", unit="records")
+    else:
+        note = (
+            "A game day is a completed Dodgers regular-season home game. "
+            "Other days are the rest of March through October in 2020–2024."
+        )
+        disclaimer = (
+            "Uses completed regular-season home games, 2020-2024, inside the 800 m buffer.\n"
+            "2020 games had little or no crowd.\n"
+            "A large percentage can still be less than one extra report a day.\n"
+            "This is a past comparison, not a forecast."
+        )
+        baseline = describe_baseline(home_game_rows(), "is_home_game", "home game")
     return {
         "available": True,
         "venue_id": venue_id,
         "venue_name": match["venue_name"],
         "summary": summary,
+        "published": published,
+        "period_label": label,
+        "through": (combined or {}).get("through") or "2024-12-31",
+        "through_label": through,
         "groups": groups,
         "group_gap_note": group_gap_note("reports"),
-        "note": (
-            "A game day is a completed Dodgers regular-season home game. "
-            "Other days are the rest of March through October in 2020–2024."
-        ),
-        "disclaimer": (
-            "Uses completed regular-season home games, 2020-2024, inside the 800 m buffer.\n"
-            "2020 games had little or no crowd.\n"
-            "A large percentage can still be less than one extra report a day.\n"
-            "This is a past comparison, not a forecast."
-        ),
-        "baseline": describe_baseline(home_game_rows(), "is_home_game", "home game"),
+        "note": note,
+        "disclaimer": disclaimer,
+        "baseline": baseline,
     }
 

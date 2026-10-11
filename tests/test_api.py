@@ -185,27 +185,12 @@ class ApiTests(unittest.TestCase):
         )
         self.assertGreater(dodger["density_rank"]["rank"], 1)
 
-    def test_ticketmaster_listings(self):
-        dodger = self.client.get("/api/venues/V01").json()["ticketmaster"]
-        self.assertEqual(dodger["event_count"], 83)
-        self.assertEqual(dodger["with_start_time"], 1)
-        self.assertEqual(dodger["distance_m"], 907)
-        self.assertIn("outside the 800 m circle", dodger["note"])
-        self.assertIn("May 2027 and August 2027", dodger["busiest"])
-        self.assertIn("no report count", dodger["disclaimer"])
-        self.assertEqual(dodger["events"][0]["date"], "2026-10-09")
-        self.assertIn("NLDS", dodger["events"][0]["name"])
-        self.assertTrue(dodger["events"][0]["on_sale"])
-        self.assertEqual(sum(month["count"] for month in dodger["months"]), 83)
-        self.assertTrue(any(month["count"] == 0 for month in dodger["months"]))
-
-        center = self.client.get("/api/venues/V03").json()["ticketmaster"]
-        self.assertEqual(center["event_count"], 13)
-        self.assertEqual(center["with_start_time"], 13)
-        self.assertIn("Peacock Theater is", center["note"])
-        self.assertIn("inside the 800 m circle", center["note"])
-        self.assertEqual(center["busiest"], "October 2026 has the most listings, 7.")
-        self.assertTrue(all(event["start_time"] for event in center["events"]))
+    def test_listed_events_are_absent(self):
+        ids = [row["venue_id"] for row in self.client.get("/api/venues").json()["venues"]]
+        self.assertGreaterEqual(len(ids), 14)
+        for venue_id in ids:
+            body = self.client.get(f"/api/venues/{venue_id}").json()
+            self.assertNotIn("ticketmaster", body)
 
     def test_unknown_venue(self):
         response = self.client.get("/api/venues/V99")
@@ -247,12 +232,18 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(home.status_code, 200)
         games = home.json()
         self.assertTrue(games["available"])
-        self.assertEqual(games["summary"]["event_day_count"], 350)
-        self.assertEqual(games["summary"]["other_day_count"], 875)
-        self.assertEqual(games["summary"]["event_day_mean"], 1.14)
-        self.assertEqual(games["summary"]["other_day_mean"], 0.31)
-        self.assertEqual(games["summary"]["absolute_difference"], 0.83)
+        self.assertEqual(games["published"]["event_day_count"], 350)
+        self.assertEqual(games["published"]["other_day_count"], 875)
+        self.assertEqual(games["published"]["event_day_mean"], 1.14)
+        self.assertEqual(games["published"]["other_day_mean"], 0.31)
+        self.assertEqual(games["published"]["absolute_difference"], 0.83)
+        self.assertEqual(games["published"]["lift_pct"], 266.3)
+        self.assertEqual(games["period_label"], "2020–2026")
+        self.assertEqual(games["through"], "2026-09-19")
+        self.assertGreater(games["summary"]["event_day_count"], 350)
         self.assertTrue(games["summary"]["percent_shown"])
+        self.assertNotIn("later", games)
+        self.assertIn("March 7, 2024", games["note"])
         self.assertEqual([group["group"] for group in games["groups"]], [
             "assault", "theft", "other", "vehicle", "vandalism",
         ])

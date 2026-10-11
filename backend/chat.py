@@ -15,7 +15,7 @@ import re
 import unicodedata
 
 from backend.claude import ClaudeUnavailable, Interpretation, ToolArguments, explain_figures, explanation_uses_only, interpret_question, settings
-from backend.event_baseline import scale_month
+from backend.event_baseline import combined_home_rows, scale_month
 from backend.context import CONTEXT_INTENTS, ContextUnavailable, context_answer, source_text
 from backend.datasets import REPO_ROOT, _load_home_games, crime_time_for, load_city_baseline, load_merged, load_permit_day_rows
 from backend.store import DatasetNotFound, get_crime_points, get_venue, home_game_comparison, load_summary, permit_comparison
@@ -2915,17 +2915,17 @@ def _permit_weekend_sentence(rows: list[dict]) -> str:
     return f"{mix} This comparison does not hold day of week fixed."
 
 
-def _home_weekend_sentence(payload: dict) -> str:
-    meta = payload.get("meta") or {}
-    game_days = [parsed for item in payload.get("historical_home_game_days") or [] if (parsed := _parse_day(item))]
-    months = {int(month) for month in (meta.get("in_season_months") or list(range(3, 11)))}
-    game_set = set(game_days)
+def _home_weekend_sentence(rows: list[dict]) -> str:
+    game_days = []
     other_days = []
-    cursor = date(2020, 1, 1)
-    while cursor <= date(2024, 12, 31):
-        if cursor.month in months and cursor not in game_set:
-            other_days.append(cursor)
-        cursor += timedelta(days=1)
+    for row in rows:
+        parsed = _parse_day(row.get("date"))
+        if parsed is None:
+            continue
+        if int(row.get("is_home_game") or 0):
+            game_days.append(parsed)
+        else:
+            other_days.append(parsed)
     game_share = _weekend_percent(game_days)
     other_share = _weekend_percent(other_days)
     if game_share > other_share:
@@ -3002,11 +3002,13 @@ def _event_lift_answer(venue: dict, message: str) -> dict:
         if games and games.get("available") and int(summary.get("event_day_count") or 0):
             rows.append(_comparison_row("Home games", summary))
             results.append(_result(venue, "Home games", int(summary["event_day_count"])))
-            payload = _load_home_games() or {}
+            period = games.get("period_label") or "2020–2024"
+            through = games.get("through_label") or "2024"
             sentences.append(
-                f"Home games versus other days near {name}, 2020–2024: "
+                f"Home games versus other days near {name}, {period}, through {through}: "
                 f"{_gap_phrase(summary)}. "
-                f"{_home_weekend_sentence(payload)} "
+                "Daily counts are police reports through March 6, 2024 and NIBRS offenses from March 7, 2024. "
+                f"{_home_weekend_sentence(combined_home_rows())} "
                 "2020 games had little or no crowd."
             )
             baseline = (games.get("baseline") or {}).get("text")
@@ -3021,9 +3023,9 @@ def _event_lift_answer(venue: dict, message: str) -> dict:
                 else:
                     sentences.append(f"The page does not publish a {label} home-game percentage for {name}.")
             sources.append({
-                "name": "MLB Dodgers regular-season home games and LAPD crime reports",
+                "name": "MLB Dodgers regular-season home games, LAPD crime reports, and NIBRS offenses",
                 "file": "dodger_event_risk.json",
-                "period": "2020–2024",
+                "period": games.get("period_label") or "2020–2024",
                 "radius_m": RADIUS_M,
             })
         elif focus == {"home"}:
@@ -3043,8 +3045,11 @@ def _event_lift_answer(venue: dict, message: str) -> dict:
         names.append("LADBS temporary special event permits and LAPD crime reports")
         notes.append("Permit days are compared with other days in months that had at least one permit day.")
     if any(item.get("file") == "dodger_event_risk.json" for item in sources):
-        names.append("MLB Dodgers regular-season home games and LAPD crime reports")
-        notes.append("Dodger Stadium home games are compared with other days in March through October.")
+        names.append("MLB Dodgers regular-season home games, LAPD crime reports, and NIBRS offenses")
+        notes.append(
+            "Dodger Stadium home games are compared with other days in March through October. "
+            "Through March 6, 2024 a day is police reports. From March 7, 2024 a day is NIBRS offenses."
+        )
     if names:
         provenance = (
             "Source: " + "; ".join(names) + ", 2020–2024, 800 m radius. "

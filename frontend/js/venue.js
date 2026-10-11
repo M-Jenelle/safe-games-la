@@ -2,7 +2,7 @@ import { categoryRows, filledMonths, monthChart, monthTable, mountDistanceSectio
 import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, monthTitle, text } from "./dom.js";
 import { renderMap } from "./map.js";
 import { closeVenuePage, openVenuePage, renderChatContext, venueToolbar } from "./nav.js";
-import { mountHomeGames, mountListingSection, mountPermitSection } from "./permits.js";
+import { mountHomeGames, mountPermitSection } from "./permits.js?v=listings";
 import { mountWeatherSection } from "./weather.js";
 import { renderRoster } from "./roster.js";
 import { FLAG_LABELS, HIDDEN_FLAGS, detail, overview, requests, state, zoneFilter } from "./state.js";
@@ -50,7 +50,6 @@ export function renderDetail() {
   const weatherHost = el("div");
   const permitHost = el("div");
   const homeHost = el("div");
-  const listingHost = el("div");
   const timeHost = el("div");
   const distanceHost = el("div");
   const weekdayHost = el("div");
@@ -517,7 +516,6 @@ export function renderDetail() {
     weatherHost,
     permitHost,
     homeHost,
-    listingHost,
     el("section", { className: "crime-unit places-unit", "aria-label": "Transportation" }, [
       el("h3", { className: "section-title" }, [text("Transportation")]),
       el("div", { className: "station-grid" }, transitStations(venue)),
@@ -529,7 +527,6 @@ export function renderDetail() {
     ]),
   ]));
   mountWeatherSection(weatherHost, venue.venue_id, true);
-  mountListingSection(venue.ticketmaster, listingHost, true);
   const sectionId = {
     categories: "section-categories",
     weekday: "section-weekday",

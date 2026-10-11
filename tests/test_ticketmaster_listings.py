@@ -98,7 +98,7 @@ class TicketmasterListingTests(unittest.TestCase):
         self.assertFalse(block["events"][1]["on_sale"])
         self.assertIsNone(block["events"][1]["start_time"])
         self.assertNotIn("V04", listings_from_frame(frame, VENUES)["venues"])
-        self.assertIn("no report count", block["disclaimer"])
+        self.assertEqual(block["disclaimer"], "")
 
     def test_sentences(self):
         months = [

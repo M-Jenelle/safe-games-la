@@ -2,7 +2,7 @@ import { MONTH_NAMES, el, escapeHtml, fetchJson, monthLabel, text } from "./dom.
 import { resizeMap } from "./shell.js";
 import { mapHint, mapPanel, state } from "./state.js";
 import { pageCopy } from "./tips.js";
-import { selectVenue } from "./venue.js";
+import { selectVenue } from "./venue.js?v=listings";
 
 function project(latitude, longitude) {
   const bounds = state.map.bounds;
