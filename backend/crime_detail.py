@@ -71,6 +71,11 @@ def _total(arrays: tuple[np.ndarray, np.ndarray, np.ndarray] | None) -> int:
 def _count(arrays, place: dict | None) -> int:
     if place is None:
         return _total(arrays)
+    stations = place.get("stations")
+    if stations:
+        from backend.place_crime import count_near_any
+
+        return count_near_any(stations, arrays or _empty())
     return count_near(float(place["latitude"]), float(place["longitude"]), arrays or _empty())
 
 
@@ -191,7 +196,7 @@ def _ranked(places: list[dict], arrays) -> list[dict]:
             "kind": place.get("kind"),
             "name": place.get("name"),
             "detail": place.get("detail") or "",
-            "records": count_near(float(place["latitude"]), float(place["longitude"]), arrays or _empty()),
+            "records": _count(arrays, place),
         })
     rows.sort(key=lambda item: item["records"], reverse=True)
     return rows
@@ -211,6 +216,17 @@ def _one_place(places: list[dict]) -> dict | None:
     return None
 
 
+def _with_line_note(body: dict, places: list[dict]) -> dict:
+    if body.get("error") or not any(place.get("stations") for place in places):
+        return body
+    from backend.place_crime import _LINE_NOTE
+
+    warnings = list(body.get("warnings") or [])
+    if _LINE_NOTE not in warnings:
+        warnings.append(_LINE_NOTE)
+    return {**body, "warnings": warnings}
+
+
 def crime_detail(
     topic: str,
     kind: str = "",
@@ -219,14 +235,26 @@ def crime_detail(
     longitude: float | None = None,
     period: str = "",
     bucket: str = "",
+    line: str = "",
     details: dict | None = None,
 ) -> dict:
-    """One raw-data slice, citywide or within 800 m of a pin."""
+    """One raw-data slice, citywide or within 800 m of a pin or a Metro line."""
     try:
         chosen = _topic(topic)
         clock = _period(period)
         premise = _bucket(bucket)
-        places, error = _pins(kind, name, latitude, longitude)
+        from backend.place_crime import line_places, line_request
+
+        requested = line_request(line) or line_request(name)
+        if requested and latitude is None and longitude is None:
+            if str(kind or "").strip() and _kind(kind) not in {None, "rail"}:
+                return {
+                    "error": "A Metro line letter applies to rail stations. Bus routes are not these letters.",
+                    "warnings": [],
+                }
+            places, error = line_places(line or name)
+        else:
+            places, error = _pins(kind, name, latitude, longitude)
     except ValueError as exc:
         return {"error": str(exc), "warnings": []}
     if error:
@@ -239,15 +267,17 @@ def crime_detail(
     place = _one_place(places)
     ranking = len(places) > 1
     if chosen == "hours":
-        return _hours(payload, places, place, clock, ranking)
-    if chosen == "premise":
-        return _premise(payload, places, place, premise, ranking)
-    if chosen == "weapon":
-        return _weapon(payload, places, place, ranking)
-    if chosen == "drugs":
-        return _drugs(payload, places, place, clock, ranking)
-    flag = {"officer": None, "bunco": "bunco", "pickpocket": "pickpocket"}[chosen]
-    return _flag(payload, chosen, flag, places, place, ranking)
+        body = _hours(payload, places, place, clock, ranking)
+    elif chosen == "premise":
+        body = _premise(payload, places, place, premise, ranking)
+    elif chosen == "weapon":
+        body = _weapon(payload, places, place, ranking)
+    elif chosen == "drugs":
+        body = _drugs(payload, places, place, clock, ranking)
+    else:
+        flag = {"officer": None, "bunco": "bunco", "pickpocket": "pickpocket"}[chosen]
+        body = _flag(payload, chosen, flag, places, place, ranking)
+    return _with_line_note(body, places)
 
 
 def _loaded() -> dict:

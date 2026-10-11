@@ -240,7 +240,6 @@ export function mountListingSection(block, host, boxed) {
     el("p", { className: "muted" }, [text(block.note || "")]),
     el("p", { className: "muted" }, [text("Click a month to see its events. Click it again to clear.")]),
     el("div", { className: "listing-split" }, [monthHost, eventHost]),
-    el("p", { className: "terms" }, [text(block.disclaimer || "")]),
   ]));
 }
 

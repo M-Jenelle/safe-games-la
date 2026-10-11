@@ -9,6 +9,7 @@ or inside the building.
 from __future__ import annotations
 
 import math
+import re
 
 import numpy as np
 
@@ -57,8 +58,20 @@ _NOTE = (
     "Not crimes aboard a train, in a station, or inside the building. "
     "Cells are about 11 m across."
 )
+_LINE_NOTE = (
+    "Reported records in map cells within 800 m of any station on this Metro line, 2020–present. "
+    "The same letter is the same line. A record near two stations on that line is counted once. "
+    "A station on two lines is counted for each line. "
+    "Not crimes aboard a train. The area is the union of those 800 m circles."
+)
+_LINE_REQUEST = re.compile(
+    r"^(?:all|lines|every|each)$|^(?:the\s+)?(?:metro\s+)?(?:line\s+)?([a-z])(?:\s+line)?$",
+    re.IGNORECASE,
+)
 _cells: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
 _catalogs: dict[str, list[dict]] = {}
+_line_groups: dict[str, list[dict]] | None = None
+_areas: dict[tuple, float] = {}
 
 
 def _offense(text: str) -> str | None:
@@ -149,6 +162,80 @@ def _catalog(kind: str) -> list[dict]:
     return places
 
 
+def line_request(text: str) -> str | None:
+    """A Metro letter, or 'all'. A station name does not match."""
+    match = _LINE_REQUEST.match(str(text or "").strip())
+    if match is None:
+        return None
+    return "all" if match.group(1) is None else match.group(1).upper()
+
+
+def station_lines(detail: str) -> list[str]:
+    """Letters in a station's lines field. 'A;E' is the A Line and the E Line."""
+    letters = []
+    for part in re.split(r"[;,|/]+", str(detail or "")):
+        token = part.strip().upper()
+        if re.fullmatch(r"[A-Z]", token) and token not in letters:
+            letters.append(token)
+    return letters
+
+
+def line_groups() -> dict[str, list[dict]]:
+    """Rail stations grouped by the line letter they serve."""
+    global _line_groups
+    if _line_groups is not None:
+        return _line_groups
+    grouped: dict[str, list[dict]] = {}
+    for place in _catalog("rail"):
+        for letter in station_lines(place.get("detail") or ""):
+            grouped.setdefault(letter, []).append(place)
+    _line_groups = grouped
+    return grouped
+
+
+def line_places(text: str) -> tuple[list[dict], str | None]:
+    """One place per requested line. Its stations list is the whole line."""
+    key = line_request(text)
+    if key is None:
+        return [], "Name a Metro line letter, such as A, or all."
+    groups = line_groups()
+    if not groups:
+        return [], "No Metro rail stations are loaded."
+    if key != "all" and key not in groups:
+        known = ", ".join(sorted(groups))
+        return [], f"No Metro line {key}. Letters on the station list: {known}."
+    letters = sorted(groups) if key == "all" else [key]
+    places = []
+    for letter in letters:
+        stations = groups[letter]
+        places.append({
+            "kind": "rail",
+            "name": f"Metro {letter} Line",
+            "detail": f"{len(stations)} stations",
+            "line": letter,
+            "stations": stations,
+            "latitude": float(stations[0]["latitude"]),
+            "longitude": float(stations[0]["longitude"]),
+        })
+    return places, None
+
+
+def _near_mask(
+    latitude: float,
+    longitude: float,
+    lats: np.ndarray,
+    lons: np.ndarray,
+    radius_m: float,
+) -> np.ndarray:
+    chosen = (np.abs(lats - latitude) <= 0.012) & (np.abs(lons - longitude) <= 0.015)
+    hit = np.zeros(len(lats), dtype=bool)
+    if not chosen.any():
+        return hit
+    distance = haversine_m(latitude, longitude, lats[chosen], lons[chosen])
+    hit[np.flatnonzero(chosen)[distance <= radius_m]] = True
+    return hit
+
+
 def count_near(
     latitude: float,
     longitude: float,
@@ -159,14 +246,55 @@ def count_near(
     lats, lons, weights = arrays
     if len(weights) == 0:
         return 0
-    chosen = (
-        (np.abs(lats - latitude) <= 0.012)
-        & (np.abs(lons - longitude) <= 0.015)
-    )
-    if not chosen.any():
+    return int(weights[_near_mask(latitude, longitude, lats, lons, radius_m)].sum())
+
+
+def count_near_any(
+    places: list[dict],
+    arrays: tuple[np.ndarray, np.ndarray, np.ndarray],
+    radius_m: float = RADIUS_M,
+) -> int:
+    """Sum cell weights inside any circle. A cell near two places is counted once."""
+    lats, lons, weights = arrays
+    if len(weights) == 0 or not places:
         return 0
-    distance = haversine_m(latitude, longitude, lats[chosen], lons[chosen])
-    return int(weights[chosen][distance <= radius_m].sum())
+    hit = np.zeros(len(weights), dtype=bool)
+    for place in places:
+        hit |= _near_mask(float(place["latitude"]), float(place["longitude"]), lats, lons, radius_m)
+    return int(weights[hit].sum())
+
+
+def union_area_km2(places: list[dict], radius_m: float = RADIUS_M, step_m: float = 100.0) -> float:
+    """Area of the overlapping circles, estimated on a 100 m grid."""
+    if not places:
+        return 0.0
+    key = tuple(sorted(
+        (round(float(place["latitude"]), 5), round(float(place["longitude"]), 5))
+        for place in places
+    ))
+    cached = _areas.get(key)
+    if cached is not None:
+        return cached
+    lats = np.array([float(place["latitude"]) for place in places], dtype=np.float64)
+    lons = np.array([float(place["longitude"]) for place in places], dtype=np.float64)
+    mean_lat = float(np.mean(lats))
+    meters_per_lat = 111_320.0
+    meters_per_lon = 111_320.0 * math.cos(math.radians(mean_lat))
+    pad_lat = radius_m / meters_per_lat
+    pad_lon = radius_m / meters_per_lon
+    step_lat = step_m / meters_per_lat
+    step_lon = step_m / meters_per_lon
+    grid_lat = np.arange(float(lats.min()) - pad_lat, float(lats.max()) + pad_lat + step_lat, step_lat)
+    grid_lon = np.arange(float(lons.min()) - pad_lon, float(lons.max()) + pad_lon + step_lon, step_lon)
+    mesh_lat, mesh_lon = np.meshgrid(grid_lat, grid_lon, indexing="ij")
+    flat_lat = mesh_lat.ravel()
+    flat_lon = mesh_lon.ravel()
+    hit = np.zeros(flat_lat.shape[0], dtype=bool)
+    for latitude, longitude in zip(lats, lons):
+        hit |= _near_mask(float(latitude), float(longitude), flat_lat, flat_lon, radius_m)
+    area = float(hit.sum()) * (step_m / 1000.0) ** 2
+    _areas[key] = area
+    return area
 
 
 def _city_rate() -> float | None:
@@ -203,20 +331,73 @@ def _ranked(places: list[dict], offense: str | None) -> list[dict]:
     return scored
 
 
+def _line_row(place: dict, offense: str | None, city_rate: float | None) -> dict:
+    from pipeline.city_baseline import compared_with_city
+
+    stations = place.get("stations") or []
+    records = count_near_any(stations, _arrays(offense))
+    area = union_area_km2(stations)
+    per_km2 = round(records / area, 1) if area else 0.0
+    compared = None if city_rate is None else compared_with_city(per_km2, city_rate, "2020–present")
+    return {
+        "kind": "rail",
+        "line": place.get("line"),
+        "name": place.get("name"),
+        "station_count": len(stations),
+        "records": records,
+        "area_km2": round(area, 2),
+        "per_km2": per_km2,
+        "city_comparison": None if compared is None else compared["summary"],
+    }
+
+
+def _lines_result(request: str, offense: str | None, kind: str | None) -> dict:
+    if kind not in {None, "rail"}:
+        return {"error": "A Metro line letter applies to rail stations. Bus routes are not these letters.", "warnings": []}
+    places, error = line_places(request)
+    if error:
+        return {"error": error, "warnings": []}
+    label = None if offense is None else offense
+    city = _city_rate()
+    rows = [_line_row(place, offense, city) for place in places]
+    rows.sort(key=lambda item: item["records"], reverse=True)
+    body = {
+        "kind": "rail",
+        "offense": label,
+        "within_m": int(RADIUS_M),
+        "what_it_counts": _LINE_NOTE,
+        "warnings": [_LINE_NOTE],
+    }
+    if len(rows) == 1:
+        body["line"] = rows[0]["line"]
+        body["place"] = rows[0]
+        return body
+    body["line"] = "all"
+    body["place_count"] = len(rows)
+    body["highest"] = rows[0] if rows else None
+    body["ranked"] = rows
+    return body
+
+
 def crime_around(
     kind: str = "",
     name: str = "",
     latitude: float | None = None,
     longitude: float | None = None,
     offense: str = "",
+    line: str = "",
 ) -> dict:
-    """Rank pins of one kind, or count records around one named pin or coordinate."""
+    """Rank pins of one kind, or count records around one named pin, line, or coordinate."""
     try:
         group = _offense(offense)
         chosen = _kind(kind)
     except ValueError as exc:
         return {"error": str(exc), "warnings": []}
     label = None if group is None else group
+    if latitude is None and longitude is None:
+        requested = line_request(line) or line_request(name)
+        if requested:
+            return _lines_result(line or name, group, chosen)
     if latitude is not None or longitude is not None:
         if latitude is None or longitude is None:
             return {"error": "Pass both latitude and longitude.", "warnings": []}

@@ -299,11 +299,12 @@ def crime_detail(
     longitude: float | None = None,
     period: str = "",
     bucket: str = "",
+    line: str = "",
 ) -> dict:
     """Hour, premise, weapon, officer wording, bunco, pickpocket, drugs, area, or reporting lag."""
     from backend.crime_detail import crime_detail as _crime_detail
 
-    return _crime_detail(topic, kind, name, latitude, longitude, period, bucket)
+    return _crime_detail(topic, kind, name, latitude, longitude, period, bucket, line)
 
 
 def crime_around(
@@ -312,11 +313,12 @@ def crime_around(
     latitude: float | None = None,
     longitude: float | None = None,
     offense: str = "",
+    line: str = "",
 ) -> dict:
-    """Records within 800 m of a station, stop, facility, or coordinate. Not a venue total."""
+    """Records within 800 m of a station, stop, facility, Metro line, or coordinate. Not a venue total."""
     from backend.place_crime import crime_around as _crime_around
 
-    return _crime_around(kind, name, latitude, longitude, offense)
+    return _crime_around(kind, name, latitude, longitude, offense, line)
 
 
 def rank_nearby(kind: str = "rail") -> dict:
@@ -836,23 +838,50 @@ def _execute(sql: str, timeout_s: float = 5.0):
     return box.get("frame"), None
 
 
+def fold_place(text: str) -> str:
+    """Compare venue names when punctuation or '.com' differs."""
+    folded = str(text or "").lower().replace(".com", " ")
+    folded = re.sub(r"[^a-z0-9]+", " ", folded)
+    return " ".join(word for word in folded.split() if word != "com")
+
+
+def _venue_names(venue: dict) -> list[str]:
+    return [venue.get("venue_name") or "", *(venue.get("former_names") or []), venue.get("venue_id") or ""]
+
+
+def match_venue_ids(text: str) -> list[str]:
+    """Venue ids named in a sentence. 'Crypto Arena' is Crypto.com Arena."""
+    from backend.datasets import load_summary
+
+    folded = fold_place(text)
+    if not folded:
+        return []
+    found = []
+    for venue in load_summary()["venues"]:
+        names = [fold_place(name) for name in _venue_names(venue)]
+        if any(name and name in folded for name in names if len(name) > 4):
+            found.append(venue["venue_id"])
+    return found
+
+
 def _summary_venue(venue: str) -> dict | None:
     from backend.datasets import load_summary
 
-    key = str(venue or "").strip().lower()
+    key = fold_place(venue)
     if not key:
         return None
     venues = load_summary()["venues"]
     exact = [
         item for item in venues
-        if item["venue_id"].lower() == key or item["venue_name"].lower() == key
-        or key in [name.lower() for name in item.get("former_names") or []]
+        if any(fold_place(name) == key for name in _venue_names(item) if name)
     ]
     if len(exact) == 1:
         return exact[0]
+    if len(key) < 5:
+        return None
     partial = [
         item for item in venues
-        if key in item["venue_name"].lower() or any(key in name.lower() for name in item.get("former_names") or [])
+        if any(key in fold_place(name) for name in _venue_names(item) if len(fold_place(name)) > 4)
     ]
     return partial[0] if len(partial) == 1 else None
 

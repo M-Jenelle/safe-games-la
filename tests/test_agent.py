@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from backend.agent import _join_gaps, _without_safety_judgment, answer_events, brief_reply
+from backend.agent import _for_reader, _join_gaps, _without_safety_judgment, answer_events, brief_reply
 from backend.claude import ClaudeUnavailable
 from backend.agent_tools import (
     FORECAST_WARNING,
@@ -145,6 +145,70 @@ class AgentToolTests(unittest.TestCase):
         weekend = brief_reply("What does the week look like on weekends near the Coliseum?")
         self.assertIn("busiest day", weekend["answer"])
 
+    def test_metro_questions_answer_without_a_model(self):
+        lines = brief_reply(
+            "Which Metro rail lines experience the highest rates of passenger disruptions or assault during late-night hours?"
+        )
+        self.assertNotIn("Name a venue", lines["answer"])
+        self.assertIn("disruption", lines["answer"].lower())
+        self.assertIn("not crimes aboard a train", lines["answer"])
+
+        walk = brief_reply("Is the walk from the nearest Metro station to this stadium safe for families at night?")
+        self.assertIn("families", walk["answer"])
+        self.assertIn("Name the stadium", walk["answer"])
+        self.assertNotIn("model is not available", walk["answer"])
+
+        named = brief_reply(
+            "Is the walk from the nearest Metro station to this stadium safe for families at night?",
+            "V01",
+        )
+        self.assertIn("Dodger Stadium", named["answer"])
+        self.assertIn("citywide rate", named["answer"])
+        self.assertIn("can't call the walk", named["answer"])
+        self.assertNotIn("Name the stadium", named["answer"])
+
+        stops = brief_reply(
+            "Which transit stations or bus stops experience the highest volume of crimes against society "
+            "(like narcotics or weapon offenses) during late-night hours?"
+        )
+        self.assertNotIn("model is not available", stops["answer"])
+        self.assertIn("35A", stops["answer"])
+        self.assertIn("12am–6am", stops["answer"])
+        self.assertIn("not recorded by hour", stops["answer"])
+        self.assertNotRegex(lines["answer"], r"tool|crime_")
+
+        scams = brief_reply("What are the most common scams or crimes happening on the Metro train lines?")
+        self.assertNotIn("Name a venue", scams["answer"])
+        self.assertIn("bunco", scams["answer"].lower())
+        self.assertIn("pickpocket", scams["answer"].lower())
+        self.assertIn("March 6, 2024", scams["answer"])
+        self.assertIn("not split by Metro line", scams["answer"])
+
+    def test_a_tool_explanation_is_rewritten_for_the_reader(self):
+        question = (
+            "Which Metro rail lines experience the highest rates of passenger disruptions "
+            "or assault during late-night hours?"
+        )
+        raw = (
+            "I cannot provide information on passenger disruptions as there is no tool. "
+            "The crime_around tool can count offenses by line, but not by time of day. "
+            "The crime_detail tool can provide crime hours by line."
+        )
+        cleaned = _for_reader(question, raw)
+        self.assertNotIn("crime_around", cleaned)
+        self.assertNotIn("crime_detail", cleaned)
+        self.assertNotRegex(cleaned, r"\btools?\b")
+        self.assertIn("Passenger disruptions", cleaned)
+        other = _for_reader("How many incidents near Dodger Stadium?", raw)
+        self.assertIn("That breakdown is not in this record", other)
+        self.assertNotIn("crime_around", other)
+        with patch("backend.claude.settings", return_value={"claude_configured": True, "model": "gemini", "provider": "gemini"}), \
+             patch("backend.agent._agent_events") as agent:
+            event = next(item for item in answer_events(question) if item["event"] == "template")
+        agent.assert_not_called()
+        self.assertIn("Passenger disruptions", event["answer"])
+        self.assertNotRegex(event["answer"], r"\btools?\b|crime_")
+
     def test_two_venues_share_one_wet_day_lead(self):
         joined = _join_gaps([
             "No clear difference. Near Dodger Stadium, wet days average 0.52 records and other days of the same weekday average 0.58, from 435 wet days.",
@@ -216,6 +280,28 @@ class AgentToolTests(unittest.TestCase):
         self.assertEqual(hi["answer"], "Hi. What can I do for you?")
         doing = next(event for event in answer_events("How are you?") if event["event"] == "template")
         self.assertEqual(doing["answer"], "I'm doing well. What can I do for you?")
+
+    def test_crypto_arena_is_crypto_com_arena(self):
+        from backend.agent_tools import explain_page
+
+        page = explain_page("Crypto Arena", "categories")
+        self.assertEqual(page["venue"], "Crypto.com Arena")
+        self.assertTrue(page["entries"])
+
+    def test_a_venue_only_follow_up_keeps_the_previous_question(self):
+        from backend.agent import _prepare_turn
+
+        question, venue_id = _prepare_turn(
+            "Crypto Arena",
+            None,
+            [{"user_text": "What are the top 3 most common crimes right outside this venue?", "answer": "Which venue?"}],
+        )
+        self.assertEqual(venue_id, "V02")
+        self.assertIn("top 3 most common crimes", question)
+        self.assertIn("Crypto.com Arena", question)
+        untouched, same = _prepare_turn("How many incidents near Dodger Stadium?", None, [])
+        self.assertIsNone(same)
+        self.assertIn("Dodger Stadium", untouched)
 
     def test_a_configured_model_receives_the_question(self):
         seen = []

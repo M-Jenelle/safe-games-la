@@ -58,6 +58,7 @@ _TOOLS = {
         arguments.get("longitude"),
         str(arguments.get("period") or ""),
         str(arguments.get("bucket") or ""),
+        str(arguments.get("line") or ""),
     ),
     "crime_around": lambda arguments: crime_around(
         str(arguments.get("kind") or ""),
@@ -65,6 +66,7 @@ _TOOLS = {
         arguments.get("latitude"),
         arguments.get("longitude"),
         str(arguments.get("offense") or ""),
+        str(arguments.get("line") or ""),
     ),
     "live_weather": lambda arguments: live_weather(str(arguments.get("venue") or "")),
     "metro_alerts": lambda arguments: metro_alerts(str(arguments.get("venue") or "")),
@@ -175,7 +177,7 @@ _DECLARATIONS = [
     },
     {
         "name": "crime_detail",
-        "description": "Raw-report slices that are not the nine offense groups. topic is hours, premise, weapon, officer, bunco, pickpocket, drugs, area, or lag. Hours returns LAPD and NIBRS separately; do not add them. period is night, morning, afternoon, or evening. premise bucket is street, parking, bus, rail, mta, or fire station. Pass kind and period or bucket to rank stations or facilities. Pass a venue or place name, or latitude and longitude, for one pin. area and lag are citywide. LAPD topics run through March 6, 2024. Drugs are NIBRS codes 35A and 35B from March 7, 2024. Weapon is a weapon description on the report, not the Weapons group. No victim age, sex, or descent.",
+        "description": "Raw-report slices that are not the nine offense groups. topic is hours, premise, weapon, officer, bunco, pickpocket, drugs, area, or lag. Hours returns LAPD and NIBRS separately; do not add them. period is night, morning, afternoon, or evening. premise bucket is street, parking, bus, rail, mta, or fire station. Pass kind and period or bucket to rank stations or facilities. Pass line as a Metro letter, or all, to use every station on that line; a record near two stations on the same line is counted once. Pass a venue or place name, or latitude and longitude, for one pin. area and lag are citywide. LAPD topics run through March 6, 2024. Drugs are NIBRS codes 35A and 35B from March 7, 2024. Weapon is a weapon description on the report, not the Weapons group. No victim age, sex, or descent.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -186,13 +188,14 @@ _DECLARATIONS = [
                 "longitude": {"type": "number"},
                 "period": {"type": "string"},
                 "bucket": {"type": "string"},
+                "line": {"type": "string"},
             },
             "required": ["topic"],
         },
     },
     {
         "name": "crime_around",
-        "description": "Reported records within 800 m of a rail station, bus stop, fire station, police station, hospital, or a latitude and longitude. kind is rail, bus, fire, police, or hospital. Omit name to rank that kind. Pass name to count one pin. offense is an optional group such as assault, theft, or weapons. Drugs, bunco, pickpocket wording, a weapon description, premise, hour, area, and reporting lag are crime_detail, not this tool. This is not crimes on a train or inside the building, and it is not a venue total. city_comparison is the circle against the citywide rate.",
+        "description": "Reported records within 800 m of a rail station, bus stop, fire station, police station, hospital, a Metro line, or a latitude and longitude. kind is rail, bus, fire, police, or hospital. Omit name to rank that kind. Pass name to count one pin. Pass line as a Metro letter such as A, or all, to count the stations that share that letter. The same letter is one line. A record near two stations on that line is counted once. offense is an optional group such as assault, theft, or weapons. Drugs, bunco, pickpocket wording, a weapon description, premise, hour, area, and reporting lag are crime_detail, not this tool. This is not crimes on a train or inside the building, and it is not a venue total. city_comparison is the area against the citywide rate.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -201,6 +204,7 @@ _DECLARATIONS = [
                 "latitude": {"type": "number"},
                 "longitude": {"type": "number"},
                 "offense": {"type": "string"},
+                "line": {"type": "string"},
             },
         },
     },
@@ -219,17 +223,31 @@ _SYSTEM = (
     "If the message is only a greeting or thanks, answer in one sentence and call no tool. "
     "Otherwise call the tools you need. You may chain them. Read a tool error and correct the next call. "
     "Then answer in one or two sentences using only figures the tools returned. "
+    "Write that reply for a planner. Never name a tool, a function, a table, a query, or how this software is organized. "
+    "Never say what one lookup can filter that another cannot. "
+    "If the requested combination is not in the record, say what is missing in one or two sentences and stop. "
+    "Do not describe a partial result you did not calculate. "
     "forecast returns a multiplier for one recorded condition. Its interval is not a future daily count, "
     "and the Games are refused. Do not present that multiplier as a forecast. There is no code interpreter. "
     "Venue ids are in the question payload. The venue key is venue_id. Do not invent an id. "
     "Do not invent a cause. A follow-up may name a different venue or drop the venue. Answer the new question. "
+    "If the question says to answer the previous question for one venue, call the tool for that venue. "
+    "Do not ask the user to repeat the question. Crypto Arena is Crypto.com Arena. "
+    "The top crimes outside a venue are explain_page topic categories. Name the three largest groups inside the 800 m circle. "
     "Crime near a rail station, bus stop, fire station, police station, hospital, or a coordinate uses crime_around. "
     "That count is records within 800 m of the pin, not crimes on a train or inside the building. "
+    "A Metro rail line is every station whose letter matches. The same letter is the same line. "
+    "Crime around a line uses crime_around with line set to that letter, or all to rank the lines. "
+    "A record near two stations on the same line is counted once. A station on two lines counts for each line. "
+    "Hours or drug codes around a line use crime_detail with that same line. "
+    "This is still records within 800 m of the stations, not crimes aboard a train, not a passenger rate, and not a service disruption. "
     "rank_nearby only counts how many of those places sit near a venue. "
     "A safety question about a venue uses compare_with_city. metro_alerts is only a live service alert. "
     "Hours, premise, a weapon description, officer wording, bunco, pickpocket, drug codes, LAPD area, and reporting lag use crime_detail. "
     "Do not add the LAPD and NIBRS hour figures. explain_page topic hours is only the venue page clock for 2020–2024. "
-    "There is no victim age, sex, or descent, no emergency response time, and no Metro line disruption table. "
+    "There is no victim age, sex, or descent, no emergency response time, and no Metro disruption or ridership table. "
+    "Bunco and pickpocket wording are not split by Metro line. For those, call crime_detail with no place. "
+    "A premise of rail is LAPD reports coded as a rail station or train through March 6, 2024, not a list of types and not crimes aboard a train. "
     "You may call a circle comparatively safe or unsafe only when a tool returned a city comparison "
     "and you include that number against the citywide rate. Otherwise do not use those words. "
     "If a tool result includes warnings, you may mention them; the server will attach them again."
@@ -400,6 +418,102 @@ def _tool_sentence(message: str, venue_id: str | None, kind: str) -> dict:
     return _short(str(row.get("means") or "That figure is not on the venue page."), "page")
 
 
+_NIGHT_ASK = re.compile(r"\b(late[ -]?night|at night|overnight)\b", re.IGNORECASE)
+_SAFE_WALK = re.compile(r"\b(safe|safer|unsafe)\b", re.IGNORECASE)
+_SCAM_ASK = re.compile(r"\b(scams?|bunco|pickpockets?)\b", re.IGNORECASE)
+_LINE_ASK = re.compile(r"\b(metro|rail|train|lines?)\b", re.IGNORECASE)
+_SOCIETY_ASK = re.compile(r"\b(narcotics|drugs|weapon|weapons|society)\b", re.IGNORECASE)
+_STOP_ASK = re.compile(r"\b(stations?|stops?|transit)\b", re.IGNORECASE)
+
+
+def recorded_slice_reply(message: str, venue_id: str | None = None) -> dict | None:
+    """Rail, night, and wording questions. These do not need a selected venue."""
+    text = str(message or "")
+    if _SAFE_WALK.search(text) and re.search(r"\b(walk|famil|station|stadium|night)\b", text, re.IGNORECASE):
+        return _walk_reply(text, venue_id)
+    if re.search(r"\bdisruptions?\b", text, re.IGNORECASE) or (
+        re.search(r"\bassault", text, re.IGNORECASE) and _NIGHT_ASK.search(text) and _LINE_ASK.search(text)
+    ):
+        return _line_night_reply()
+    if _SOCIETY_ASK.search(text) and _STOP_ASK.search(text):
+        return _night_stop_reply(text)
+    if _SCAM_ASK.search(text) and _LINE_ASK.search(text):
+        return _wording_reply()
+    return None
+
+
+def _wording_reply() -> dict:
+    from backend.agent_tools import crime_detail
+
+    bunco = crime_detail("bunco")
+    pick = crime_detail("pickpocket")
+    bunco_row = (bunco.get("rows") or [{}])[0]
+    pick_row = (pick.get("rows") or [{}])[0]
+    if bunco.get("error") or bunco_row.get("records") is None or pick_row.get("records") is None:
+        return _short("Bunco and pickpocket wording could not be read.", "crime_detail")
+    return _short(
+        f"LAPD description wording through March 6, 2024 records {int(bunco_row['records']):,} reports with bunco wording "
+        f"and {int(pick_row['records']):,} with pickpocket wording. "
+        "Those figures are citywide. They are not split by Metro line, and they are not crimes aboard a train.",
+        "crime_detail",
+    )
+
+
+def _line_night_reply() -> dict:
+    return _short(
+        "Passenger disruptions are not part of this record, and Metro lines are not ranked by late-night assault. "
+        "A line figure counts reports within 800 meters of the stations, not crimes aboard a train.",
+        "crime_detail",
+    )
+
+
+def _walk_reply(message: str, venue_id: str | None) -> dict:
+    venue = _venue_in_text(message) or venue_id or ""
+    if not venue:
+        return _short(
+            "I can't call a walk safe or unsafe for families. "
+            "Name the stadium and I can compare reported crime in its 800 m circle with the citywide rate.",
+            "city",
+        )
+    result = compare_with_city(venue)
+    if result.get("error"):
+        return _short(str(result["error"]), "city")
+    summary = (result.get("reports_2020_2024") or {}).get("summary") or "The city comparison is not loaded."
+    return _short(
+        f"I can't call the walk to {result['venue']} safe for families. "
+        f"{summary} That is reported records inside 800 m, not the walk itself.",
+        "city",
+    )
+
+
+def _night_stop_reply(message: str) -> dict:
+    from backend.agent_tools import crime_detail
+
+    period = "night" if _NIGHT_ASK.search(message) else ""
+    drugs = crime_detail("drugs", kind="rail", period=period)
+    if drugs.get("error"):
+        return _short(
+            "That station ranking is not in this record. Narcotics figures are reported offenses within 800 meters of a pin, not crimes at the stop.",
+            "crime_detail",
+        )
+    clock = "12am–6am" if period == "night" else "all recorded hours"
+    ranked = [row for row in drugs.get("ranked") or [] if row.get("records")]
+    if ranked:
+        shown = ", ".join(f"{row['name']} ({int(row['records']):,})" for row in ranked[:3])
+        lead = f"Highest rail stations by NIBRS narcotics codes 35A and 35B, {clock}, within 800 m: {shown}. "
+    else:
+        lead = f"No narcotics records were found within 800 m of a rail station for {clock}. "
+    hour_note = (
+        "Weapon reports are not recorded by hour, so they are not included in this ranking. "
+        if period == "night"
+        else "A weapon description is not the weapons offense group. "
+    )
+    return _short(
+        lead + hour_note + "These are records near the pin, not crimes at the stop. Bus stops are a separate list.",
+        "crime_detail",
+    )
+
+
 def greeting_reply(message: str, venue_id: str | None = None) -> dict | None:
     """A hello stays a hello. It is not a request for the weather."""
     text = " ".join(str(message or "").strip().split())
@@ -431,6 +545,9 @@ def direct_reply(message: str, venue_id: str | None = None) -> dict | None:
 def brief_reply(message: str, venue_id: str | None = None) -> dict | None:
     """Short answers from the tools when the model cannot be called."""
     text = str(message or "")
+    recorded = recorded_slice_reply(text, venue_id)
+    if recorded is not None:
+        return recorded
     wet = wet_reply(text, venue_id)
     if wet is not None:
         return wet
@@ -555,14 +672,10 @@ def _display_name(venue: str) -> str:
 
 
 def _venues_in_text(message: str) -> list[str]:
-    from backend.datasets import load_summary
+    from backend.agent_tools import match_venue_ids
 
     lowered = message.lower()
-    found = []
-    for venue in load_summary()["venues"]:
-        names = [venue.get("venue_name") or "", *(venue.get("former_names") or [])]
-        if any(name.lower() in lowered for name in names if len(name) > 4):
-            found.append(venue["venue_id"])
+    found = match_venue_ids(message)
     if "coliseum" in lowered and "V05" not in found:
         found.append("V05")
     if "dodger" in lowered and "V01" not in found:
@@ -584,6 +697,58 @@ def _venue_in_text(message: str) -> str | None:
     if "peacock" in lowered:
         return "V04"
     return None
+
+
+_BARE_PREFIX = re.compile(
+    r"^(?:(?:what|how) about|and|for|at|near|ok|okay|yes|yeah|please)\b[\s,]*",
+    re.IGNORECASE,
+)
+
+
+def _bare_venue(message: str) -> str | None:
+    """A turn that only names a venue, including 'what about Crypto Arena'."""
+    from backend.agent_tools import fold_place
+    from backend.datasets import load_summary
+
+    text = str(message or "").strip()
+    for _ in range(2):
+        text = _BARE_PREFIX.sub("", text).strip(" ?.!")
+    found = _venues_in_text(text)
+    if len(found) != 1:
+        return None
+    folded = fold_place(text)
+    venue = next(item for item in load_summary()["venues"] if item["venue_id"] == found[0])
+    names = [venue.get("venue_name") or "", *(venue.get("former_names") or [])]
+    for name in names:
+        token = fold_place(name)
+        if token and token in folded:
+            folded = folded.replace(token, " ")
+    for nickname, venue_id in (("coliseum", "V05"), ("dodger", "V01"), ("peacock", "V04")):
+        if found[0] == venue_id:
+            folded = folded.replace(nickname, " ")
+    leftover = [word for word in folded.split() if word not in {"the", "a", "an", "venue", "please"}]
+    if leftover:
+        return None
+    return found[0]
+
+
+def _prepare_turn(message: str, venue_id: str | None, history: list[dict] | None) -> tuple[str, str | None]:
+    """A venue-only follow-up keeps the previous question and drops example names."""
+    bare = _bare_venue(message)
+    prior = ""
+    for turn in reversed(history or []):
+        prior = str(turn.get("user_text") or "").strip()
+        if prior:
+            break
+    if not bare or not prior:
+        return message, venue_id
+    name = _display_name(bare)
+    question = (
+        f"{prior}\n"
+        f"Answer that question for {name} only. "
+        f"Venues mentioned only as examples are not the subject."
+    )
+    return question, bare
 
 
 def _short(answer: str, tool: str) -> dict:
@@ -614,9 +779,36 @@ def agent_answer(message: str, venue_id: str | None = None, history: list[dict] 
     raise ClaudeUnavailable("The model is unavailable")
 
 
+_INTERNAL = re.compile(
+    r"`|crime_around|crime_detail|explain_page|run_sql|compare_with_city|compare_conditions|"
+    r"rank_venues|rank_nearby|describe_data|metro_alerts|live_weather|"
+    r"\b(my tools|the tools|available tools|no tool)\b",
+    re.IGNORECASE,
+)
+
+
+def _for_reader(message: str, answer: str) -> str:
+    """A planner never sees how the lookup is built."""
+    if not _INTERNAL.search(answer or ""):
+        return answer
+    recorded = recorded_slice_reply(message, None)
+    if recorded is not None:
+        return recorded["answer"]
+    return (
+        "That breakdown is not in this record. "
+        "Figures here are reported crimes, usually within 800 meters of a place. "
+        "They are not service disruptions, ridership, or incidents aboard a train."
+    )
+
+
 def answer_events(message: str, venue_id: str | None = None, history: list[dict] | None = None):
     """The model picks a tool and writes the sentence. Fixed sentences run only if the model is down."""
     yield {"event": "status", "text": "Looking that up…"}
+    recorded = recorded_slice_reply(message, venue_id)
+    if recorded is not None:
+        yield {"event": "template", **recorded}
+        yield {"event": "narration", "narration": None}
+        return
     from backend.claude import settings
 
     if settings()["claude_configured"]:
@@ -653,9 +845,10 @@ def _agent_events(message: str, venue_id: str | None, history: list[dict] | None
         {"venue_id": item["venue_id"], "venue_name": item["venue_name"]}
         for item in load_summary()["venues"]
     ]
+    question, chosen = _prepare_turn(message, venue_id, history)
     contents = [{"role": "user", "parts": [{"text": json.dumps({
-        "question": message,
-        "selected_venue_id": venue_id,
+        "question": question,
+        "selected_venue_id": chosen,
         "venues": venues,
         "earlier_turns": prior[-4:],
     })}]}]
@@ -702,7 +895,7 @@ def _agent_events(message: str, venue_id: str | None, history: list[dict] | None
             break
     if not answer:
         answer = "I couldn't finish that from the tables. Ask it again, and name a venue if it is about one place."
-    answer = _without_safety_judgment(answer)
+    answer = _for_reader(message, _without_safety_judgment(answer))
     for item in forecasts:
         backtest = item.get("backtest") or {}
         warnings.append(

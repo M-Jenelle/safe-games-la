@@ -450,7 +450,9 @@ def get_venue(venue_id: str) -> dict | None:
                 enriched["crime_distance"] = distance_block
             listings = ticketmaster_for(venue_id)
             if listings:
-                enriched["ticketmaster"] = listings
+                enriched["ticketmaster"] = {
+                    key: value for key, value in listings.items() if key != "disclaimer"
+                }
             nibrs_charts = nibrs_charts_for(venue_id)
             nibrs_time = (nibrs_charts or {}).get("time") or {}
             nibrs_distance = (nibrs_charts or {}).get("distance") or {}

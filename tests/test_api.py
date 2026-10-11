@@ -192,7 +192,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(dodger["distance_m"], 907)
         self.assertIn("outside the 800 m circle", dodger["note"])
         self.assertIn("May 2027 and August 2027", dodger["busiest"])
-        self.assertIn("no report count", dodger["disclaimer"])
+        self.assertNotIn("no report count", dodger.get("disclaimer") or "")
         self.assertEqual(dodger["events"][0]["date"], "2026-10-09")
         self.assertIn("NLDS", dodger["events"][0]["name"])
         self.assertTrue(dodger["events"][0]["on_sale"])

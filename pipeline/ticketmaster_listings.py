@@ -64,10 +64,7 @@ NAME_STOP = {
     "hall",
     "halls",
 }
-DISCLAIMER = (
-    "These are Ticketmaster listings. The dates fall after the 2020–2024 crime file, "
-    "so no report count is attached. A crowded month means more listed events."
-)
+DISCLAIMER = ""
 
 
 def name_tokens(value: str) -> set[str]:

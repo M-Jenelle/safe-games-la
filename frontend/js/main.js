@@ -1,6 +1,6 @@
-import { compareRoute, openCompare, syncCompareLink } from "./compare.js";
+import { compareRoute, openCompare, syncCompareLink } from "./compare.js?v=listings";
 import { fetchJson } from "./dom.js";
-import { bindCrimeView, bindFacilityViews, bindHeatRange, bindLayerToggles, ensureGoogleMap, fillLayerView, loadCrimeHeat, renderMap } from "./map.js?v=heat-load";
+import { bindCrimeView, bindFacilityViews, bindHeatRange, bindLayerToggles, ensureGoogleMap, fillLayerView, loadCrimeHeat, renderMap } from "./map.js?v=listings";
 import { closeVenuePage, renderChatContext, venueIdFromLocation } from "./nav.js";
 import { renderMeta, renderRoster, renderZoneOptions } from "./roster.js";
 import { comparePage, mapHint, metaStrip, state } from "./state.js";
