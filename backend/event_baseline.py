@@ -20,12 +20,21 @@ from backend.datasets import REPO_ROOT, get_crime_points
 
 SERIES_BREAK = date(2024, 3, 7)
 HOME_GAMES_CSV = REPO_ROOT / "data" / "raw" / "mlb" / "dodgers_home_games_2020_2024.csv"
+LATER_GAMES_CSV = REPO_ROOT / "data" / "raw" / "mlb" / "dodgers_stadium_games_2025_2026.csv"
+JOINED_DAYS_CSV = REPO_ROOT / "data" / "processed" / "venue_days_with_weather.csv"
+STADIUM_NAMES = {"Dodger Stadium", "UNIQLO Field at Dodger Stadium"}
 IN_SEASON_MONTHS = {3, 4, 5, 6, 7, 8, 9, 10}
+COMPLETED_STATUS = {"final", "completed", "game over"}
 MIN_EVENT_DAYS = 8
 _Z = 1.96
+_MONTH_NAMES = (
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+)
 
 _cache: dict[tuple, dict] = {}
 _home_rows: list[dict] | None = None
+_combined_rows: list[dict] | None = None
 _future_game_dates: list[str] | None = None
 
 
@@ -273,12 +282,153 @@ def home_game_dates() -> set[str]:
     return dates
 
 
+def _later_game_rows() -> list[dict]:
+    if not LATER_GAMES_CSV.exists():
+        return []
+    rows = []
+    with LATER_GAMES_CSV.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            if str(row.get("venue_name") or "") not in STADIUM_NAMES:
+                continue
+            if _parse_day(row.get("date") or "") is None:
+                continue
+            rows.append(row)
+    return rows
+
+
 def future_home_game_dates() -> list[str]:
-    """Home-game dates after the published 2020–2024 comparison. The stored file has none."""
+    """Stadium games after 2024, including games still scheduled.
+
+    Spring training is left out. Estimate months are the only months this list scales.
+    """
     global _future_game_dates
     if _future_game_dates is None:
-        _future_game_dates = sorted(day for day in home_game_dates() if day > "2024-12-31")
+        dates = set()
+        for row in _later_game_rows():
+            if str(row.get("game_type") or "") == "S":
+                continue
+            day = _parse_day(row.get("date") or "")
+            if day is None or day.isoformat() <= "2024-12-31" or day.month not in IN_SEASON_MONTHS:
+                continue
+            dates.add(day.isoformat())
+        _future_game_dates = sorted(dates)
     return list(_future_game_dates)
+
+
+def _long_date(day: date) -> str:
+    return f"{_MONTH_NAMES[day.month - 1]} {day.day}, {day.year}"
+
+
+def _nibrs_counts() -> tuple[dict[str, int], date | None]:
+    """Dodger Stadium NIBRS offense counts, and the last day that has one."""
+    if not JOINED_DAYS_CSV.exists():
+        return {}, None
+    counts: dict[str, int] = {}
+    last: date | None = None
+    with JOINED_DAYS_CSV.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            if row.get("venue_id") != "V01" or str(row.get("count_source") or "") != "nibrs":
+                continue
+            day = _parse_day(row.get("date") or "")
+            if day is None:
+                continue
+            counts[day.isoformat()] = int(float(row.get("incident_count") or 0))
+            if last is None or day > last:
+                last = day
+    return counts, last
+
+
+def _completed_regular_season_dates() -> set[str]:
+    """Finished regular-season games at Dodger Stadium, including the later file."""
+    dates = set(home_game_dates())
+    for row in _later_game_rows():
+        if str(row.get("game_type") or "") != "R":
+            continue
+        if str(row.get("status") or "").lower() not in COMPLETED_STATUS:
+            continue
+        day = _parse_day(row.get("date") or "")
+        if day is None or day.month not in IN_SEASON_MONTHS:
+            continue
+        dates.add(day.isoformat())
+    return dates
+
+
+def combined_home_rows() -> list[dict]:
+    """One in-season series: reports before March 7, 2024, then NIBRS offenses.
+
+    The calendar stops on the last day with a NIBRS count. A later game is not
+    entered as zero crime.
+    """
+    global _combined_rows
+    if _combined_rows is not None:
+        return _combined_rows
+    games = _completed_regular_season_dates()
+    reports: dict[str, int] = {}
+    block = get_crime_points("V01") or {}
+    for point in block.get("points") or []:
+        day = str(point.get("date") or "")[:10]
+        parsed = _parse_day(day)
+        if parsed is None or parsed >= SERIES_BREAK or parsed.month not in IN_SEASON_MONTHS:
+            continue
+        reports[day] = reports.get(day, 0) + 1
+    nibrs, last = _nibrs_counts()
+    if last is None:
+        _combined_rows = []
+        return _combined_rows
+    rows = []
+    for year in range(2020, last.year + 1):
+        for month in sorted(IN_SEASON_MONTHS):
+            start = date(year, month, 1)
+            end = date(year + 1, 1, 1) - timedelta(days=1) if month == 12 else date(year, month + 1, 1) - timedelta(days=1)
+            for day in _calendar_days(start, end):
+                if day > last:
+                    continue
+                key = day.isoformat()
+                count = reports.get(key, 0) if day < SERIES_BREAK else nibrs.get(key, 0)
+                rows.append({
+                    "date": key,
+                    "incident_count": count,
+                    "is_home_game": int(key in games),
+                })
+    _combined_rows = rows
+    return _combined_rows
+
+
+def combined_home_summary() -> dict | None:
+    """Home games versus other in-season days on the blended daily series."""
+    rows = combined_home_rows()
+    counts = {row["date"]: int(row["incident_count"]) for row in rows}
+    games = {row["date"] for row in rows if row["is_home_game"]}
+    if len(games) < MIN_EVENT_DAYS or not counts:
+        return None
+    from pipeline.permit_event_days import association
+
+    stats = association(counts, games, sorted(counts))
+    shown = bool(
+        int(stats["event_day_count"]) >= MIN_EVENT_DAYS
+        and stats.get("significant")
+        and abs(float(stats["absolute_difference"])) >= 0.05
+        and float(stats["other_day_mean"]) > 0
+    )
+    last = _parse_day(rows[-1]["date"])
+    years = sorted({day[:4] for day in games})
+    label = years[0] if len(years) == 1 else f"{years[0]}–{years[-1]}"
+    return {
+        "label": label,
+        "through": last.isoformat() if last else "",
+        "through_label": _long_date(last) if last else "",
+        "summary": {
+            "event_day_count": int(stats["event_day_count"]),
+            "other_day_count": int(stats["other_day_count"]),
+            "event_day_mean": stats["event_day_mean"],
+            "other_day_mean": stats["other_day_mean"],
+            "event_day_median": stats["event_day_median"],
+            "other_day_median": stats["other_day_median"],
+            "absolute_difference": stats["absolute_difference"],
+            "lift_pct": stats["lift_pct"] if shown else None,
+            "percent_shown": shown,
+        },
+    }
 
 
 def home_game_rows() -> list[dict]:

@@ -233,6 +233,8 @@ class ChatTests(unittest.TestCase):
         self.assertIn(f"{float(home['lift_pct']):+.1f}%", games["answer"])
         self.assertIn("fall more often on weekends", games["answer"])
         self.assertIn("not a forecast", games["answer"])
+        self.assertIn("NIBRS offenses from March 7, 2024", games["answer"])
+        self.assertNotIn("not added", games["answer"])
         self.assertNotIn(f"{float(permit['lift_pct']):+.1f}%", games["answer"])
 
         park = self.post("What is the event-day lift near Peacock Theater?")

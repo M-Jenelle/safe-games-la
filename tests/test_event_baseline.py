@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from backend.event_baseline import home_game_rows, scale_month, weekday_standardized
+from backend.event_baseline import future_home_game_dates, home_game_rows, scale_month, weekday_standardized
 from backend.store import home_game_comparison, permit_comparison
 
 
@@ -12,7 +12,7 @@ class EventBaselineTests(unittest.TestCase):
     def test_published_percentages_stay_in_place(self):
         peacock = permit_comparison("V04")["summary"]
         dodger_permits = permit_comparison("V01")["summary"]
-        games = home_game_comparison("V01")["summary"]
+        games = home_game_comparison("V01")["published"]
         self.assertEqual(peacock["lift_pct"], 19.5)
         self.assertEqual(dodger_permits["lift_pct"], 298.4)
         self.assertEqual(games["lift_pct"], 266.3)
@@ -42,6 +42,22 @@ class EventBaselineTests(unittest.TestCase):
         self.assertAlmostEqual(other_mean, 0.31, delta=0.02)
         weekday = weekday_standardized(rows, "is_home_game")
         self.assertLess(weekday["lift_pct"], 266.3)
+
+    def test_home_games_are_one_series_through_the_last_crime_day(self):
+        games = home_game_comparison("V01")
+        summary = games["summary"]
+        self.assertEqual(games["published"]["lift_pct"], 266.3)
+        self.assertEqual(games["published"]["event_day_count"], 350)
+        self.assertEqual(games["period_label"], "2020–2026")
+        self.assertEqual(games["through"], "2026-09-19")
+        self.assertGreater(summary["event_day_count"], 350)
+        self.assertNotIn("later", games)
+        self.assertIn("March 6, 2024", games["note"])
+        self.assertIn("March 7, 2024", games["note"])
+        self.assertTrue(summary["percent_shown"])
+        scheduled = future_home_game_dates()
+        self.assertIn("2026-10-16", scheduled)
+        self.assertTrue(any(day > games["through"] for day in scheduled))
 
     def test_schedule_scales_only_listed_game_days(self):
         self.assertEqual(scale_month(100, 31, 0, 1.5), 100)

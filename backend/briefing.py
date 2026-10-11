@@ -182,27 +182,25 @@ def permit_hints() -> dict[str, str]:
             "Other days is the baseline, so that row has no difference."
         ),
         "Home Games vs Other Days": (
-            "Completed Dodgers regular-season home games, 2020 through 2024, "
-            "compared with the other days in March through October of those years."
+            "Completed Dodgers regular-season home games versus other March–October days, "
+            "2020 through the last crime day. Reports through March 6, 2024, then NIBRS offenses."
         ),
         "Game Days": "Days with a completed regular-season home game. A doubleheader still counts as one day.",
-        "Other Days in Season": "The other days in March through October, 2020 through 2024. Winter days are left out.",
-        "Game-Day Mean": "Average reports on home-game days.",
-        "Other-Day Mean in Season": "Average reports on the other days in those baseball months.",
-        "2020–2024": "All completed regular-season home games from 2020 through 2024, taken together.",
+        "Other Days in Season": "The other days in March through October. Winter days are left out.",
+        "Game-Day Mean": (
+            "Average on home-game days. Through March 6, 2024 that is police reports. "
+            "From March 7, 2024 it is NIBRS offenses."
+        ),
+        "Other-Day Mean in Season": "Average on the other days in those baseball months, on the same daily series.",
+        "2020–2024": "Completed regular-season home games from 2020 through 2024.",
+        "2020–2026": (
+            "Completed regular-season home games from 2020 through the last day with a crime count. "
+            "Games after that day are not in this average."
+        ),
         "Game-Day Groups": (
             "Crime groups where the daily average on home-game days differs from other days in season "
             f"by at least {gap} reports. The bar length is the size of that gap."
         ),
-        "Listed Events": (
-            "Ticketmaster listings matched to this venue. "
-            "The dates are after 2024, so they are not joined to the crime reports."
-        ),
-        "Month": "Calendar month of the listings. A month with no listing is still shown, so the gap stays visible.",
-        "Listings": "How many Ticketmaster events fall in this month.",
-        "Event": "The name Ticketmaster published for this listing.",
-        "Start": "Local start time when Ticketmaster published one. Not listed means the hour was left off.",
-        "Tickets": "On sale means tickets are listed for sale. Not on sale yet is not a cancellation.",
     }
 
 

@@ -129,8 +129,13 @@ def _offense_counts(incidents: pd.DataFrame) -> pd.DataFrame:
 
 def _events() -> pd.DataFrame:
     rows = []
-    games = ROOT / "data" / "raw" / "mlb" / "dodgers_home_games_2020_2024.csv"
-    if games.is_file():
+    game_files = (
+        ROOT / "data" / "raw" / "mlb" / "dodgers_home_games_2020_2024.csv",
+        ROOT / "data" / "raw" / "mlb" / "dodgers_stadium_games_2025_2026.csv",
+    )
+    for games in game_files:
+        if not games.is_file():
+            continue
         frame = pd.read_csv(games)
         for record in frame.to_dict("records"):
             if "Dodger Stadium" not in str(record.get("venue_name") or ""):

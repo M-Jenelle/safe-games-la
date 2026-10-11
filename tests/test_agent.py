@@ -184,6 +184,29 @@ class AgentToolTests(unittest.TestCase):
         self.assertIn("March 6, 2024", scams["answer"])
         self.assertIn("not split by Metro line", scams["answer"])
 
+    def test_home_game_questions_use_the_page_comparison(self):
+        question = "How do home games compare with other days near Dodger Stadium?"
+        answer = brief_reply(question, "V01")["answer"]
+        self.assertIn("1.36", answer)
+        self.assertIn("0.36", answer)
+        self.assertIn("+274.1%", answer)
+        self.assertIn("September 19, 2026", answer)
+        self.assertIn("not a forecast", answer)
+        self.assertNotIn("permit", answer.lower())
+
+        later = brief_reply("What is the home-game difference at Dodger Stadium for 2025 and 2026?", "V01")
+        self.assertIn("+274.1%", later["answer"])
+        self.assertNotIn("cannot provide a forecast", later["answer"].lower())
+
+        other = brief_reply("How do home games compare near the Coliseum?", "V05")
+        self.assertIn("Dodger Stadium only", other["answer"])
+
+        with patch("backend.claude.settings", return_value={"claude_configured": True, "model": "gemini", "provider": "gemini"}), \
+             patch("backend.agent._agent_events") as agent:
+            event = next(item for item in answer_events(question, "V01") if item["event"] == "template")
+        agent.assert_not_called()
+        self.assertIn("+274.1%", event["answer"])
+
     def test_a_tool_explanation_is_rewritten_for_the_reader(self):
         question = (
             "Which Metro rail lines experience the highest rates of passenger disruptions "

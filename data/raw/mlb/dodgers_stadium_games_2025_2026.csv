@@ -1,0 +1,180 @@
+date,game_pk,home_team,home_team_id,away_team,venue_name,status,detailed_status,game_type,doubleheader
+2025-03-23,787998,Los Angeles Dodgers,119,Los Angeles Angels,Dodger Stadium,Final,Final,S,N
+2025-03-27,778546,Los Angeles Dodgers,119,Detroit Tigers,Dodger Stadium,Final,Final,R,N
+2025-03-28,778544,Los Angeles Dodgers,119,Detroit Tigers,Dodger Stadium,Final,Final,R,N
+2025-03-29,778533,Los Angeles Dodgers,119,Detroit Tigers,Dodger Stadium,Final,Final,R,N
+2025-03-31,778500,Los Angeles Dodgers,119,Atlanta Braves,Dodger Stadium,Final,Final,R,N
+2025-04-01,778487,Los Angeles Dodgers,119,Atlanta Braves,Dodger Stadium,Final,Final,R,N
+2025-04-02,778472,Los Angeles Dodgers,119,Atlanta Braves,Dodger Stadium,Final,Final,R,N
+2025-04-11,778356,Los Angeles Dodgers,119,Chicago Cubs,Dodger Stadium,Final,Final,R,N
+2025-04-12,778345,Los Angeles Dodgers,119,Chicago Cubs,Dodger Stadium,Final,Final,R,N
+2025-04-13,778331,Los Angeles Dodgers,119,Chicago Cubs,Dodger Stadium,Final,Final,R,N
+2025-04-14,778326,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2025-04-15,778302,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2025-04-16,778287,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2025-04-25,778176,Los Angeles Dodgers,119,Pittsburgh Pirates,Dodger Stadium,Final,Final,R,N
+2025-04-26,778163,Los Angeles Dodgers,119,Pittsburgh Pirates,Dodger Stadium,Final,Final,R,N
+2025-04-27,778145,Los Angeles Dodgers,119,Pittsburgh Pirates,Dodger Stadium,Final,Final,R,N
+2025-04-28,778132,Los Angeles Dodgers,119,Miami Marlins,Dodger Stadium,Final,Final,R,N
+2025-04-29,778123,Los Angeles Dodgers,119,Miami Marlins,Dodger Stadium,Final,Final,R,N
+2025-04-30,778109,Los Angeles Dodgers,119,Miami Marlins,Dodger Stadium,Final,Final,R,N
+2025-05-13,777937,Los Angeles Dodgers,119,Athletics,Dodger Stadium,Final,Final,R,N
+2025-05-14,777917,Los Angeles Dodgers,119,Athletics,Dodger Stadium,Final,Final,R,N
+2025-05-15,777946,Los Angeles Dodgers,119,Athletics,Dodger Stadium,Final,Final,R,N
+2025-05-16,777899,Los Angeles Dodgers,119,Los Angeles Angels,Dodger Stadium,Final,Final,R,N
+2025-05-17,777884,Los Angeles Dodgers,119,Los Angeles Angels,Dodger Stadium,Final,Final,R,N
+2025-05-18,777866,Los Angeles Dodgers,119,Los Angeles Angels,Dodger Stadium,Final,Final,R,N
+2025-05-19,777854,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2025-05-20,777838,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2025-05-21,777824,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2025-05-30,777708,Los Angeles Dodgers,119,New York Yankees,Dodger Stadium,Final,Final,R,N
+2025-05-31,777698,Los Angeles Dodgers,119,New York Yankees,Dodger Stadium,Final,Final,R,N
+2025-06-01,777682,Los Angeles Dodgers,119,New York Yankees,Dodger Stadium,Final,Final,R,N
+2025-06-02,777675,Los Angeles Dodgers,119,New York Mets,Dodger Stadium,Final,Final,R,N
+2025-06-03,777657,Los Angeles Dodgers,119,New York Mets,Dodger Stadium,Final,Final,R,N
+2025-06-04,777638,Los Angeles Dodgers,119,New York Mets,Dodger Stadium,Final,Final,R,N
+2025-06-05,777631,Los Angeles Dodgers,119,New York Mets,Dodger Stadium,Final,Final,R,N
+2025-06-13,777522,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2025-06-14,777506,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2025-06-15,777498,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2025-06-16,777490,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2025-06-17,777471,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2025-06-18,777457,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2025-06-19,777442,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2025-06-20,777427,Los Angeles Dodgers,119,Washington Nationals,Dodger Stadium,Final,Final,R,N
+2025-06-21,777416,Los Angeles Dodgers,119,Washington Nationals,Dodger Stadium,Final,Final,R,N
+2025-06-22,777398,Los Angeles Dodgers,119,Washington Nationals,Dodger Stadium,Final,Final,R,N
+2025-07-01,777280,Los Angeles Dodgers,119,Chicago White Sox,Dodger Stadium,Final,Final,R,N
+2025-07-02,777267,Los Angeles Dodgers,119,Chicago White Sox,Dodger Stadium,Final,Final,R,N
+2025-07-03,777253,Los Angeles Dodgers,119,Chicago White Sox,Dodger Stadium,Final,Final,R,N
+2025-07-04,777235,Los Angeles Dodgers,119,Houston Astros,Dodger Stadium,Final,Final,R,N
+2025-07-05,777221,Los Angeles Dodgers,119,Houston Astros,Dodger Stadium,Final,Final,R,N
+2025-07-06,777206,Los Angeles Dodgers,119,Houston Astros,Dodger Stadium,Final,Final,R,N
+2025-07-18,777103,Los Angeles Dodgers,119,Milwaukee Brewers,Dodger Stadium,Final,Final,R,N
+2025-07-19,777085,Los Angeles Dodgers,119,Milwaukee Brewers,Dodger Stadium,Final,Final,R,N
+2025-07-20,777070,Los Angeles Dodgers,119,Milwaukee Brewers,Dodger Stadium,Final,Final,R,N
+2025-07-21,777051,Los Angeles Dodgers,119,Minnesota Twins,Dodger Stadium,Final,Final,R,N
+2025-07-22,777039,Los Angeles Dodgers,119,Minnesota Twins,Dodger Stadium,Final,Final,R,N
+2025-07-23,777022,Los Angeles Dodgers,119,Minnesota Twins,Dodger Stadium,Final,Final,R,N
+2025-08-04,776870,Los Angeles Dodgers,119,St. Louis Cardinals,Dodger Stadium,Final,Final,R,N
+2025-08-05,776858,Los Angeles Dodgers,119,St. Louis Cardinals,Dodger Stadium,Final,Final,R,N
+2025-08-06,776839,Los Angeles Dodgers,119,St. Louis Cardinals,Dodger Stadium,Final,Final,R,N
+2025-08-08,776823,Los Angeles Dodgers,119,Toronto Blue Jays,Dodger Stadium,Final,Final,R,N
+2025-08-09,776808,Los Angeles Dodgers,119,Toronto Blue Jays,Dodger Stadium,Final,Final,R,N
+2025-08-10,776788,Los Angeles Dodgers,119,Toronto Blue Jays,Dodger Stadium,Final,Final,R,N
+2025-08-15,776727,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2025-08-16,776717,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2025-08-17,776697,Los Angeles Dodgers,119,San Diego Padres,Dodger Stadium,Final,Final,R,N
+2025-08-25,776594,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,R,N
+2025-08-26,776574,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,R,N
+2025-08-27,776562,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,R,N
+2025-08-29,776534,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2025-08-30,776523,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2025-08-31,776509,Los Angeles Dodgers,119,Arizona Diamondbacks,Dodger Stadium,Final,Final,R,N
+2025-09-08,776408,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2025-09-09,776389,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2025-09-10,776380,Los Angeles Dodgers,119,Colorado Rockies,Dodger Stadium,Final,Final,R,N
+2025-09-15,776311,Los Angeles Dodgers,119,Philadelphia Phillies,Dodger Stadium,Final,Final,R,N
+2025-09-16,776297,Los Angeles Dodgers,119,Philadelphia Phillies,Dodger Stadium,Final,Final,R,N
+2025-09-17,776280,Los Angeles Dodgers,119,Philadelphia Phillies,Dodger Stadium,Final,Final,R,N
+2025-09-18,776271,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2025-09-19,776256,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2025-09-20,776233,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2025-09-21,776227,Los Angeles Dodgers,119,San Francisco Giants,Dodger Stadium,Final,Final,R,N
+2025-09-30,813069,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,F,N
+2025-10-01,813068,Los Angeles Dodgers,119,Cincinnati Reds,Dodger Stadium,Final,Final,F,N
+2025-10-08,813041,Los Angeles Dodgers,119,Philadelphia Phillies,Dodger Stadium,Final,Final,D,N
+2025-10-09,813042,Los Angeles Dodgers,119,Philadelphia Phillies,Dodger Stadium,Final,Final,D,N
+2025-10-16,813033,Los Angeles Dodgers,119,Milwaukee Brewers,Dodger Stadium,Final,Final,L,N
+2025-10-17,813031,Los Angeles Dodgers,119,Milwaukee Brewers,Dodger Stadium,Final,Final,L,N
+2025-10-27,813032,Los Angeles Dodgers,119,Toronto Blue Jays,Dodger Stadium,Final,Final,W,N
+2025-10-28,813023,Los Angeles Dodgers,119,Toronto Blue Jays,Dodger Stadium,Final,Final,W,N
+2025-10-29,813022,Los Angeles Dodgers,119,Toronto Blue Jays,Dodger Stadium,Final,Final,W,N
+2026-03-23,831821,Los Angeles Dodgers,119,Los Angeles Angels,UNIQLO Field at Dodger Stadium,Final,Final,S,N
+2026-03-24,831820,Los Angeles Dodgers,119,Los Angeles Angels,UNIQLO Field at Dodger Stadium,Final,Final,S,N
+2026-03-26,823974,Los Angeles Dodgers,119,Arizona Diamondbacks,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-03-27,823971,Los Angeles Dodgers,119,Arizona Diamondbacks,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-03-28,823973,Los Angeles Dodgers,119,Arizona Diamondbacks,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-03-30,823972,Los Angeles Dodgers,119,Cleveland Guardians,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-03-31,823969,Los Angeles Dodgers,119,Cleveland Guardians,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-04-01,823970,Los Angeles Dodgers,119,Cleveland Guardians,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-04-10,823968,Los Angeles Dodgers,119,Texas Rangers,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-04-11,823967,Los Angeles Dodgers,119,Texas Rangers,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-04-12,823966,Los Angeles Dodgers,119,Texas Rangers,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-04-13,823964,Los Angeles Dodgers,119,New York Mets,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-04-14,823965,Los Angeles Dodgers,119,New York Mets,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-04-15,823963,Los Angeles Dodgers,119,New York Mets,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-04-24,823962,Los Angeles Dodgers,119,Chicago Cubs,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-04-25,823960,Los Angeles Dodgers,119,Chicago Cubs,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-04-26,823959,Los Angeles Dodgers,119,Chicago Cubs,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-04-27,823961,Los Angeles Dodgers,119,Miami Marlins,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-04-28,823956,Los Angeles Dodgers,119,Miami Marlins,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-04-29,823958,Los Angeles Dodgers,119,Miami Marlins,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-05-08,823957,Los Angeles Dodgers,119,Atlanta Braves,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-05-09,823955,Los Angeles Dodgers,119,Atlanta Braves,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-05-10,823954,Los Angeles Dodgers,119,Atlanta Braves,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-05-11,823953,Los Angeles Dodgers,119,San Francisco Giants,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-05-12,823951,Los Angeles Dodgers,119,San Francisco Giants,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-05-13,823952,Los Angeles Dodgers,119,San Francisco Giants,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-05-14,823950,Los Angeles Dodgers,119,San Francisco Giants,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-05-25,823948,Los Angeles Dodgers,119,Colorado Rockies,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-05-26,823949,Los Angeles Dodgers,119,Colorado Rockies,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-05-27,823947,Los Angeles Dodgers,119,Colorado Rockies,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-05-29,823946,Los Angeles Dodgers,119,Philadelphia Phillies,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-05-30,823945,Los Angeles Dodgers,119,Philadelphia Phillies,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-05-31,823944,Los Angeles Dodgers,119,Philadelphia Phillies,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-06-05,823943,Los Angeles Dodgers,119,Los Angeles Angels,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-06-06,823942,Los Angeles Dodgers,119,Los Angeles Angels,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-06-07,823941,Los Angeles Dodgers,119,Los Angeles Angels,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-06-15,823938,Los Angeles Dodgers,119,Tampa Bay Rays,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-06-16,823939,Los Angeles Dodgers,119,Tampa Bay Rays,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-06-17,823940,Los Angeles Dodgers,119,Tampa Bay Rays,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-06-19,823936,Los Angeles Dodgers,119,Baltimore Orioles,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-06-20,823937,Los Angeles Dodgers,119,Baltimore Orioles,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-06-21,823934,Los Angeles Dodgers,119,Baltimore Orioles,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-07-02,823935,Los Angeles Dodgers,119,San Diego Padres,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-07-03,823933,Los Angeles Dodgers,119,San Diego Padres,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-07-04,823932,Los Angeles Dodgers,119,San Diego Padres,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-07-05,823931,Los Angeles Dodgers,119,San Diego Padres,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-07-06,823930,Los Angeles Dodgers,119,Colorado Rockies,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-07-07,823929,Los Angeles Dodgers,119,Colorado Rockies,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-07-08,823928,Los Angeles Dodgers,119,Colorado Rockies,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-07-10,823927,Los Angeles Dodgers,119,Arizona Diamondbacks,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-07-11,823926,Los Angeles Dodgers,119,Arizona Diamondbacks,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-07-12,823925,Los Angeles Dodgers,119,Arizona Diamondbacks,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-07-28,823923,Los Angeles Dodgers,119,Seattle Mariners,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-07-29,823924,Los Angeles Dodgers,119,Seattle Mariners,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-07-30,823921,Los Angeles Dodgers,119,Seattle Mariners,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-07-31,823922,Los Angeles Dodgers,119,Boston Red Sox,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-08-01,823920,Los Angeles Dodgers,119,Boston Red Sox,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-08-02,823919,Los Angeles Dodgers,119,Boston Red Sox,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-08-10,823918,Los Angeles Dodgers,119,Kansas City Royals,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-08-11,823917,Los Angeles Dodgers,119,Kansas City Royals,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-08-12,823916,Los Angeles Dodgers,119,Kansas City Royals,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-08-13,823915,Los Angeles Dodgers,119,Milwaukee Brewers,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-08-14,823913,Los Angeles Dodgers,119,Milwaukee Brewers,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-08-15,823914,Los Angeles Dodgers,119,Milwaukee Brewers,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-08-16,823912,Los Angeles Dodgers,119,Milwaukee Brewers,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-08-21,823911,Los Angeles Dodgers,119,Pittsburgh Pirates,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-08-22,823910,Los Angeles Dodgers,119,Pittsburgh Pirates,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-08-23,823909,Los Angeles Dodgers,119,Pittsburgh Pirates,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-09-01,823908,Los Angeles Dodgers,119,St. Louis Cardinals,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-09-02,823906,Los Angeles Dodgers,119,St. Louis Cardinals,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-09-03,823907,Los Angeles Dodgers,119,St. Louis Cardinals,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-09-04,823905,Los Angeles Dodgers,119,Washington Nationals,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-09-05,823904,Los Angeles Dodgers,119,Washington Nationals,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-09-06,823903,Los Angeles Dodgers,119,Washington Nationals,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-09-07,823902,Los Angeles Dodgers,119,Cincinnati Reds,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-09-08,823901,Los Angeles Dodgers,119,Cincinnati Reds,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-09-09,823900,Los Angeles Dodgers,119,Cincinnati Reds,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-09-18,823898,Los Angeles Dodgers,119,San Francisco Giants,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-09-19,823899,Los Angeles Dodgers,119,San Francisco Giants,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-09-20,823896,Los Angeles Dodgers,119,San Francisco Giants,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-09-22,823897,Los Angeles Dodgers,119,San Diego Padres,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-09-23,823894,Los Angeles Dodgers,119,San Diego Padres,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-09-24,823895,Los Angeles Dodgers,119,San Diego Padres,UNIQLO Field at Dodger Stadium,Final,Final,R,N
+2026-10-03,849828,Los Angeles Dodgers,119,Atlanta Braves,UNIQLO Field at Dodger Stadium,Final,Final,D,N
+2026-10-04,849823,Los Angeles Dodgers,119,Atlanta Braves,UNIQLO Field at Dodger Stadium,Final,Final,D,N
+2026-10-14,849811,Los Angeles Dodgers,119,Milwaukee Brewers,UNIQLO Field at Dodger Stadium,Preview,Scheduled,L,N
+2026-10-15,849810,Los Angeles Dodgers,119,Milwaukee Brewers,UNIQLO Field at Dodger Stadium,Preview,Scheduled,L,N
+2026-10-16,849808,Los Angeles Dodgers,119,Milwaukee Brewers,UNIQLO Field at Dodger Stadium,Preview,Scheduled,L,N

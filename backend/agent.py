@@ -104,7 +104,7 @@ _DECLARATIONS = [
     },
     {
         "name": "forecast",
-        "description": "Multiplier for one recorded condition: wet_day, hot_day, or is_permit_event_day. The interval is a range for that multiplier, not a future daily count. The Games are refused. A horizon outside 1 to 90 days is rejected rather than clipped. There is no code interpreter.",
+        "description": "Multiplier for one recorded condition: wet_day, hot_day, or is_permit_event_day. The interval is a range for that multiplier, not a future daily count. An Olympic Games scenario is refused. A Dodger home-game comparison is a past record, not this multiplier. A horizon outside 1 to 90 days is rejected rather than clipped. There is no code interpreter.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -145,7 +145,7 @@ _DECLARATIONS = [
     },
     {
         "name": "explain_page",
-        "description": "The 2020-present headline for one venue. Use this for how many incidents, density, the top offense groups, weekdays, hours, months, permits, the nearest station, and what a page label means. Pass the venue name. Topics: overview, density, categories, weekday, hours, months, weather, permits, transit, care, source. Hours are 2020–2024 only, and 12:00 is often an unknown hour. Weapons is its own offense group, not a flag on other offenses. Topic overview is the incident count.",
+        "description": "The 2020-present headline for one venue. Use this for how many incidents, density, the top offense groups, weekdays, hours, months, permits, Dodger home games, the nearest station, and what a page label means. Pass the venue name. Topics: overview, density, categories, weekday, hours, months, weather, permits, home games, transit, care, source. Home games are the past Dodger comparison, not permit days and not a forecast. Hours are 2020–2024 only, and 12:00 is often an unknown hour. Weapons is its own offense group, not a flag on other offenses. Topic overview is the incident count.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -228,7 +228,9 @@ _SYSTEM = (
     "If the requested combination is not in the record, say what is missing in one or two sentences and stop. "
     "Do not describe a partial result you did not calculate. "
     "forecast returns a multiplier for one recorded condition. Its interval is not a future daily count, "
-    "and the Games are refused. Do not present that multiplier as a forecast. There is no code interpreter. "
+    "and an Olympic Games scenario is refused. Do not present that multiplier as a forecast. There is no code interpreter. "
+    "A Dodger home-game or game-day question is the past home-game comparison through the last crime day. "
+    "It is not a forecast and not the permit-day comparison. "
     "Venue ids are in the question payload. The venue key is venue_id. Do not invent an id. "
     "Do not invent a cause. A follow-up may name a different venue or drop the venue. Answer the new question. "
     "If the question says to answer the previous question for one venue, call the tool for that venue. "
@@ -426,9 +428,14 @@ _SOCIETY_ASK = re.compile(r"\b(narcotics|drugs|weapon|weapons|society)\b", re.IG
 _STOP_ASK = re.compile(r"\b(stations?|stops?|transit)\b", re.IGNORECASE)
 
 
+_HOME_GAME_ASK = re.compile(r"\b(home[\s-]?games?|game days?)\b", re.IGNORECASE)
+
+
 def recorded_slice_reply(message: str, venue_id: str | None = None) -> dict | None:
-    """Rail, night, and wording questions. These do not need a selected venue."""
+    """Rail, night, wording, and Dodger home-game questions. These do not need a selected venue."""
     text = str(message or "")
+    if _HOME_GAME_ASK.search(text):
+        return _home_game_reply(text, venue_id)
     if _SAFE_WALK.search(text) and re.search(r"\b(walk|famil|station|stadium|night)\b", text, re.IGNORECASE):
         return _walk_reply(text, venue_id)
     if re.search(r"\bdisruptions?\b", text, re.IGNORECASE) or (
@@ -440,6 +447,32 @@ def recorded_slice_reply(message: str, venue_id: str | None = None) -> dict | No
     if _SCAM_ASK.search(text) and _LINE_ASK.search(text):
         return _wording_reply()
     return None
+
+
+def _home_game_reply(message: str, venue_id: str | None) -> dict:
+    from backend.venues import home_game_comparison
+
+    named = _venue_in_text(message)
+    chosen = named or venue_id
+    if chosen and chosen != "V01":
+        return _short("A home-game comparison is published for Dodger Stadium only.", "page")
+    games = home_game_comparison("V01") or {}
+    summary = games.get("summary") or {}
+    if not games.get("available") or not summary.get("event_day_count"):
+        return _short("A home-game comparison is published for Dodger Stadium only.", "page")
+    difference = float(summary["absolute_difference"])
+    gap = f"{difference:+.2f}/day"
+    if summary.get("percent_shown") and summary.get("lift_pct") is not None:
+        gap += f" · {float(summary['lift_pct']):+.1f}%"
+    through = games.get("through_label") or "the last crime day"
+    return _short(
+        f"At Dodger Stadium, home games average {float(summary['event_day_mean']):.2f} records a day "
+        f"and other March–October days average {float(summary['other_day_mean']):.2f}, "
+        f"from {int(summary['event_day_count']):,} game days through {through}: {gap}. "
+        "Police reports through March 6, 2024, then NIBRS offenses. "
+        "This is a past comparison, not a forecast.",
+        "page",
+    )
 
 
 def _wording_reply() -> dict:

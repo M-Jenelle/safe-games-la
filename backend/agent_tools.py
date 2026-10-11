@@ -703,11 +703,18 @@ def _permit_entries(detail: dict | None) -> list[dict]:
 
         games = home_game_comparison(detail["venue_id"]) or {}
         game_summary = games.get("summary") or {}
+        through = games.get("through_label") or "the last crime day"
         entries.append(_entry(
             "Home games",
             game_summary.get("lift_pct"),
-            f"Home-game days versus other days in those months. Mean on game days {game_summary.get('event_day_mean')}.",
-            games.get("disclaimer") or "MLB home games at this venue. Not the permit table.",
+            (
+                f"Home games average {game_summary.get('event_day_mean')} records a day "
+                f"and other March–October days average {game_summary.get('other_day_mean')}, "
+                f"from {game_summary.get('event_day_count')} game days through {through}. "
+                "Police reports through March 6, 2024, then NIBRS offenses. "
+                "Past comparison, not a forecast and not the permit table."
+            ),
+            games.get("note") or "MLB home games at Dodger Stadium.",
         ))
     return entries
 

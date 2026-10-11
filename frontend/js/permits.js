@@ -99,51 +99,6 @@ function permitLoadTable(rows, unit) {
   ]);
 }
 
-function formatClock(value) {
-  if (!value) return "Not listed";
-  const [hourText, minuteText] = value.split(":");
-  let hour = Number(hourText);
-  const minute = minuteText || "00";
-  const suffix = hour >= 12 ? "pm" : "am";
-  hour = hour % 12 || 12;
-  const minutes = minute === "00" ? "00" : minute;
-  return `${hour}:${minutes} ${suffix}`;
-}
-
-function todayIso() {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
-}
-
-function listingMonthTable(months, selected, onPick) {
-  const peak = months.reduce((best, month) => Math.max(best, month.count), 0);
-  return el("div", { className: "month-table-wrap" }, [
-    el("table", { className: "month-table listing-months" }, [
-      el("thead", {}, [el("tr", {}, ["Month", "Listings"].map((label) => el("th", {}, [withInfo(label)])))]),
-      el("tbody", {}, months.map((month) => {
-        const pressed = month.month === selected;
-        const row = el("tr", { className: [
-          month.count && month.count === peak ? "is-overall" : "",
-          pressed ? "is-selected" : "",
-        ].filter(Boolean).join(" ") }, [
-          el("th", { scope: "row" }, [
-            el("button", {
-              type: "button",
-              className: "listing-month",
-              "aria-pressed": pressed ? "true" : "false",
-            }, [text(month.label)]),
-          ]),
-          el("td", {}, [text(formatNumber(month.count))]),
-        ]);
-        row.addEventListener("click", () => onPick(month.month));
-        return row;
-      })),
-    ]),
-  ]);
-}
-
 function sectionClass(boxed, extra) {
   return [extra, boxed ? "crime-unit" : ""].filter(Boolean).join(" ");
 }
@@ -155,92 +110,6 @@ function loadAccordion(title, children) {
     ...children,
   );
   return details;
-}
-
-function listingEventTable(events) {
-  const columns = [
-    { label: "Date", className: "" },
-    { label: "Event", className: "event-names" },
-    { label: "Start", className: "" },
-    { label: "Tickets", className: "" },
-  ];
-  return el("div", { className: "month-table-wrap" }, [
-    el("table", { className: "month-table listing-events" }, [
-      el("thead", {}, [el("tr", {}, columns.map((column) => (
-        el("th", column.className ? { className: column.className } : {}, [withInfo(column.label)])
-      )))]),
-      el("tbody", {}, events.map((event) => el("tr", {}, [
-        el("th", { scope: "row" }, [text(formatPermitSpan(event.date, event.date))]),
-        el("td", { className: "event-names" }, [text(event.name)]),
-        el("td", {}, [text(formatClock(event.start_time))]),
-        el("td", {}, [text(event.on_sale ? "On sale" : "Not on sale yet")]),
-      ]))),
-    ]),
-  ]);
-}
-
-export function mountListingSection(block, host, boxed) {
-  if (!block || !(block.events || []).length) {
-    host.replaceChildren();
-    return;
-  }
-  let monthsExpanded = false;
-  let selectedMonth = "";
-  const months = block.months || [];
-  const events = block.events || [];
-  const monthHost = el("div", { className: "listing-pane listing-pane-months" });
-  const eventHost = el("div", { className: "listing-pane listing-pane-events" });
-
-  function upcomingMonths() {
-    const start = todayIso().slice(0, 7);
-    const later = months.filter((month) => month.month >= start);
-    return later.length ? later : months;
-  }
-
-  function paint() {
-    const laterMonths = upcomingMonths();
-    const shownMonths = monthsExpanded ? months : laterMonths.slice(0, 3);
-    const monthToggle = el("button", { className: "show-more", type: "button" }, [
-      text(monthsExpanded ? "Show less" : "Show more"),
-    ]);
-    monthToggle.hidden = months.length <= shownMonths.length && !monthsExpanded;
-    monthToggle.addEventListener("click", () => {
-      monthsExpanded = !monthsExpanded;
-      paint();
-    });
-
-    const selected = months.find((month) => month.month === selectedMonth);
-    const monthEvents = selected
-      ? events.filter((event) => event.date.slice(0, 7) === selectedMonth)
-      : [];
-    monthHost.replaceChildren(
-      listingMonthTable(shownMonths, selectedMonth, (key) => {
-        selectedMonth = selectedMonth === key ? "" : key;
-        paint();
-      }),
-      monthToggle,
-    );
-    eventHost.hidden = !selected;
-    eventHost.replaceChildren(
-      ...(selected ? [
-        el("p", { className: "listing-caption" }, [text(selected.label)]),
-        monthEvents.length
-          ? listingEventTable(monthEvents)
-          : el("p", { className: "muted" }, [text("No listings in this month.")]),
-      ] : []),
-    );
-  }
-
-  paint();
-  host.replaceChildren(el("section", {
-    className: sectionClass(boxed, "permit-section listing-section"),
-    "aria-label": "Listed Events",
-  }, [
-    el("h3", { className: "section-title" }, [withInfo("Listed Events")]),
-    el("p", { className: "muted" }, [text(block.note || "")]),
-    el("p", { className: "muted" }, [text("Click a month to see its events. Click it again to clear.")]),
-    el("div", { className: "listing-split" }, [monthHost, eventHost]),
-  ]));
 }
 
 export function mountPermitSection(venueId, host, source, boxed) {
@@ -327,22 +196,25 @@ export function mountPermitSection(venueId, host, source, boxed) {
   refresh();
 }
 
-function gameTable(summary) {
+function gameRow(label, summary) {
+  return el("tr", { className: "is-overall" }, [
+    el("th", { scope: "row" }, [withInfo(label)]),
+    el("td", {}, [text(formatNumber(summary.event_day_count))]),
+    el("td", {}, [text(formatNumber(summary.other_day_count))]),
+    el("td", {}, [text(formatMean(summary.event_day_mean))]),
+    el("td", {}, [text(formatMean(summary.other_day_mean))]),
+    el("td", {}, [text(`${formatMedian(summary.event_day_median)} vs ${formatMedian(summary.other_day_median)}`)]),
+    el("td", {}, [text(formatGap(summary))]),
+  ]);
+}
+
+function gameTable(summary, label) {
   const labels = ["", "Game Days", "Other Days in Season", "Game-Day Mean", "Other-Day Mean in Season", "Median", "Difference"];
+  const rows = [gameRow(label || "2020–2026", summary)];
   return el("div", { className: "month-table-wrap" }, [
     el("table", { className: "month-table permit-table" }, [
       el("thead", {}, [el("tr", {}, labels.map((label) => el("th", {}, [withInfo(label)])))]),
-      el("tbody", {}, [
-        el("tr", { className: "is-overall" }, [
-          el("th", { scope: "row" }, [withInfo("2020–2024")]),
-          el("td", {}, [text(formatNumber(summary.event_day_count))]),
-          el("td", {}, [text(formatNumber(summary.other_day_count))]),
-          el("td", {}, [text(formatMean(summary.event_day_mean))]),
-          el("td", {}, [text(formatMean(summary.other_day_mean))]),
-          el("td", {}, [text(`${formatMedian(summary.event_day_median)} vs ${formatMedian(summary.other_day_median)}`)]),
-          el("td", {}, [text(formatGap(summary))]),
-        ]),
-      ]),
+      el("tbody", {}, rows),
     ]),
   ]);
 }
@@ -361,7 +233,7 @@ export function mountHomeGames(host, venueId, boxed) {
     }, [
       el("h3", { className: "section-title" }, [withInfo("Home Games vs Other Days")]),
       el("p", { className: "muted" }, [text(body.note || "")]),
-      gameTable(body.summary),
+      gameTable(body.summary, body.period_label),
       groups.length
         ? el("h3", { className: "section-title" }, [withInfo("Game-Day Groups")])
         : el("span"),
