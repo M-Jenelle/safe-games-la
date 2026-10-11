@@ -2,7 +2,7 @@ import { categoryRows, filledMonths, monthChart, monthTable, mountDistanceSectio
 import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, monthTitle, text } from "./dom.js";
 import { renderMap } from "./map.js";
 import { closeVenuePage, openVenuePage, renderChatContext, venueToolbar } from "./nav.js";
-import { mountHomeGames, mountPermitSection } from "./permits.js?v=listings";
+import { mountHomeGames, mountPermitSection } from "./permits.js?v=weekday";
 import { mountWeatherSection } from "./weather.js";
 import { renderRoster } from "./roster.js";
 import { FLAG_LABELS, HIDDEN_FLAGS, detail, overview, requests, state, zoneFilter } from "./state.js";

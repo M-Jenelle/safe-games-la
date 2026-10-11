@@ -693,7 +693,7 @@ def _permit_entries(detail: dict | None) -> list[dict]:
         summary.get("lift_pct"),
         (
             f"{body.get('intro') or PERMIT_INTRO} "
-            f"Permit days average {summary.get('event_day_mean')} and other days in those months "
+            f"Permit days average {summary.get('event_day_mean')} and other days of the same weekday "
             f"average {summary.get('other_day_mean')}, from {summary.get('event_day_count')} permit days."
         ),
         body.get("source_note") or body.get("disclaimer") or "The page's permit table. A fresh query is a different calculation.",
@@ -709,7 +709,7 @@ def _permit_entries(detail: dict | None) -> list[dict]:
             game_summary.get("lift_pct"),
             (
                 f"Home games average {game_summary.get('event_day_mean')} records a day "
-                f"and other March–October days average {game_summary.get('other_day_mean')}, "
+                f"and other days of the same weekday average {game_summary.get('other_day_mean')}, "
                 f"from {game_summary.get('event_day_count')} game days through {through}. "
                 "Police reports through March 6, 2024, then NIBRS offenses. "
                 "Past comparison, not a forecast and not the permit table."

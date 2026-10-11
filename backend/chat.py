@@ -2912,7 +2912,7 @@ def _permit_weekend_sentence(rows: list[dict]) -> str:
         mix = f"Permit days fall more often on weekends ({permit_share}% of permit days, {other_share}% of other days)."
     else:
         mix = f"Permit days are {permit_share}% weekend, and other days are {other_share}% weekend."
-    return f"{mix} This comparison does not hold day of week fixed."
+    return f"{mix} The comparison holds the weekday fixed."
 
 
 def _home_weekend_sentence(rows: list[dict]) -> str:
@@ -2932,7 +2932,7 @@ def _home_weekend_sentence(rows: list[dict]) -> str:
         mix = f"Home games fall more often on weekends ({game_share}% of game days, {other_share}% of other days in those months)."
     else:
         mix = f"Home games are {game_share}% weekend, and other days in those months are {other_share}% weekend."
-    return f"{mix} This comparison does not hold day of week fixed."
+    return f"{mix} The comparison holds the weekday fixed."
 
 
 def _gap_phrase(summary: dict) -> str:

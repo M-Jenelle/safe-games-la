@@ -224,7 +224,7 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(permit_answer["question_type"], "event_lift")
         self.assertIn(f"{float(permit['lift_pct']):+.1f}%", permit_answer["answer"])
         self.assertIn("fall more often on weekends", permit_answer["answer"])
-        self.assertIn("does not hold day of week fixed", permit_answer["answer"])
+        self.assertIn("holds the weekday fixed", permit_answer["answer"])
         self.assertIn("not a forecast", permit_answer["answer"])
         self.assertNotIn(f"{float(home['lift_pct']):+.1f}%", permit_answer["answer"])
 
@@ -239,7 +239,7 @@ class ChatTests(unittest.TestCase):
 
         park = self.post("What is the event-day lift near Peacock Theater?")
         self.assertIn(f"{float(peacock['lift_pct']):+.1f}%", park["answer"])
-        self.assertIn("does not hold day of week fixed", park["answer"])
+        self.assertIn("holds the weekday fixed", park["answer"])
         self.assertNotIn("home games", park["answer"].lower())
 
         self.assertNotIn("permit days are compared", games["answer"].lower())

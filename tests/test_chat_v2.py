@@ -423,8 +423,13 @@ class ChatV2NextTests(ChatV2Tests):
             self.assertTrue(body["confidence"]["text"].startswith("No clear difference."))
 
     def test_permit_confidence_is_the_model_range(self):
+        from backend.store import permit_comparison
+
+        summary = permit_comparison("V04")["summary"]
         body = answer_v2("How do permit days compare near Peacock Theater?")
-        self.assertIn("19.5", body["answer"])
+        self.assertIn(f"{float(summary['lift_pct']):+.1f}%", body["answer"])
+        self.assertNotEqual(summary["lift_pct"], 19.5)
+        self.assertTrue(summary["weekday_adjusted"])
         interval = body["confidence"]["intervals"][0]
         self.assertEqual(interval["label"], "Permit days")
         self.assertLessEqual(interval["low"], interval["multiplier"])

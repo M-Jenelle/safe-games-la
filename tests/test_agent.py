@@ -186,16 +186,22 @@ class AgentToolTests(unittest.TestCase):
 
     def test_home_game_questions_use_the_page_comparison(self):
         question = "How do home games compare with other days near Dodger Stadium?"
+        from backend.event_baseline import combined_home_rows, weekday_standardized
+
+        adjusted = weekday_standardized(combined_home_rows(), "is_home_game")
         answer = brief_reply(question, "V01")["answer"]
-        self.assertIn("1.36", answer)
-        self.assertIn("0.36", answer)
-        self.assertIn("+274.1%", answer)
+        self.assertIn(f"{adjusted['event_day_mean']:.2f}", answer)
+        self.assertIn(f"{adjusted['other_day_mean']:.2f}", answer)
+        self.assertIn(f"{adjusted['lift_pct']:+.1f}%", answer)
+        self.assertIn("same weekday", answer)
+        self.assertNotIn("+274.1%", answer)
         self.assertIn("September 19, 2026", answer)
         self.assertIn("not a forecast", answer)
         self.assertNotIn("permit", answer.lower())
 
         later = brief_reply("What is the home-game difference at Dodger Stadium for 2025 and 2026?", "V01")
-        self.assertIn("+274.1%", later["answer"])
+        self.assertIn(f"{adjusted['lift_pct']:+.1f}%", later["answer"])
+        self.assertNotIn("+274.1%", later["answer"])
         self.assertNotIn("cannot provide a forecast", later["answer"].lower())
 
         other = brief_reply("How do home games compare near the Coliseum?", "V05")
@@ -205,7 +211,8 @@ class AgentToolTests(unittest.TestCase):
              patch("backend.agent._agent_events") as agent:
             event = next(item for item in answer_events(question, "V01") if item["event"] == "template")
         agent.assert_not_called()
-        self.assertIn("+274.1%", event["answer"])
+        self.assertIn(f"{adjusted['lift_pct']:+.1f}%", event["answer"])
+        self.assertIn("same weekday", event["answer"])
 
     def test_a_tool_explanation_is_rewritten_for_the_reader(self):
         question = (
@@ -414,6 +421,22 @@ class AgentToolTests(unittest.TestCase):
         self.assertIn("times a dry day", template["answer"])
         self.assertIn("no Olympic precedent", template["answer"])
         self.assertNotIn("python", template["answer"].lower())
+
+    def test_demo_questions_are_answered_without_the_model(self):
+        weekday = next(event for event in answer_events("Which day of the week is busiest near the Coliseum?") if event["event"] == "template")
+        self.assertIn("Saturday", weekday["answer"])
+        self.assertNotIn("model is not available", weekday["answer"])
+        rose = next(event for event in answer_events("Which crimes rose the most near Peacock Theater?") if event["event"] == "template")
+        self.assertIn("Theft", rose["answer"])
+        self.assertIn("2020", rose["answer"])
+        station = next(event for event in answer_events("Where is the nearest Metro station to Peacock Theater?") if event["event"] == "template")
+        self.assertIn("Pico Station", station["answer"])
+        self.assertNotIn("alert", station["answer"].lower())
+        fire = next(event for event in answer_events("What is the nearest fire station to Dodger Stadium?") if event["event"] == "template")
+        self.assertIn("Fire Station 1", fire["answer"])
+        compared = next(event for event in answer_events("Compare crime near Peacock Theater and Dodger Stadium.") if event["event"] == "template")
+        self.assertIn("18,537", compared["answer"])
+        self.assertIn("1,418", compared["answer"])
 
     def test_a_count_streams_status_before_the_answer(self):
         events = list(answer_events("How many incidents were reported near Dodger Stadium?"))

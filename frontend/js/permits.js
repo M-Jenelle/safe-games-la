@@ -45,14 +45,13 @@ function headingLabel(label) {
 }
 
 function permitTable(rows) {
-  const labels = ["", "Permit Days", "Other Days", "Permit-Day Mean", "Other-Day Mean", "Median", "Difference"];
+  const labels = ["", "Permit Days", "Other Days", "Permit-Day Mean", "Other-Day Mean", "Difference"];
   const bodyRows = rows.map((row, index) => el("tr", { className: index === 0 ? "is-overall" : "" }, [
     el("th", { scope: "row" }, [withInfo(headingLabel(row.label))]),
     el("td", {}, [text(formatNumber(row.event_day_count))]),
     el("td", {}, [text(formatNumber(row.other_day_count))]),
     el("td", {}, [text(formatMean(row.event_day_mean))]),
     el("td", {}, [text(formatMean(row.other_day_mean))]),
-    el("td", {}, [text(`${formatMedian(row.event_day_median)} vs ${formatMedian(row.other_day_median)}`)]),
     el("td", {}, [text(formatGap(row))]),
   ]));
   return el("div", { className: "month-table-wrap" }, [
@@ -203,13 +202,12 @@ function gameRow(label, summary) {
     el("td", {}, [text(formatNumber(summary.other_day_count))]),
     el("td", {}, [text(formatMean(summary.event_day_mean))]),
     el("td", {}, [text(formatMean(summary.other_day_mean))]),
-    el("td", {}, [text(`${formatMedian(summary.event_day_median)} vs ${formatMedian(summary.other_day_median)}`)]),
     el("td", {}, [text(formatGap(summary))]),
   ]);
 }
 
 function gameTable(summary, label) {
-  const labels = ["", "Game Days", "Other Days in Season", "Game-Day Mean", "Other-Day Mean in Season", "Median", "Difference"];
+  const labels = ["", "Game Days", "Other Days in Season", "Game-Day Mean", "Other-Day Mean in Season", "Difference"];
   const rows = [gameRow(label || "2020–2026", summary)];
   return el("div", { className: "month-table-wrap" }, [
     el("table", { className: "month-table permit-table" }, [

@@ -355,7 +355,7 @@ _LIVE_WEATHER = re.compile(
     r"\b(right now|currently|weather now|raining now|is it raining|temperature now|current weather)\b",
     re.IGNORECASE,
 )
-_METRO_ASK = re.compile(r"\b(metro|service alerts?|advisories)\b", re.IGNORECASE)
+_METRO_ASK = re.compile(r"\b(service alerts?|advisories|metro alerts?)\b", re.IGNORECASE)
 _CITY_ASK = re.compile(r"\b(citywide|the city|los angeles)\b", re.IGNORECASE)
 _COUNT_ASK = re.compile(r"\b(how many|number of|headline number|incidents?|records)\b", re.IGNORECASE)
 _WEEKDAY_ASK = re.compile(r"\b(weekdays?|weekends?|day of week|busiest day)\b", re.IGNORECASE)
@@ -467,7 +467,7 @@ def _home_game_reply(message: str, venue_id: str | None) -> dict:
     through = games.get("through_label") or "the last crime day"
     return _short(
         f"At Dodger Stadium, home games average {float(summary['event_day_mean']):.2f} records a day "
-        f"and other March–October days average {float(summary['other_day_mean']):.2f}, "
+        f"and other days of the same weekday average {float(summary['other_day_mean']):.2f}, "
         f"from {int(summary['event_day_count']):,} game days through {through}: {gap}. "
         "Police reports through March 6, 2024, then NIBRS offenses. "
         "This is a past comparison, not a forecast.",
@@ -834,6 +834,18 @@ def _for_reader(message: str, answer: str) -> str:
     )
 
 
+def _pattern_fallback(message: str, venue_id: str | None, history: list[dict] | None) -> dict | None:
+    """The table-backed answers. Used only when Gemini is not available."""
+    from backend.chat_v2 import answer_v2
+
+    body = answer_v2(message, venue_id, history, narrate=False, allow_model=False)
+    if body.get("status") != "answered":
+        return None
+    if "Open the matching section" in str(body.get("answer") or ""):
+        return None
+    return body
+
+
 def answer_events(message: str, venue_id: str | None = None, history: list[dict] | None = None):
     """The model picks a tool and writes the sentence. Fixed sentences run only if the model is down."""
     yield {"event": "status", "text": "Looking that up…"}
@@ -852,6 +864,8 @@ def answer_events(message: str, venue_id: str | None = None, history: list[dict]
         except ClaudeUnavailable:
             yield {"event": "clear"}
     short = brief_reply(message, venue_id)
+    if short is None:
+        short = _pattern_fallback(message, venue_id, history)
     if short is None:
         short = _short(
             "The model is not available for that. Ask for a count, the city comparison, weekdays, current weather, or a Metro alert, and name a venue.",

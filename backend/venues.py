@@ -15,19 +15,20 @@ from pipeline.city_baseline import compared_with_city
 from pipeline.crime_groups import GROUP_LABELS, crime_group
 from pipeline.permit_event_days import (
     GROUP_IDS,
-    MATERIAL_DAILY_DIFFERENCE,
     MIN_EVENT_DAYS_FOR_PERCENT,
-    OTHER_DAY_MEAN_FOR_PERCENT,
     collapse_upcoming,
     comparison_view,
     filter_permit_rows,
 )
 from backend.event_baseline import (
+    apply_weekday,
     combined_home_rows,
     combined_home_summary,
     describe_baseline,
     future_home_game_dates,
+    home_game_group_rows,
     home_game_rows,
+    weekday_group_table,
 )
 from backend.briefing import (
     PERMIT_INTRO,
@@ -565,6 +566,14 @@ def permit_comparison(venue_id: str, year: str = "all", month: str = "all", sour
     filtered = filter_permit_rows(rows, year, month)
     if filtered and int((view.get("summary") or {}).get("event_day_count") or 0):
         view["baseline"] = describe_baseline(filtered, "is_permit_event_day", "permit", unit=unit)
+    view["summary"] = apply_weekday(view.get("summary") or {}, filtered, "is_permit_event_day")
+    view["series"] = [
+        apply_weekday(item, filter_permit_rows(rows, item.get("year") or "all", month), "is_permit_event_day")
+        for item in view.get("series") or []
+    ]
+    if int(view["summary"].get("event_day_count") or 0) >= MIN_EVENT_DAYS_FOR_PERCENT and filtered and GROUP_IDS[0] in filtered[0]:
+        view["groups"] = weekday_group_table(filtered, "is_permit_event_day")
+    view["permit_load"] = _weekday_permit_load(view.get("permit_load") or [], filtered)
     view["intro"] = PERMIT_INTRO
     view["load_intro"] = PERMIT_LOAD_INTRO
     view["group_gap_note"] = group_gap_note(unit)
@@ -576,6 +585,47 @@ def permit_comparison(venue_id: str, year: str = "all", month: str = "all", sour
     else:
         view["upcoming"] = load_permit_upcoming().get(venue_id) or []
     return view
+
+def _weekday_permit_load(load_rows: list[dict], day_rows: list[dict]) -> list[dict]:
+    """Compare one-permit and several-permit days with other days of the same weekday."""
+    if not load_rows or not day_rows or "permit_count" not in day_rows[0]:
+        return load_rows
+    flagged = []
+    for row in day_rows:
+        event = int(row.get("is_permit_event_day") or 0)
+        permits = int(float(row.get("permit_count") or 0))
+        flagged.append({
+            **row,
+            "is_one_permit": int(event and permits <= 1),
+            "is_several_permits": int(event and permits >= 2),
+        })
+    fields = {"One permit": "is_one_permit", "Several permits": "is_several_permits"}
+    adjusted = []
+    changed = False
+    for item in load_rows:
+        field = fields.get(str(item.get("label") or ""))
+        if not field:
+            adjusted.append(item)
+            continue
+        overlay = apply_weekday(item, flagged, field)
+        if not overlay.get("weekday_adjusted"):
+            adjusted.append(item)
+            continue
+        changed = True
+        adjusted.append({
+            **item,
+            "mean": overlay["event_day_mean"],
+            "absolute_difference": overlay["absolute_difference"],
+            "lift_pct": overlay["lift_pct"],
+            "percent_shown": overlay["percent_shown"],
+        })
+    if changed:
+        adjusted = [
+            {**item, "mean": None, "median": None} if item.get("label") == "Other days" else item
+            for item in adjusted
+        ]
+    return adjusted
+
 
 def _game_public(block: dict) -> dict:
     """Same percent rule as the permit table: enough days, a real gap, and a test that clears."""
@@ -600,10 +650,10 @@ def _game_public(block: dict) -> dict:
     }
 
 def home_game_comparison(venue_id: str) -> dict | None:
-    """Dodger regular-season home games versus other days in those months.
+    """Dodger regular-season home games versus other days of the same weekday.
 
     The per-listing lift in the file is not returned. None when the venue id
-    is unknown.
+    is unknown. ``published`` keeps the unadjusted file comparison.
     """
     match = next((venue for venue in load_summary()["venues"] if venue["venue_id"] == venue_id), None)
     if match is None:
@@ -613,30 +663,23 @@ def home_game_comparison(venue_id: str) -> dict | None:
     if payload is None or meta_block.get("venue_id") != venue_id:
         return {"available": False, "venue_id": venue_id, "venue_name": match["venue_name"]}
     published = _game_public(payload["lift"])
-    groups = []
-    for group in payload.get("by_category") or []:
-        if not group.get("significant"):
-            continue
-        if abs(float(group["absolute_difference"])) < MATERIAL_DAILY_DIFFERENCE:
-            continue
-        public = _game_public(group)
-        if public["percent_shown"] and float(group["non_game_day_mean"]) < OTHER_DAY_MEAN_FOR_PERCENT:
-            public = {**public, "percent_shown": False, "lift_pct": None}
-        groups.append({"group": group["group"], "label": group["label"], **public})
-    groups.sort(key=lambda item: abs(item["absolute_difference"]), reverse=True)
     combined = combined_home_summary()
     summary = (combined or {}).get("summary") or published
+    daily_rows = combined_home_rows() if combined else home_game_rows()
+    summary = apply_weekday(summary, daily_rows, "is_home_game")
+    groups = weekday_group_table(home_game_group_rows(), "is_home_game")
     label = (combined or {}).get("label") or "2020–2024"
     through = (combined or {}).get("through_label") or "2024"
     if combined:
         note = (
-            f"Completed Dodgers regular-season home games versus other March–October days, 2020 through {through}. "
+            f"Completed Dodgers regular-season home games versus other March–October days of the same weekday, "
+            f"2020 through {through}. "
             "Police reports through March 6, 2024; NIBRS offenses from March 7, 2024. "
             "Games after that day are left out."
         )
         disclaimer = (
             "800 m buffer. One offense is not one report.\n"
-            "2020 games had little or no crowd. Group bars are 2020–2024 reports.\n"
+            "2020 games had little or no crowd. Group bars are 2020–2024 reports, with the weekday held fixed.\n"
             "A large percentage can be less than one extra record a day.\n"
             "This is a past comparison, not a forecast."
         )
@@ -644,7 +687,7 @@ def home_game_comparison(venue_id: str) -> dict | None:
     else:
         note = (
             "A game day is a completed Dodgers regular-season home game. "
-            "Other days are the rest of March through October in 2020–2024."
+            "Other days are other March–October days of the same weekday in 2020–2024."
         )
         disclaimer = (
             "Uses completed regular-season home games, 2020-2024, inside the 800 m buffer.\n"
