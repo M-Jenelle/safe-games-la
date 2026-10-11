@@ -22,7 +22,7 @@ The hosted briefing is on Google Cloud Run:
 
 [https://safe-games-la-dbev6ehrka-uw.a.run.app](https://safe-games-la-dbev6ehrka-uw.a.run.app)
 
-Open that address and sign in with a Google account on **kaygen.com**. The sign-in is required before the map loads. Accounts outside that domain are not granted access. The same briefing can be run locally, below, without that account.
+Open that address and sign in with a Google account on **kaygen.com**. The sign-in is required before the map loads. Accounts outside that domain are not granted access. The same briefing can be run locally, below, without that account. The map and the venue pages do not need a Google Cloud login. Torchy writes with Gemini when Vertex credentials are present, and without them it still answers the demo questions from the tables.
 
 ## Demo path
 
@@ -47,7 +47,7 @@ The assignment is to turn the Los Angeles crime file from 2020 to 2024 into some
 | Hotspots | Citywide crime heatmap, then an 800 m circle around the selected venue. Filter by year and month. Switch the crime view among all crime, high-count cells, venue circles, and NIBRS offenses. |
 | Trends | Venue page and Torchy: busiest weekday, top offense groups, and which groups rose from 2020 through 2023. Later years are shown in their own columns because the reporting system changed. |
 | Compare areas | Compare page for any two venues. Counts are kept separate. Overlapping downtown circles are labeled. |
-| Pattern on event days | Permit days, and Dodger home games, are compared with other days in the same months. |
+| Pattern on event days | Permit days, and Dodger home games, are compared with other days of the same weekday. A Saturday event is compared with other Saturdays. |
 | Weather as a planning input | Wet-day and hot-day comparisons on the venue page and the compare page. |
 | Natural-language search | Ask Torchy. Gemini calls the calculation tools. Python produces the count, and the answer stays on the recorded tables. |
 | Decision support | Nearest fire, police, and hospital, plus rail stations and bus stops inside the venue circle, so staffing and access can be discussed from the same screen. |
@@ -58,17 +58,19 @@ Each venue has an 800 meter circle. Crime, rail, and bus counts use that circle.
 
 Two crime files cover the period, and they are not added together. Through March 6, 2024 the count is one LAPD police report. From March 7, 2024 forward the count is one NIBRS offense. A trend that crosses that date is shown as two series. Offense groups on the NIBRS side use NIBRS codes.
 
+Monthly counts from March through December 2024 sit well below the months on either side. At Crypto.com Arena, February 2024 is 290 records and January 2025 is 241, while April 2024 is 96 and December 2024 is 115. That gap is in the extract. It is not labeled as a drop in crime. Gray months after the latest record average that calendar month across up to three earlier years, so one of those years can be a month from this gap.
+
 The city rate uses Los Angeles city land area from the 2020 Census. Venue circles are not summed into it.
 
-Weather comes from the Open-Meteo archive at the venue pin. A wet day or a hot day is compared with other days in the same months. Months past the latest crime record, shown in gray on the venue page, are the average of that month in earlier years. They are estimates, not a forecast for the Games.
+Weather comes from the Open-Meteo archive at the venue pin. On the venue page, a wet day or a hot day is compared with other days in the same months. Months past the latest crime record, shown in gray on the venue page, are the average of that month in earlier years. They are estimates, not a forecast for the Games. When Torchy compares wet days, it holds the weekday fixed and can include a range. That adjusted reply is not the percentage in the weather table. The permit-day and home-game tables already hold the weekday fixed.
 
-Ask Torchy uses Gemini 2.5 Flash. Gemini decides which calculation to run. Python returns the count, the comparison, or the live reading, and Gemini writes the reply from that result. If Gemini is unavailable, a short reply is still calculated from the same tables.
+Ask Torchy uses Gemini 2.5 Flash. Gemini decides which calculation to run. Python returns the count, the comparison, or the live reading, and Gemini writes the reply from that result. If Gemini is unavailable, those demo questions are still answered from the same tables.
 
 ## What this tool will not say
 
 It will not call a neighborhood safe or unsafe unless that sentence also includes the citywide rate. It will not predict a daily crime count for the 2028 Games, name a cause, or give a travel time, a response time, or a fare. A live Metro notice, when the transit feed is connected, is a service alert only. It is not a crime count on a train. Victim age and sex are not in the loaded files. A count near a station, stop, or facility is records within 800 meters of that pin. It is not a count of crime on a train or inside the building.
 
-Permit-day and home-game gaps are not weekday-adjusted. Weekend days carry more of both events and crime, and the page says so. The published comparison stays the unadjusted one.
+The permit-day and home-game tables hold the weekday fixed. A Saturday event is compared with other Saturdays, weighted by how the event days fall across the week. Weekend days still carry more events, and the page says so, but that mix is not the comparison in the table. A count model can also hold the month fixed and give a range. That range does not replace the percentage in the table. It is a past association, not a forecast.
 
 The heatmap is LAPD. Places outside the LAPD reporting area have no crime cells. Some venues have no rail station inside 800 meters. Dodger Stadium is one of them. That is the recorded distance, not a missing pin.
 
@@ -173,4 +175,4 @@ Checks:
 python -m unittest
 ```
 
-The two citywide heatmap tests need the raw crime CSV. The chatbot tests use the processed JSON.
+The citywide heatmap tests, and the tests that rank stations or Metro lines, skip when `data/Crime_Data_from_2020_to_2024.csv` is not on disk. The other tests use the processed JSON.

@@ -1,8 +1,8 @@
 """Weekday-adjusted event gap and a negative-binomial count model.
 
-The published permit and home-game percentages stay as they are. These
-figures use the same daily rows, hold the weekday fixed, and fit one
-count model. They are a past association, not a forecast.
+The permit-day and home-game tables use the weekday-held-fixed comparison.
+The count model also holds the month fixed. It does not replace the
+percentage in the table. Both are a past association, not a forecast.
 """
 
 from __future__ import annotations
@@ -34,6 +34,7 @@ _MONTH_NAMES = (
 
 _cache: dict[tuple, dict] = {}
 _home_rows: list[dict] | None = None
+_group_rows: list[dict] | None = None
 _combined_rows: list[dict] | None = None
 _future_game_dates: list[str] | None = None
 
@@ -191,6 +192,70 @@ def _fit_negative_binomial(matrix: np.ndarray, counts: np.ndarray, event_index: 
     }
 
 
+def apply_weekday(
+    stats: dict,
+    rows: list[dict],
+    event_field: str,
+    count_field: str = "incident_count",
+    *,
+    other_floor: float = 0.0,
+) -> dict:
+    """Replace the comparison means with the same-weekday figures.
+
+    Day counts and medians stay as they are. A percent is shown when the
+    weekday comparison has a gap of at least 0.05 and the other-day mean
+    clears other_floor.
+    """
+    adjusted = weekday_standardized(rows, event_field, count_field)
+    if not adjusted:
+        return {**stats, "weekday_adjusted": False}
+    other = float(adjusted["other_day_mean"])
+    difference = abs(float(adjusted["absolute_difference"]))
+    shown = difference >= 0.05 and other > 0 and (other_floor <= 0 or other >= other_floor)
+    return {
+        **stats,
+        "event_day_mean": adjusted["event_day_mean"],
+        "other_day_mean": adjusted["other_day_mean"],
+        "absolute_difference": adjusted["absolute_difference"],
+        "lift_pct": adjusted["lift_pct"] if shown else None,
+        "percent_shown": shown,
+        "weekday_adjusted": True,
+    }
+
+
+def weekday_group_table(rows: list[dict], event_field: str) -> list[dict]:
+    """Offense groups whose same-weekday gap is at least the table threshold."""
+    from pipeline.permit_event_days import (
+        GROUP_IDS,
+        GROUP_LABELS,
+        MATERIAL_DAILY_DIFFERENCE,
+        OTHER_DAY_MEAN_FOR_PERCENT,
+    )
+
+    if not rows or GROUP_IDS[0] not in rows[0]:
+        return []
+    groups = []
+    for group_id in GROUP_IDS:
+        adjusted = weekday_standardized(rows, event_field, group_id)
+        if adjusted is None or abs(float(adjusted["absolute_difference"])) < MATERIAL_DAILY_DIFFERENCE:
+            continue
+        public = apply_weekday(
+            {
+                "event_day_count": adjusted["event_day_count"],
+                "event_day_mean": adjusted["event_day_mean"],
+                "other_day_mean": adjusted["other_day_mean"],
+                "absolute_difference": adjusted["absolute_difference"],
+            },
+            rows,
+            event_field,
+            group_id,
+            other_floor=OTHER_DAY_MEAN_FOR_PERCENT,
+        )
+        groups.append({"group": group_id, "label": GROUP_LABELS[group_id], **public})
+    groups.sort(key=lambda item: abs(float(item["absolute_difference"])), reverse=True)
+    return groups
+
+
 def fit_count_model(rows: list[dict], event_field: str, count_field: str = "incident_count") -> dict | None:
     designed = _design(rows, event_field, count_field)
     if designed is None:
@@ -242,7 +307,11 @@ def describe_baseline(
             f"(95% range {model['low']:.2f} to {model['high']:.2f})."
         )
     if sentences:
-        sentences.append("These figures do not replace the percentage in the table. They are a past association, not a forecast.")
+        sentences.append(
+            "The table uses the weekday-adjusted comparison. "
+            "The count-model range also holds the month fixed and does not replace the percentage in the table. "
+            "This is a past association, not a forecast."
+        )
     payload = {"weekday": weekday, "model": model, "text": " ".join(sentences)}
     _cache[key] = payload
     return payload
@@ -462,3 +531,41 @@ def home_game_rows() -> list[dict]:
                 })
     _home_rows = rows
     return _home_rows
+
+
+def home_game_group_rows() -> list[dict]:
+    """In-season 2020–2024 days with one count per offense group. Reports only."""
+    global _group_rows
+    if _group_rows is not None:
+        return _group_rows
+    from pipeline.crime_groups import GROUP_LABELS, crime_group
+
+    games = home_game_dates()
+    block = get_crime_points("V01") or {}
+    by_day: dict[str, dict[str, int]] = {}
+    for point in block.get("points") or []:
+        day = str(point.get("date") or "")[:10]
+        parsed = _parse_day(day)
+        if parsed is None or parsed.month not in IN_SEASON_MONTHS or not (2020 <= parsed.year <= 2024):
+            continue
+        group = crime_group(point.get("category"))
+        bucket = by_day.setdefault(day, {})
+        bucket[group] = bucket.get(group, 0) + 1
+    rows = []
+    for year in range(2020, 2025):
+        for month in sorted(IN_SEASON_MONTHS):
+            start = date(year, month, 1)
+            end = date(year, month + 1, 1) - timedelta(days=1) if month < 12 else date(year, 12, 31)
+            for day in _calendar_days(start, end):
+                key = day.isoformat()
+                counts = by_day.get(key, {})
+                row = {
+                    "date": key,
+                    "incident_count": sum(counts.values()),
+                    "is_home_game": int(key in games),
+                }
+                for group_id in GROUP_LABELS:
+                    row[group_id] = counts.get(group_id, 0)
+                rows.append(row)
+    _group_rows = rows
+    return _group_rows

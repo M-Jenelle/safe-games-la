@@ -296,7 +296,7 @@ def read_permit_comparison(
     month: str = Query(default="all", pattern="^(all|[1-9]|1[0-2])$"),
     source: str = Query(default="reports", pattern="^(reports|nibrs)$"),
 ) -> dict:
-    """Permit-day means versus other days in the same months."""
+    """Permit-day means versus other days of the same weekday."""
     try:
         body = permit_comparison(venue_id, year=year, month=month, source=source)
     except DatasetNotFound as exc:
@@ -320,7 +320,7 @@ def read_weather(venue_id: str) -> dict:
 
 @app.get("/api/venues/{venue_id}/home-games")
 def read_home_games(venue_id: str) -> dict:
-    """Dodger Stadium regular-season home games versus other days in those months."""
+    """Dodger Stadium regular-season home games versus other days of the same weekday."""
     try:
         body = home_game_comparison(venue_id)
     except DatasetNotFound as exc:

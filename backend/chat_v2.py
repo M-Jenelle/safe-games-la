@@ -1051,7 +1051,14 @@ def _execute_route(turn: Turn, message: str, venues: list[dict], venue_id: str |
     return _calculated(text, vid, venues, narrate)
 
 
-def answer_v2(message: str, venue_id: str | None = None, history: list[dict] | None = None, *, narrate: bool = True) -> dict:
+def answer_v2(
+    message: str,
+    venue_id: str | None = None,
+    history: list[dict] | None = None,
+    *,
+    narrate: bool = True,
+    allow_model: bool = True,
+) -> dict:
     """One v2 turn. History contributes the earlier question, tool, and venue."""
     message = str(message or "").lower()
     talk = _only_talk(message)
@@ -1077,7 +1084,7 @@ def answer_v2(message: str, venue_id: str | None = None, history: list[dict] | N
                 carried = argued["venue_id"]
     if not venue_id and carried:
         venue_id = carried
-    if settings()["claude_configured"] and not _hard_block(_normalize(message)):
+    if allow_model and settings()["claude_configured"] and not _hard_block(_normalize(message)):
         try:
             routed = _execute_route(route_turn(message, venues, venue_id), message, venues, venue_id, narrate)
         except ClaudeUnavailable:

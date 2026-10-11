@@ -203,9 +203,16 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(peacock.status_code, 200)
         body = peacock.json()
         self.assertTrue(body["available"])
+        from backend.datasets import load_permit_day_rows
+        from backend.event_baseline import weekday_standardized
+
+        adjusted = weekday_standardized(load_permit_day_rows()["V04"], "is_permit_event_day")
         self.assertEqual(body["summary"]["event_day_count"], 302)
-        self.assertEqual(body["summary"]["event_day_mean"], 8.98)
-        self.assertEqual(body["summary"]["other_day_mean"], 7.51)
+        self.assertEqual(body["summary"]["event_day_mean"], adjusted["event_day_mean"])
+        self.assertEqual(body["summary"]["other_day_mean"], adjusted["other_day_mean"])
+        self.assertEqual(body["summary"]["lift_pct"], adjusted["lift_pct"])
+        self.assertTrue(body["summary"]["weekday_adjusted"])
+        self.assertNotEqual(body["summary"]["lift_pct"], 19.5)
         self.assertTrue(body["summary"]["percent_shown"])
         self.assertGreaterEqual(len(body["series"]), 1)
         self.assertTrue(body["groups"])
@@ -221,8 +228,11 @@ class ApiTests(unittest.TestCase):
         dodger = self.client.get("/api/venues/V01/permit-comparison").json()
         self.assertEqual(dodger["summary"]["event_day_count"], 41)
         self.assertIn("MLB", dodger["note"])
-        self.assertIn("theft", [group["group"] for group in dodger["groups"]])
-        self.assertNotIn("assault", [group["group"] for group in dodger["groups"]])
+        from backend.event_baseline import weekday_group_table
+
+        expected_groups = [group["group"] for group in weekday_group_table(load_permit_day_rows()["V01"], "is_permit_event_day")]
+        self.assertEqual([group["group"] for group in dodger["groups"]], expected_groups)
+        self.assertIn("theft", expected_groups)
 
         valley = self.client.get("/api/venues/V12/permit-comparison")
         self.assertEqual(valley.status_code, 200)
@@ -286,9 +296,15 @@ class ApiTests(unittest.TestCase):
             self.assertLessEqual(marker["longitude"], bounds["east"])
 
     def _need_nibrs(self):
+        from backend.heat_warehouse import _crime_csv
         from pipeline.merge_crime import NIBRS_PATH
+
         if not NIBRS_PATH.exists():
             self.skipTest("heatmap ranges read data/raw/nibrs/nibrs_current.csv")
+        try:
+            _crime_csv()
+        except FileNotFoundError:
+            self.skipTest("heatmap ranges read data/Crime_Data_from_2020_to_2024.csv")
 
     def test_crime_heat_covers_the_city(self):
         self._need_nibrs()

@@ -1,7 +1,7 @@
 import { blockForRange, mountDistanceSection, mountTimeSection, mountWeekdaySection, weekdaySummary } from "./charts.js";
 import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, text } from "./dom.js";
 import { closeVenuePage } from "./nav.js";
-import { mountHomeGames, mountPermitSection } from "./permits.js?v=listings";
+import { mountHomeGames, mountPermitSection } from "./permits.js?v=weekday";
 import { mountWeatherSection } from "./weather.js";
 import { resizeMap } from "./shell.js";
 import { comparePage, state } from "./state.js";

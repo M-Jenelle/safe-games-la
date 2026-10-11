@@ -1,4 +1,4 @@
-"""Weekday adjustment and the count model sit beside the published percentages."""
+"""The permit and home-game tables use the weekday comparison. The file's published lift stays on published."""
 
 from __future__ import annotations
 
@@ -9,13 +9,20 @@ from backend.store import home_game_comparison, permit_comparison
 
 
 class EventBaselineTests(unittest.TestCase):
-    def test_published_percentages_stay_in_place(self):
-        peacock = permit_comparison("V04")["summary"]
-        dodger_permits = permit_comparison("V01")["summary"]
-        games = home_game_comparison("V01")["published"]
-        self.assertEqual(peacock["lift_pct"], 19.5)
-        self.assertEqual(dodger_permits["lift_pct"], 298.4)
-        self.assertEqual(games["lift_pct"], 266.3)
+    def test_tables_use_the_weekday_comparison(self):
+        peacock = permit_comparison("V04")
+        dodger_permits = permit_comparison("V01")
+        games = home_game_comparison("V01")
+        self.assertTrue(peacock["summary"]["weekday_adjusted"])
+        self.assertEqual(peacock["summary"]["lift_pct"], peacock["baseline"]["weekday"]["lift_pct"])
+        self.assertEqual(peacock["summary"]["event_day_mean"], peacock["baseline"]["weekday"]["event_day_mean"])
+        self.assertNotEqual(peacock["summary"]["lift_pct"], 19.5)
+        self.assertEqual(dodger_permits["summary"]["lift_pct"], dodger_permits["baseline"]["weekday"]["lift_pct"])
+        self.assertNotEqual(dodger_permits["summary"]["lift_pct"], 298.4)
+        self.assertEqual(games["published"]["lift_pct"], 266.3)
+        self.assertTrue(games["summary"]["weekday_adjusted"])
+        self.assertEqual(games["summary"]["lift_pct"], games["baseline"]["weekday"]["lift_pct"])
+        self.assertNotEqual(games["summary"]["lift_pct"], 266.3)
 
     def test_same_weekday_and_count_model_are_separate_figures(self):
         peacock = permit_comparison("V04")["baseline"]
@@ -26,7 +33,8 @@ class EventBaselineTests(unittest.TestCase):
             self.assertGreaterEqual(weekday["event_day_count"], 8)
             self.assertLessEqual(model["low"], model["multiplier"])
             self.assertLessEqual(model["multiplier"], model["high"])
-            self.assertIn("do not replace the percentage", baseline["text"])
+            self.assertIn("does not replace the percentage", baseline["text"])
+            self.assertIn("weekday-adjusted comparison", baseline["text"])
             self.assertIn("not a forecast", baseline["text"])
         self.assertNotEqual(peacock["weekday"]["lift_pct"], 19.5)
         self.assertIn("March 7, 2024", games["text"])

@@ -42,7 +42,16 @@ class PlaceCrimeTests(unittest.TestCase):
         self.assertEqual(labels, ["12am–6am", "6am–12pm", "12pm–6pm", "6pm–12am"])
         self.assertTrue(any(entry["value"] for entry in result["entries"]))
 
+    def _need_crime_csv(self):
+        from backend.heat_warehouse import _crime_csv
+
+        try:
+            _crime_csv()
+        except FileNotFoundError:
+            self.skipTest("station and line counts read data/Crime_Data_from_2020_to_2024.csv")
+
     def test_rail_rank_is_a_station_not_a_venue_total(self):
+        self._need_crime_csv()
         result = crime_around(kind="rail")
         highest = result["highest"]
         self.assertGreater(result["place_count"], 10)
@@ -51,6 +60,7 @@ class PlaceCrimeTests(unittest.TestCase):
         self.assertIn("citywide", highest["city_comparison"])
 
     def test_a_metro_letter_counts_the_stations_on_that_line(self):
+        self._need_crime_csv()
         station = crime_around(kind="rail", name="Willowbrook")
         line_a = crime_around(line="A")
         ranked = crime_around(line="all")

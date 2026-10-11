@@ -14,10 +14,13 @@ from pipeline.permit_event_days import (
     MIN_EVENT_DAYS_FOR_PERCENT,
 )
 
-PERMIT_LOAD_INTRO = "One permit on the day, versus several. Both are compared with other days."
+PERMIT_LOAD_INTRO = (
+    "One permit on the day, versus several. "
+    "Each is compared with other days of the same weekday."
+)
 PERMIT_INTRO = (
     "A permit day is a day covered by a temporary-event permit. "
-    "Other days are the rest of the months that had a permit."
+    "The comparison holds the weekday fixed: a Saturday permit is compared with other Saturdays."
 )
 PERMIT_NOT_MLB_NOTE = "These figures use permit days, not the MLB home-game list."
 INCIDENT_NOTE = "inside the buffer, 2020–present"
@@ -92,7 +95,7 @@ def pair_overlap_note(radius_m: float, left_name: str, right_name: str) -> str:
 
 
 def group_gap_note(unit: str) -> str:
-    return f"Groups that differ by at least {_gap()} {unit} per day."
+    return f"Groups that differ by at least {_gap()} {unit} per day, with the weekday held fixed."
 
 
 def group_gap_empty(unit: str) -> str:
@@ -145,6 +148,7 @@ def permit_hints() -> dict[str, str]:
     return {
         "Permit Days vs Other Days": (
             "A permit day is a day covered by a temporary-event permit. "
+            "The mean holds the weekday fixed, so a Saturday permit is compared with other Saturdays. "
             "Other days are the rest of the months that had a permit, from 2020 through 2024. "
             "Months with no permit are left out."
         ),
@@ -152,18 +156,24 @@ def permit_hints() -> dict[str, str]:
             "Days covered by at least one temporary-event permit. "
             "Several permits on the same date still count as one day."
         ),
-        "Other Days": "The other days in months that had a permit. These are not every day without an event.",
-        "Permit-Day Mean": "Average reports on permit days.",
-        "Other-Day Mean": "Average reports on other days.",
-        "Median": "The middle daily count on permit days, then the middle count on other days.",
+        "Other Days": (
+            "How many other days are in the months that had a permit. "
+            "The other-day mean is the same-weekday average, not the average of every one of these days."
+        ),
+        "Permit-Day Mean": "Average reports on permit days whose weekday also has other days.",
+        "Other-Day Mean": (
+            "Average reports on other days of the same weekday, "
+            "weighted by how the permit days fall across the week."
+        ),
+        "Median": "The middle daily count on the dates in this row. It is not weekday-adjusted.",
         "Difference": (
-            "Permit-day mean minus the other-day mean. "
-            f"A percent is shown when there are at least {days} permit days, "
-            f"the daily gap is at least {gap}, and the gap is unlikely to be chance."
+            "Permit-day mean minus the same-weekday other-day mean. "
+            f"A percent is shown when there are at least {days} permit days "
+            f"and the daily gap is at least {gap}."
         ),
         "Overall": "All comparison months from 2020 through 2024, taken together.",
         "Offense Groups": (
-            "Crime groups, such as theft or assault, where the daily average on permit days "
+            "Crime groups, such as theft or assault, where the same-weekday average on permit days "
             f"differs from other days by at least {gap} reports. The bar length is the size of that gap."
         ),
         "Permits on the Same Day": (
@@ -173,33 +183,42 @@ def permit_hints() -> dict[str, str]:
         "One Permit": "Days covered by a single permit.",
         "Several Permits": "Days covered by two or more permits. Those dates are still one permit day.",
         "Days": "How many dates are in this row.",
-        "Reports per Day": "Average reports on the dates in this row.",
+        "Reports per Day": (
+            "Average reports on the dates in this row. "
+            "The Other Days row has no average here, because the difference uses other days of the same weekday."
+        ),
         "Offenses per Day": (
             "Average NIBRS offenses on the dates in this row."
         ),
         "Difference vs Other Days": (
-            "This row's average minus the average on other days. "
-            "Other days is the baseline, so that row has no difference."
+            "This row's average minus other days of the same weekday. "
+            "The Other Days row has no difference."
         ),
         "Home Games vs Other Days": (
-            "Completed Dodgers regular-season home games versus other March–October days, "
+            "Completed Dodgers regular-season home games versus other March–October days of the same weekday, "
             "2020 through the last crime day. Reports through March 6, 2024, then NIBRS offenses."
         ),
         "Game Days": "Days with a completed regular-season home game. A doubleheader still counts as one day.",
-        "Other Days in Season": "The other days in March through October. Winter days are left out.",
-        "Game-Day Mean": (
-            "Average on home-game days. Through March 6, 2024 that is police reports. "
-            "From March 7, 2024 it is NIBRS offenses."
+        "Other Days in Season": (
+            "How many other days are in March through October. Winter days are left out. "
+            "The other-day mean is the same-weekday average, not the average of every one of these days."
         ),
-        "Other-Day Mean in Season": "Average on the other days in those baseball months, on the same daily series.",
+        "Game-Day Mean": (
+            "Average on home-game days whose weekday also has other days. "
+            "Through March 6, 2024 that is police reports. From March 7, 2024 it is NIBRS offenses."
+        ),
+        "Other-Day Mean in Season": (
+            "Average on other days of the same weekday in March through October, "
+            "weighted by how the game days fall across the week."
+        ),
         "2020–2024": "Completed regular-season home games from 2020 through 2024.",
         "2020–2026": (
             "Completed regular-season home games from 2020 through the last day with a crime count. "
             "Games after that day are not in this average."
         ),
         "Game-Day Groups": (
-            "Crime groups where the daily average on home-game days differs from other days in season "
-            f"by at least {gap} reports. The bar length is the size of that gap."
+            "Crime groups where the same-weekday average on home-game days differs from other days in season "
+            f"by at least {gap} reports. Group bars use 2020–2024 reports. The bar length is the size of that gap."
         ),
     }
 
