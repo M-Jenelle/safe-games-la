@@ -277,7 +277,7 @@ def _guide_entries() -> tuple:
         ("weekday", r"\bday of week\b", "Day of week", "Monday through Sunday record counts, 2020–present.", "weekday"),
         ("months", r"\b(?:by month|monthly|incidents by month)\b", "Incidents by month", "Monthly record counts, 2020–present. Red is the busiest month in the selected range.", "months"),
         ("categories", r"\b(?:incident types?|offense groups?|categories)\b", "Incident types", "Offense groups for the records in view.", "categories"),
-        ("density", r"\bdensit", "Density", "Records per square kilometer inside the 800 m circle, 2020–present.", ""),
+        ("density", r"\bdensit", "Density", "Records per square mile inside the half-mile circle, 2020–present.", ""),
         ("source", r"\bsource\b|\b800 ?m\b", "Source", PRESENT_PROVENANCE, ""),
     )
 
@@ -565,7 +565,7 @@ def _historical_weather(message: str, venue: dict) -> dict:
         parts.append(_gap_sentence(venue["venue_name"], "Hot days", "days", stats, fitted_hot))
         fitted.append(("Hot days", fitted_hot))
     caveat = (
-        "Weekday-adjusted association inside the 800 m buffer. "
+        "Weekday-adjusted association inside the half-mile circle. "
         "This is not a cause, not a forecast, and not a statement about today's weather."
     )
     payload = {
@@ -631,7 +631,7 @@ def _weather_across(message: str, venues: list[dict]) -> dict:
         "status": "answered",
         "answer": answer,
         "caveat": (
-            "Weekday-adjusted association inside each 800 m buffer. "
+            "Weekday-adjusted association inside each half-mile circle. "
             "This is not a cause, not a forecast, and not a statement about today's weather."
         ),
         "confidence": {"kind": "association", "text": "Weekday-adjusted association. Not a statement about today's weather."},
@@ -797,7 +797,7 @@ def _distance_reply(venue: dict) -> dict | None:
             f"({int(top.get('count') or 0):,} of {total:,})."
         ),
         "caveat": (
-            "Distance bands inside the 800 m buffer, 2020–present. "
+            "Distance bands inside the half-mile circle, 2020–present. "
             "Locations are rounded, so a point inside 200 m is not a crime at the door."
         ),
         "confidence": {"kind": "recorded", "text": "Recorded count."},

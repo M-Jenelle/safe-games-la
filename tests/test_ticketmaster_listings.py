@@ -92,7 +92,7 @@ class TicketmasterListingTests(unittest.TestCase):
         self.assertEqual(block["event_count"], 2)
         self.assertEqual([month["count"] for month in block["months"]], [1, 0, 1])
         self.assertEqual(block["months"][1]["label"], "November 2026")
-        self.assertIn("inside the 800 m circle", block["note"])
+        self.assertIn("inside the half-mile circle", block["note"])
         self.assertIn("Peacock Theater is", block["note"])
         self.assertTrue(block["events"][0]["on_sale"])
         self.assertFalse(block["events"][1]["on_sale"])

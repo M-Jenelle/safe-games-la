@@ -60,7 +60,7 @@ NIBRS_CHARTS_PATH = REPO_ROOT / "data" / "processed" / "nibrs_charts.json"
 CITY_BASELINE_PATH = REPO_ROOT / "data" / "processed" / "city_baseline.json"
 HOME_GAMES_PATH = REPO_ROOT / "data" / "processed" / "dodger_event_risk.json"
 NIBRS_CUTOFF = "2024-03-07"
-REPORT_WEEKDAY_NOTE = "Uses 2020-2024 reports and is inside the 800m buffer."
+REPORT_WEEKDAY_NOTE = "Uses 2020-2024 reports and is inside the half-mile circle."
 MERGED_WEEKDAY_NOTE = ""
 
 _summary: dict | None = None

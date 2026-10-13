@@ -1,20 +1,3 @@
-export const HIDDEN_FLAGS = new Set([
-  "no_rail_stations_within_radius",
-  "geocode_mismatch",
-]);
-
-export const FLAG_LABELS = {
-  no_crime_within_radius: "No crime reports in the buffer",
-  no_rail_stations_within_radius: "No rail stations in the buffer",
-  no_bus_stops_within_radius: "No bus stops in the buffer",
-  no_fire_stations_loaded: "No fire stations in the dataset",
-  no_police_stations_loaded: "No police stations in the dataset",
-  no_hospitals_loaded: "No hospitals in the dataset",
-  geocode_mismatch: "Listed coordinates differ from the geocoder",
-  geocode_not_found: "Geocoder could not confirm this address",
-  city_of_la_but_nearest_station_is_not_lapd: "Nearest station is not LAPD",
-};
-
 export const state = {
   meta: null,
   map: null,

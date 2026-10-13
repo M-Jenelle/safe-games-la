@@ -21,14 +21,14 @@ class BriefingTests(unittest.TestCase):
     def test_density_hint_uses_the_circle(self):
         self.assertAlmostEqual(circle_area_km2(800), 2.01, places=2)
         hint = density_hint(800, 14, "March 6, 2024")
-        self.assertIn("800 m circle", hint)
-        self.assertIn("2.01 km²", hint)
+        self.assertIn("half-mile circle", hint)
+        self.assertIn("0.78 square miles", hint)
         self.assertIn("other 13", hint)
 
     def test_overlap_sentences_use_the_radius(self):
         self.assertEqual(overlap_note(800, []), "")
         note = overlap_note(800, ["Crypto.com Arena", "LA Convention Center"])
-        self.assertIn("800 m circle overlaps Crypto.com Arena and LA Convention Center", note)
+        self.assertIn("half-mile circle overlaps Crypto.com Arena and LA Convention Center", note)
         pair = pair_overlap_note(800, "Peacock Theater", "Crypto.com Arena")
         self.assertIn("circles of Peacock Theater and Crypto.com Arena", pair)
 

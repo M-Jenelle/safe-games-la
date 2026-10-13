@@ -269,7 +269,7 @@ class ChatV2NextTests(ChatV2Tests):
         self.assertIn("not connected", metro["answer"])
         density = answer_v2("What does Density mean?")
         self.assertEqual(density["tool"], "page_guide")
-        self.assertIn("square kilometer", density["answer"])
+        self.assertIn("square mile", density["answer"])
         self.assertNotIn("Venue page", density["answer"])
 
     def test_weather_prediction_is_refused(self):

@@ -1,12 +1,12 @@
-import { categoryRows, filledMonths, monthChart, monthTable, mountDistanceSection, mountTimeSection, mountWeekdaySection, scopedBlock, scopedWeekday, yearTotals } from "./charts.js";
-import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, monthTitle, text } from "./dom.js";
+import { categoryRows, filledMonths, monthChart, monthTable, mountDistanceSection, mountTimeSection, mountWeekdaySection, scopedBlock, scopedWeekday, yearTotals } from "./charts.js?v=miles5";
+import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, monthTitle, text } from "./dom.js?v=miles5";
 import { renderMap } from "./map.js";
 import { closeVenuePage, openVenuePage, renderChatContext, venueToolbar } from "./nav.js";
 import { mountHomeGames, mountPermitSection } from "./permits.js?v=weekday";
 import { mountWeatherSection } from "./weather.js";
 import { renderRoster } from "./roster.js";
-import { FLAG_LABELS, HIDDEN_FLAGS, detail, overview, requests, state, zoneFilter } from "./state.js";
-import { careStations, cityStats, densityHint, densityNote, incidentNote, overlapNote, presentCount, presentRate, renderOverview, stat, transitStations } from "./stats.js";
+import { detail, overview, requests, state, zoneFilter } from "./state.js";
+import { careStations, cityStats, densityHint, densityNote, incidentNote, overlapNote, presentCount, presentRate, renderOverview, stat, transitStations } from "./stats.js?v=miles5";
 
 export function renderDetail() {
   const venue = state.detail;
@@ -23,9 +23,6 @@ export function renderDetail() {
       reportMonths[0],
     );
   const total = presentCount(venue);
-  const flags = venue.data_quality_flags.filter((flag) => !HIDDEN_FLAGS.has(flag)).map((flag) => (
-    el("span", { className: "flag" }, [text(FLAG_LABELS[flag] || flag)])
-  ));
   let fromKey = "";
   let toKey = "";
   let selectedKey = "";
@@ -485,7 +482,6 @@ export function renderDetail() {
         stat("Busiest month", peak?.key ? monthLabel(peak.key) : "None", peak?.count ? `${formatNumber(peak.count)} records` : "No dated records"),
       ]),
     ]),
-    flags.length ? el("div", { className: "flags" }, flags) : el("span"),
     overlapNote(venue) ? el("p", { className: "terms" }, [text(overlapNote(venue))]) : el("span"),
     el("section", { className: "crime-unit", "aria-label": "Crime patterns" }, [
       el("h3", { className: "section-title", id: "section-months" }, [text("Incidents by Month")]),

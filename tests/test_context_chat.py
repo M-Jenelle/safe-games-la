@@ -47,7 +47,7 @@ class ContextChatTests(unittest.TestCase):
 
     def post(self, message, **context):
         body = answer_question(message, context.get("venue_id"), context.get("prior_message"))
-        for label in ("LAPD", "2020–2024", "800 m radius"):
+        for label in ("LAPD", "2020–2024", "half-mile radius"):
             self.assertIn(label, body["answer"])
         return body
 
@@ -114,7 +114,7 @@ class ContextChatTests(unittest.TestCase):
                     self.assertIn(nearest[name], body["answer"])
                     if topic == "hospital":
                         self.assertEqual(result["emergency_room"], nearest["Emergency Room?"])
-                self.assertIn("not restricted to 800 m", body["answer"])
+                self.assertIn("not restricted to the half-mile circle", body["answer"])
                 self.assertIn("straight-line", body["answer"])
 
     def test_sports_match_the_processed_roster_for_all_venues(self):
@@ -162,8 +162,8 @@ class ContextChatTests(unittest.TestCase):
     def test_facility_outside_buffer_is_still_reported_with_true_distance(self):
         body = self.post("What is the nearest fire station to Dodger Stadium?")
         self.assertEqual(body["results"][0]["facility"]["distance_m"], 2003.1)
-        self.assertIn("2,003.1 m", body["answer"])
-        self.assertIn("not restricted to 800 m", body["answer"])
+        self.assertIn("1.24 miles", body["answer"])
+        self.assertIn("not restricted to the half-mile circle", body["answer"])
         self.assertIsNone(body["source"]["radius_m"])
 
     def test_ambiguous_supporting_question_preserves_topic_and_choices(self):
@@ -261,9 +261,9 @@ class ContextChatTests(unittest.TestCase):
         recorded = peacock["rail_stations_nearby"]["stations"]
         nearest = min(recorded, key=lambda station: station["distance_m"])
         self.assertEqual(stations[0]["station_name"], nearest["station_name"])
-        self.assertIn("within 800", body["answer"])
+        self.assertIn("within half a mile", body["answer"])
         none_nearby = self.post("Where is the nearest Metro station to Dodger Stadium?")
-        self.assertIn("No rail station is recorded within 800", none_nearby["answer"])
+        self.assertIn("No rail station is recorded within half a mile", none_nearby["answer"])
         police = self.post("What is the nearest police station to Dodger Stadium?")
         self.assertEqual(police["question_type"], "police")
         self.assertIn(police["results"][0]["facility"]["station_name"], police["answer"])

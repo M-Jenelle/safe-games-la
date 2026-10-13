@@ -1,14 +1,14 @@
-import { categoryRows, filledMonths, overviewChart } from "./charts.js";
-import { el, formatDistance, formatNumber, formatSports, ordinal, text } from "./dom.js";
+import { categoryRows, filledMonths, overviewChart } from "./charts.js?v=miles5";
+import { el, formatMiles, formatNumber, formatSports, ordinal, perSquareMile, text } from "./dom.js?v=miles5";
 import { jurisdictionLabel } from "./roster.js";
-import { FLAG_LABELS, HIDDEN_FLAGS, mapHint, overview, state } from "./state.js";
+import { mapHint, overview, state } from "./state.js";
 import { infoMark, pageCopy } from "./tips.js";
 
 export function densityNote(venue) {
   const rank = venue.present?.density_rank || venue.density_rank;
-  if (!rank) return "per km²";
+  if (!rank) return "per mi²";
   const place = `${rank.tied ? "tied for " : ""}${ordinal(rank.rank)} of ${rank.of}`;
-  return `${place} · per km²`;
+  return `${place} · per mi²`;
 }
 
 export function stat(label, value, note, hint) {
@@ -35,7 +35,7 @@ export function presentCount(venue) {
 }
 
 export function presentRate(venue) {
-  return venue.present?.crime_per_km2 ?? venue.crime_per_km2;
+  return perSquareMile(venue.present?.crime_per_km2 ?? venue.crime_per_km2);
 }
 
 export function cityStats(venue) {
@@ -65,11 +65,11 @@ export function transitStations(venue) {
     ? stations.map((station, index) => el("article", { className: "station" }, [
       el("span", { className: "zone" }, [text(index === 0 ? `Rail · ${countLabel(railCount, "Station", "Stations")}` : "Rail")]),
       el("h3", {}, [text(station.station_name)]),
-      el("p", { className: "muted" }, [text(`${station.lines} · ${formatDistance(station.distance_m)}`)]),
+      el("p", { className: "muted" }, [text(`${station.lines} · ${formatMiles(station.distance_m)}`)]),
     ]))
     : [el("article", { className: "station" }, [
       el("span", { className: "zone" }, [text(`Rail · ${countLabel(0, "Station", "Stations")}`)]),
-      el("h3", {}, [text("None in the buffer.")]),
+      el("h3", {}, [text("None in the half-mile circle.")]),
     ])];
   const lines = bus.lines || [];
   const lineNodes = lines.map((line) => el("span", { className: "pill" }, [text(line)]));
@@ -78,7 +78,7 @@ export function transitStations(venue) {
     el("h3", {}, [text(`${countLabel(bus.count || 0, "Stop", "Stops")} · ${countLabel(lines.length, "Line", "Lines")}`)]),
     lineNodes.length
       ? el("div", { className: "pills" }, lineNodes)
-      : el("p", { className: "muted" }, [text("None in the buffer.")]),
+      : el("p", { className: "muted" }, [text("None in the half-mile circle.")]),
   ]));
   return cards;
 }
@@ -105,7 +105,7 @@ function stationCard(label, station) {
   const lines = [
     el("span", { className: "zone" }, [text(label)]),
     el("h3", {}, [text(station.station_name)]),
-    el("p", { className: "muted" }, [text(formatDistance(station.distance_m))]),
+    el("p", { className: "muted" }, [text(formatMiles(station.distance_m))]),
   ];
   if (station.agency) {
     lines.push(el("p", { className: "muted" }, [text(station.agency)]));
@@ -137,9 +137,6 @@ export function renderOverview() {
     months[0],
   );
   const categories = categoryRows(venue.crime_by_category, venue.crime_count_nearby, { limit: 6, share: false });
-  const flags = venue.data_quality_flags.filter((flag) => !HIDDEN_FLAGS.has(flag)).map((flag) => (
-    el("span", { className: "flag" }, [text(FLAG_LABELS[flag] || flag)])
-  ));
   overview.replaceChildren(
     el("div", { className: "detail-head" }, [
       el("div", {}, [
@@ -158,12 +155,11 @@ export function renderOverview() {
       ...cityStats(venue),
       stat("Jurisdiction", jurisdictionLabel(venue.lapd_jurisdiction), "nearest local station"),
     ]),
-    flags.length ? el("div", { className: "flags" }, flags) : el("span"),
     overlapNote(venue) ? el("p", { className: "terms" }, [text(overlapNote(venue))]) : el("span"),
     el("h3", { className: "section-title" }, [text("Top Categories")]),
     ...(categories.length
       ? categories
-      : [el("p", { className: "muted" }, [text("No incidents in this buffer.")])]),
+      : [el("p", { className: "muted" }, [text("No incidents in the half-mile circle.")])]),
     el("h3", { className: "section-title" }, [text("Incidents by Month")]),
     overviewChart(venue.crime_by_month),
     el("p", { className: "chart-caption muted" }, [

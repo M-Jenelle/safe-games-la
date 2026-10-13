@@ -5,6 +5,8 @@ from __future__ import annotations
 from copy import deepcopy
 import math
 
+from pipeline.city_baseline import format_miles
+
 CONTEXT_INTENTS = {"rail", "bus", "transit", "fire", "police", "hospital", "services", "sports"}
 LAYERS = {
     "rail": ("rail_stations", "LA Metro GTFS rail stations", "rail_stations_nearby"),
@@ -40,7 +42,7 @@ def context_answer(intent: str, venue: dict, meta: dict) -> tuple[str, list, lis
         row = {"venue_id": venue["venue_id"], "venue_name": venue["venue_name"], "topic": topic}
         value = venue[field]
         if topic in {"rail", "bus"}:
-            scope = f"Within an {radius:g} m radius around the venue."
+            scope = "Within a half-mile radius around the venue."
             if not isinstance(value, dict) or not _count(value.get("count")):
                 raise ContextUnavailable("The processed transit count is missing or invalid.")
             count = value["count"]
@@ -58,15 +60,15 @@ def context_answer(intent: str, venue: dict, meta: dict) -> tuple[str, list, lis
                 ):
                     raise ContextUnavailable("The processed rail stations do not match the recorded count or radius.")
                 row["stations"] = deepcopy(stations)
-                text = f"{venue['venue_name']} — rail stations within {radius:g} m: {count:,}."
+                text = f"{venue['venue_name']} — rail stations within half a mile: {count:,}."
                 if stations:
                     text += "\n" + "\n".join(
                         f"{station['station_name']} — lines: {station['lines'] or 'not recorded'}; "
-                        f"straight-line distance: {station['distance_m']:,.1f} m."
+                        f"straight-line distance: {format_miles(station['distance_m'])}."
                         for station in stations
                     )
                 else:
-                    text += " No rail station is recorded within this radius."
+                    text += " No rail station is recorded within half a mile."
             else:
                 lines = value.get("lines")
                 if not isinstance(lines, list) or any(not isinstance(line, str) or not line for line in lines):
@@ -74,8 +76,8 @@ def context_answer(intent: str, venue: dict, meta: dict) -> tuple[str, list, lis
                 if bool(count) != bool(lines):
                     raise ContextUnavailable("The processed bus routes do not match the recorded stop count.")
                 row["lines"] = list(lines)
-                text = f"{venue['venue_name']} — bus stops within {radius:g} m: {count:,}."
-                text += f"\nRecorded routes serving these stops: {', '.join(lines)}." if lines else " No bus stop is recorded within this radius."
+                text = f"{venue['venue_name']} — bus stops within half a mile: {count:,}."
+                text += f"\nRecorded routes serving these stops: {', '.join(lines)}." if lines else " No bus stop is recorded within half a mile."
             source_radius = radius
         elif topic == "sports":
             scope = "Sports listed at this venue in the project roster. This is not a confirmed event schedule."
@@ -86,7 +88,7 @@ def context_answer(intent: str, venue: dict, meta: dict) -> tuple[str, list, lis
             text = f"{venue['venue_name']} — listed sports: {'; '.join(sports)}." if sports else f"No sports are recorded for {venue['venue_name']}."
             source_radius = None
         else:
-            scope = "Nearest facility in the loaded dataset; straight-line distance, not restricted to 800 m."
+            scope = "Nearest facility in the loaded dataset; straight-line distance, not restricted to the half-mile circle."
             title = {"fire": "fire station", "police": "police/sheriff station", "hospital": "hospital"}[topic]
             source_radius = None
             if value is None:
@@ -96,7 +98,7 @@ def context_answer(intent: str, venue: dict, meta: dict) -> tuple[str, list, lis
                 if not isinstance(value, dict) or not value.get("station_name") or not _distance(value.get("distance_m")):
                     raise ContextUnavailable("The processed nearest-facility name or distance is missing or invalid.")
                 row["facility"] = deepcopy(value)
-                text = f"Nearest recorded {title} to {venue['venue_name']}: {value['station_name']}. Straight-line distance: {value['distance_m']:,.1f} m."
+                text = f"Nearest recorded {title} to {venue['venue_name']}: {value['station_name']}. Straight-line distance: {format_miles(value['distance_m'])}."
                 if topic == "police" and value.get("agency"):
                     text += f"\nRecorded agency: {value['agency']}. This does not establish jurisdiction."
                 if topic == "hospital":

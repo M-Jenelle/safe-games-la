@@ -1,11 +1,11 @@
-import { compareRoute, openCompare, syncCompareLink } from "./compare.js?v=weekday";
-import { fetchJson } from "./dom.js";
-import { bindCrimeView, bindFacilityViews, bindHeatRange, bindLayerToggles, ensureGoogleMap, fillLayerView, loadCrimeHeat, renderMap } from "./map.js?v=weekday";
-import { closeVenuePage, renderChatContext, venueIdFromLocation } from "./nav.js";
-import { renderMeta, renderRoster, renderZoneOptions } from "./roster.js";
+import { compareRoute, openCompare, syncCompareLink } from "./compare.js?v=miles5";
+import { fetchJson } from "./dom.js?v=miles5";
+import { bindCrimeView, bindFacilityViews, bindHeatRange, bindLayerToggles, ensureGoogleMap, fillLayerView, loadCrimeHeat, renderMap } from "./map.js?v=miles5";
+import { closeVenuePage, renderChatContext, venueIdFromLocation } from "./nav.js?v=miles5";
+import { renderMeta, renderRoster, renderZoneOptions } from "./roster.js?v=miles5";
 import { comparePage, mapHint, metaStrip, state } from "./state.js";
 import { pageCopy } from "./tips.js";
-import { selectVenue } from "./venue.js";
+import { selectVenue } from "./venue.js?v=miles5";
 
 async function init() {
   bindLayerToggles();

@@ -14,6 +14,7 @@ from scipy.stats import spearmanr
 
 from backend.event_baseline import fit_count_model, weekday_standardized
 from backend.warehouse import SERIES_BREAK, connect
+from pipeline.city_baseline import format_miles, per_square_mile
 
 ROW_LIMIT = 200
 SMALL_N = 30
@@ -22,7 +23,7 @@ SERIES_WARNING = (
     "Later figures are NIBRS offenses. They are not added together."
 )
 OVERLAP_WARNING = (
-    "Some 800 m venue circles overlap, so one report can be counted for more than one venue. "
+    "Some half-mile venue circles overlap, so one report can be counted for more than one venue. "
     "Do not add venue totals into one citywide number."
 )
 SMALL_WARNING = "Fewer than 30 rows. A small count is a weak basis for a comparison."
@@ -109,7 +110,7 @@ def run_sql(query: str) -> dict:
             error = f"{error} The venue key is venue_id."
         if "not found" in error.lower() and re.search(r"rail|stop|station|fire|police|hospital|\bbus\b", text, re.IGNORECASE):
             error = (
-                f"{error} Places within 800 m are in nearby "
+                f"{error} Places within half a mile are in nearby "
                 "(venue_id, venue_name, kind, name, distance_m). "
                 "kind is rail, bus, fire, police, or hospital."
             )
@@ -231,7 +232,7 @@ _PAGE_TOPICS = (
 )
 _PAGE_SOURCE = (
     "LAPD crime reports via the LA Open Data Portal, then LAPD NIBRS offenses. "
-    "Period: 2020–present. Circle: 800 m. This is the venue page headline, not the 2020–2024 report total."
+    "Period: 2020–present. Circle: half a mile. This is the venue page headline, not the 2020–2024 report total."
 )
 
 
@@ -279,6 +280,7 @@ def rank_venues(metric: str = "records") -> dict:
             "venue": names.get(venue_id, venue_id),
             "records": int(row.get("count") or 0),
             "records_per_km2": row.get("crime_per_km2"),
+            "records_per_mi2": None if row.get("crime_per_km2") is None else per_square_mile(row["crime_per_km2"]),
         })
     ranked.sort(key=lambda item: item["records_per_km2"] if density else item["records"], reverse=True)
     return {
@@ -315,14 +317,14 @@ def crime_around(
     offense: str = "",
     line: str = "",
 ) -> dict:
-    """Records within 800 m of a station, stop, facility, Metro line, or coordinate. Not a venue total."""
+    """Records within half a mile of a station, stop, facility, Metro line, or coordinate. Not a venue total."""
     from backend.place_crime import crime_around as _crime_around
 
     return _crime_around(kind, name, latitude, longitude, offense, line)
 
 
 def rank_nearby(kind: str = "rail") -> dict:
-    """Which venues have the most places of one kind inside the 800 m circle. Ties stay in the list."""
+    """Which venues have the most places of one kind inside the half-mile circle. Ties stay in the list."""
     chosen = str(kind or "").strip().lower()
     aliases = {
         "rail": "rail", "station": "rail", "stations": "rail", "metro": "rail",
@@ -531,7 +533,7 @@ def _entry(label: str, value, means: str, source: str) -> dict:
 def _overview_entries(detail: dict | None) -> list[dict]:
     if detail is None:
         return [
-            _entry("Incidents", None, "Records inside the 800 m circle, 2020–present.", _PAGE_SOURCE),
+            _entry("Incidents", None, "Records inside the half-mile circle, 2020–present.", _PAGE_SOURCE),
             _density_entry(None),
         ]
     present = detail.get("present") or {}
@@ -546,13 +548,13 @@ def _overview_entries(detail: dict | None) -> list[dict]:
         _entry(
             "Incidents",
             present.get("count"),
-            display.get("incident_note") or "inside the buffer, 2020–present",
+            display.get("incident_note") or "inside the half-mile circle, 2020–present",
             _PAGE_SOURCE,
         ),
         _entry(
             "Density",
-            present.get("crime_per_km2"),
-            f"{display.get('density_hint') or 'Records per square kilometer inside the circle.'}{place}",
+            None if present.get("crime_per_km2") is None else per_square_mile(present["crime_per_km2"]),
+            f"{display.get('density_hint') or 'Records per square mile inside the half-mile circle.'}{place}",
             _PAGE_SOURCE,
         ),
     ]
@@ -566,7 +568,7 @@ def _overview_entries(detail: dict | None) -> list[dict]:
             _PAGE_SOURCE,
         ))
     if display.get("overlap_note"):
-        entries.append(_entry("Overlap", None, display["overlap_note"], "800 m circles. A report in the overlap is stored under each venue."))
+        entries.append(_entry("Overlap", None, display["overlap_note"], "Half-mile circles. A report in the overlap is stored under each venue."))
     return entries
 
 
@@ -575,7 +577,7 @@ def _density_entry(detail: dict | None) -> dict:
         return _entry(
             "Density",
             None,
-            "Records per square kilometer inside the 800 m circle, from 2020 through the latest data. The count is divided by the circle's area.",
+            "Records per square mile inside the half-mile circle, from 2020 through the latest data. The count is divided by the circle's area.",
             _PAGE_SOURCE,
         )
     return _overview_entries(detail)[1]
@@ -630,7 +632,7 @@ def _hour_entries(detail: dict | None) -> list[dict]:
             _PAGE_SOURCE,
         )]
     noon = int((detail.get("crime_time") or {}).get("noon_count") or 0)
-    note = "2020–2024 reports inside 800 m. 12:00 is often an unknown hour, so the clock is incomplete."
+    note = "2020–2024 reports inside the half-mile circle. 12:00 is often an unknown hour, so the clock is incomplete."
     if noon:
         note = f"{note} {noon:,} reports are stamped 12:00."
     return [
@@ -721,13 +723,13 @@ def _permit_entries(detail: dict | None) -> list[dict]:
 
 def _transit_entries(detail: dict | None) -> list[dict]:
     if detail is None:
-        return [_entry("Transportation", None, "Metro rail stations and bus stops inside the 800 m circle. This is not a live alert.", "Static GTFS extracts.")]
+        return [_entry("Transportation", None, "Metro rail stations and bus stops inside the half-mile circle. This is not a live alert.", "Static GTFS extracts.")]
     rail = detail.get("rail_stations_nearby") or {}
     bus = detail.get("bus_stops_nearby") or {}
     nearest = (rail.get("stations") or [None])[0] or {}
-    rail_value = "None in the buffer." if not rail.get("count") else f"{rail.get('count')} stations. Nearest {nearest.get('station_name')} · {nearest.get('distance_m')} m"
+    rail_value = "None in the half-mile circle." if not rail.get("count") else f"{rail.get('count')} stations. Nearest {nearest.get('station_name')} · {format_miles(nearest.get('distance_m'))}"
     return [
-        _entry("Rail", rail_value, "Stations inside the 800 m circle.", "Metro rail station extract. Not a live alert and not crime on a train."),
+        _entry("Rail", rail_value, "Stations inside the half-mile circle.", "Metro rail station extract. Not a live alert and not crime on a train."),
         _entry("Bus", f"{bus.get('count') or 0} stops · {len(bus.get('lines') or [])} lines", ", ".join(bus.get("lines") or []) or "No lines recorded.", "Metro bus stop extract."),
     ]
 
@@ -748,7 +750,7 @@ def _care_entries(detail: dict | None) -> list[dict]:
         name = station.get("station_name") or station.get("name") or ""
         entries.append(_entry(
             label,
-            f"{name} · {station.get('distance_m')} m",
+            f"{name} · {format_miles(station.get('distance_m'))}",
             "Straight-line distance from the venue pin. Not a response time or a boundary.",
             station.get("agency") or "Facility list.",
         ))

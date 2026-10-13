@@ -81,7 +81,7 @@ _DECLARATIONS = [
     },
     {
         "name": "run_sql",
-        "description": "Read-only SELECT for questions that do not have their own tool. Not for a headline count, density, weekday, city comparison, wet-day comparison, forecast, or which venue has the most of something. At most 200 rows. Venue ids are in the question payload. nearby lists one row per place within 800 m: venue_id, venue_name, kind, name, distance_m. offense_counts.records is a group count and series is lapd_report or nibrs.",
+        "description": "Read-only SELECT for questions that do not have their own tool. Not for a headline count, density, weekday, city comparison, wet-day comparison, forecast, or which venue has the most of something. At most 200 rows. Venue ids are in the question payload. nearby lists one row per place within half a mile: venue_id, venue_name, kind, name, distance_m. offense_counts.records is a group count and series is lapd_report or nibrs.",
         "parameters": {
             "type": "object",
             "properties": {"query": {"type": "string"}},
@@ -168,7 +168,7 @@ _DECLARATIONS = [
     },
     {
         "name": "rank_nearby",
-        "description": "Which venues have the most rail stations, bus stops, fire stations, police stations, or hospitals inside the 800 m circle. kind is rail, bus, fire, police, or hospital. This does not rank those places by crime. Crime around a station or facility is crime_around.",
+        "description": "Which venues have the most rail stations, bus stops, fire stations, police stations, or hospitals inside the half-mile circle. kind is rail, bus, fire, police, or hospital. This does not rank those places by crime. Crime around a station or facility is crime_around.",
         "parameters": {
             "type": "object",
             "properties": {"kind": {"type": "string"}},
@@ -195,7 +195,7 @@ _DECLARATIONS = [
     },
     {
         "name": "crime_around",
-        "description": "Reported records within 800 m of a rail station, bus stop, fire station, police station, hospital, a Metro line, or a latitude and longitude. kind is rail, bus, fire, police, or hospital. Omit name to rank that kind. Pass name to count one pin. Pass line as a Metro letter such as A, or all, to count the stations that share that letter. The same letter is one line. A record near two stations on that line is counted once. offense is an optional group such as assault, theft, or weapons. Drugs, bunco, pickpocket wording, a weapon description, premise, hour, area, and reporting lag are crime_detail, not this tool. This is not crimes on a train or inside the building, and it is not a venue total. city_comparison is the area against the citywide rate.",
+        "description": "Reported records within half a mile of a rail station, bus stop, fire station, police station, hospital, a Metro line, or a latitude and longitude. kind is rail, bus, fire, police, or hospital. Omit name to rank that kind. Pass name to count one pin. Pass line as a Metro letter such as A, or all, to count the stations that share that letter. The same letter is one line. A record near two stations on that line is counted once. offense is an optional group such as assault, theft, or weapons. Drugs, bunco, pickpocket wording, a weapon description, premise, hour, area, and reporting lag are crime_detail, not this tool. This is not crimes on a train or inside the building, and it is not a venue total. city_comparison is the area against the citywide rate. Quote per_mi2, not per_km2.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -210,7 +210,7 @@ _DECLARATIONS = [
     },
     {
         "name": "rank_venues",
-        "description": "Rank all 14 venues by present record count or by records per km². metric is records or density. Use this only when the question is which venue has the most records. A train station, bus stop, fire station, hospital, or police station is crime_around, not this tool. Do not add venue totals together.",
+        "description": "Rank all 14 venues by present record count or by records per square mile. metric is records or density. Quote records_per_mi2. Use this only when the question is which venue has the most records. A train station, bus stop, fire station, hospital, or police station is crime_around, not this tool. Do not add venue totals together.",
         "parameters": {
             "type": "object",
             "properties": {"metric": {"type": "string"}},
@@ -235,14 +235,14 @@ _SYSTEM = (
     "Do not invent a cause. A follow-up may name a different venue or drop the venue. Answer the new question. "
     "If the question says to answer the previous question for one venue, call the tool for that venue. "
     "Do not ask the user to repeat the question. Crypto Arena is Crypto.com Arena. "
-    "The top crimes outside a venue are explain_page topic categories. Name the three largest groups inside the 800 m circle. "
+    "The top crimes outside a venue are explain_page topic categories. Name the three largest groups inside the half-mile circle. "
     "Crime near a rail station, bus stop, fire station, police station, hospital, or a coordinate uses crime_around. "
-    "That count is records within 800 m of the pin, not crimes on a train or inside the building. "
+    "That count is records within half a mile of the pin, not crimes on a train or inside the building. "
     "A Metro rail line is every station whose letter matches. The same letter is the same line. "
     "Crime around a line uses crime_around with line set to that letter, or all to rank the lines. "
     "A record near two stations on the same line is counted once. A station on two lines counts for each line. "
     "Hours or drug codes around a line use crime_detail with that same line. "
-    "This is still records within 800 m of the stations, not crimes aboard a train, not a passenger rate, and not a service disruption. "
+    "This is still records within half a mile of the stations, not crimes aboard a train, not a passenger rate, and not a service disruption. "
     "rank_nearby only counts how many of those places sit near a venue. "
     "A safety question about a venue uses compare_with_city. metro_alerts is only a live service alert. "
     "Hours, premise, a weapon description, officer wording, bunco, pickpocket, drug codes, LAPD area, and reporting lag use crime_detail. "
@@ -405,7 +405,7 @@ def _tool_sentence(message: str, venue_id: str | None, kind: str) -> dict:
             return _short("That record count is not loaded.", "page")
         value = row["value"]
         shown = f"{value:,}" if isinstance(value, int) else value
-        note = str(row.get("means") or "inside the 800 m circle, 2020–present").strip().rstrip(".")
+        note = str(row.get("means") or "inside the half-mile circle, 2020–present").strip().rstrip(".")
         joiner = " " if note.lower().startswith("inside") else ". "
         return _short(f"{page['venue']} has {shown} records{joiner}{note}.", "page")
     row = entries[0] if entries else {}
@@ -416,7 +416,7 @@ def _tool_sentence(message: str, venue_id: str | None, kind: str) -> dict:
         shown = f"{value:,.1f}" if isinstance(value, float) else value
         rank = re.search(r"((?:tied for )?\d+ of \d+)\.?$", str(row.get("means") or ""))
         place = f" Rank {rank.group(1)}." if rank else ""
-        return _short(f"{page['venue']}: {shown} records per km².{place}", "page")
+        return _short(f"{page['venue']}: {shown} records per square mile.{place}", "page")
     return _short(str(row.get("means") or "That figure is not on the venue page."), "page")
 
 
@@ -495,7 +495,7 @@ def _wording_reply() -> dict:
 def _line_night_reply() -> dict:
     return _short(
         "Passenger disruptions are not part of this record, and Metro lines are not ranked by late-night assault. "
-        "A line figure counts reports within 800 meters of the stations, not crimes aboard a train.",
+        "A line figure counts reports within half a mile of the stations, not crimes aboard a train.",
         "crime_detail",
     )
 
@@ -505,7 +505,7 @@ def _walk_reply(message: str, venue_id: str | None) -> dict:
     if not venue:
         return _short(
             "I can't call a walk safe or unsafe for families. "
-            "Name the stadium and I can compare reported crime in its 800 m circle with the citywide rate.",
+            "Name the stadium and I can compare reported crime in its half-mile circle with the citywide rate.",
             "city",
         )
     result = compare_with_city(venue)
@@ -514,7 +514,7 @@ def _walk_reply(message: str, venue_id: str | None) -> dict:
     summary = (result.get("reports_2020_2024") or {}).get("summary") or "The city comparison is not loaded."
     return _short(
         f"I can't call the walk to {result['venue']} safe for families. "
-        f"{summary} That is reported records inside 800 m, not the walk itself.",
+        f"{summary} That is reported records inside half a mile, not the walk itself.",
         "city",
     )
 
@@ -526,16 +526,16 @@ def _night_stop_reply(message: str) -> dict:
     drugs = crime_detail("drugs", kind="rail", period=period)
     if drugs.get("error"):
         return _short(
-            "That station ranking is not in this record. Narcotics figures are reported offenses within 800 meters of a pin, not crimes at the stop.",
+            "That station ranking is not in this record. Narcotics figures are reported offenses within half a mile of a pin, not crimes at the stop.",
             "crime_detail",
         )
     clock = "12am–6am" if period == "night" else "all recorded hours"
     ranked = [row for row in drugs.get("ranked") or [] if row.get("records")]
     if ranked:
         shown = ", ".join(f"{row['name']} ({int(row['records']):,})" for row in ranked[:3])
-        lead = f"Highest rail stations by NIBRS narcotics codes 35A and 35B, {clock}, within 800 m: {shown}. "
+        lead = f"Highest rail stations by NIBRS narcotics codes 35A and 35B, {clock}, within half a mile: {shown}. "
     else:
-        lead = f"No narcotics records were found within 800 m of a rail station for {clock}. "
+        lead = f"No narcotics records were found within half a mile of a rail station for {clock}. "
     hour_note = (
         "Weapon reports are not recorded by hour, so they are not included in this ranking. "
         if period == "night"
@@ -829,7 +829,7 @@ def _for_reader(message: str, answer: str) -> str:
         return recorded["answer"]
     return (
         "That breakdown is not in this record. "
-        "Figures here are reported crimes, usually within 800 meters of a place. "
+        "Figures here are reported crimes, usually within half a mile of a place. "
         "They are not service disruptions, ridership, or incidents aboard a train."
     )
 
