@@ -54,15 +54,15 @@ _UNSUPPORTED = {
     "society": "Crimes against society is not one of the nine offense groups. Drug codes are crime_detail topic drugs.",
 }
 _NOTE = (
-    "Reported records in map cells within 800 m of the pin, 2020–present. "
+    "Reported records in map cells within half a mile of the pin, 2020–present. "
     "Not crimes aboard a train, in a station, or inside the building. "
     "Cells are about 11 m across."
 )
 _LINE_NOTE = (
-    "Reported records in map cells within 800 m of any station on this Metro line, 2020–present. "
+    "Reported records in map cells within half a mile of any station on this Metro line, 2020–present. "
     "The same letter is the same line. A record near two stations on that line is counted once. "
     "A station on two lines is counted for each line. "
-    "Not crimes aboard a train. The area is the union of those 800 m circles."
+    "Not crimes aboard a train. The area is the union of those half-mile circles."
 )
 _LINE_REQUEST = re.compile(
     r"^(?:all|lines|every|each)$|^(?:the\s+)?(?:metro\s+)?(?:line\s+)?([a-z])(?:\s+line)?$",
@@ -307,7 +307,7 @@ def _city_rate() -> float | None:
 
 
 def _row(place: dict, records: int, city_rate: float | None) -> dict:
-    from pipeline.city_baseline import compared_with_city
+    from pipeline.city_baseline import compared_with_city, per_square_mile
 
     per_km2 = round(records / AREA_KM2, 1) if AREA_KM2 else 0.0
     compared = None if city_rate is None else compared_with_city(per_km2, city_rate, "2020–present")
@@ -319,6 +319,7 @@ def _row(place: dict, records: int, city_rate: float | None) -> dict:
         "longitude": round(float(place["longitude"]), 6),
         "records": records,
         "per_km2": per_km2,
+        "per_mi2": per_square_mile(per_km2),
         "city_comparison": None if compared is None else compared["summary"],
     }
 
@@ -332,7 +333,7 @@ def _ranked(places: list[dict], offense: str | None) -> list[dict]:
 
 
 def _line_row(place: dict, offense: str | None, city_rate: float | None) -> dict:
-    from pipeline.city_baseline import compared_with_city
+    from pipeline.city_baseline import compared_with_city, per_square_mile
 
     stations = place.get("stations") or []
     records = count_near_any(stations, _arrays(offense))
@@ -347,6 +348,7 @@ def _line_row(place: dict, offense: str | None, city_rate: float | None) -> dict
         "records": records,
         "area_km2": round(area, 2),
         "per_km2": per_km2,
+        "per_mi2": per_square_mile(per_km2),
         "city_comparison": None if compared is None else compared["summary"],
     }
 

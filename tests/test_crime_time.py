@@ -33,7 +33,7 @@ class CrimeTimeTests(unittest.TestCase):
         self.assertEqual(block["total"], 5)
         self.assertEqual(block["noon_count"], 1)
         self.assertEqual(block["unknown_count"], 1)
-        self.assertIn("800m buffer", block["disclaimer"])
+        self.assertIn("half-mile circle", block["disclaimer"])
         self.assertIn("unknown hour", block["disclaimer"])
         by_id = {period["id"]: period for period in block["periods"]}
         self.assertEqual(by_id["afternoon"]["count"], 2)

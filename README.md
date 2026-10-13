@@ -44,7 +44,7 @@ The assignment is to turn the Los Angeles crime file from 2020 to 2024 into some
 
 | Use case | In this tool |
 |---|---|
-| Hotspots | Citywide crime heatmap, then an 800 m circle around the selected venue. Filter by year and month. Switch the crime view among all crime, high-count cells, venue circles, and NIBRS offenses. |
+| Hotspots | Citywide crime heatmap, then a half-mile circle around the selected venue. Filter by year and month. Switch the crime view among all crime, high-count cells, venue circles, and NIBRS offenses. |
 | Trends | Venue page and Torchy: busiest weekday, top offense groups, and which groups rose from 2020 through 2023. Later years are shown in their own columns because the reporting system changed. |
 | Compare areas | Compare page for any two venues. Counts are kept separate. Overlapping downtown circles are labeled. |
 | Pattern on event days | Permit days, and Dodger home games, are compared with other days of the same weekday. A Saturday event is compared with other Saturdays. |
@@ -54,7 +54,7 @@ The assignment is to turn the Los Angeles crime file from 2020 to 2024 into some
 
 ## How a number is made
 
-Each venue has an 800 meter circle. Crime, rail, and bus counts use that circle. The nearest fire station, police station, and hospital come from the full loaded list, so a station can sit outside the circle. Distances are straight-line.
+Each venue has a half-mile circle. The calculation uses 800 meters, which is half a mile. Crime, rail, and bus counts use that circle. The nearest fire station, police station, and hospital come from the full loaded list, so a station can sit outside the circle. Those distances, and each Metro station distance, are shown in miles. Density is records per square mile. The city comparison uses that same square-mile rate.
 
 Two crime files cover the period, and they are not added together. Through March 6, 2024 the count is one LAPD police report. From March 7, 2024 forward the count is one NIBRS offense. A trend that crosses that date is shown as two series. Offense groups on the NIBRS side use NIBRS codes.
 
@@ -68,11 +68,11 @@ Ask Torchy uses Gemini 2.5 Flash. Gemini decides which calculation to run. Pytho
 
 ## What this tool will not say
 
-It will not call a neighborhood safe or unsafe unless that sentence also includes the citywide rate. It will not predict a daily crime count for the 2028 Games, name a cause, or give a travel time, a response time, or a fare. A live Metro notice, when the transit feed is connected, is a service alert only. It is not a crime count on a train. Victim age and sex are not in the loaded files. A count near a station, stop, or facility is records within 800 meters of that pin. It is not a count of crime on a train or inside the building.
+It will not call a neighborhood safe or unsafe unless that sentence also includes the citywide rate. It will not predict a daily crime count for the 2028 Games, name a cause, or give a travel time, a response time, or a fare. A live Metro notice, when the transit feed is connected, is a service alert only. It is not a crime count on a train. Victim age and sex are not in the loaded files. A count near a station, stop, or facility is records within half a mile of that pin. It is not a count of crime on a train or inside the building.
 
 The permit-day and home-game tables hold the weekday fixed. A Saturday event is compared with other Saturdays, weighted by how the event days fall across the week. Weekend days still carry more events, and the page says so, but that mix is not the comparison in the table. A count model can also hold the month fixed and give a range. That range does not replace the percentage in the table. It is a past association, not a forecast.
 
-The heatmap is LAPD. Places outside the LAPD reporting area have no crime cells. Some venues have no rail station inside 800 meters. Dodger Stadium is one of them. That is the recorded distance, not a missing pin.
+The heatmap is LAPD. Places outside the LAPD reporting area have no crime cells. Some venues have no rail station inside half a mile. Dodger Stadium is one of them. That is the recorded distance, not a missing pin.
 
 ## Data
 
@@ -86,7 +86,7 @@ The heatmap is LAPD. Places outside the LAPD reporting area have no crime cells.
 | Police and sheriff stations | LA County GIS | Nearest station. Not an official jurisdiction boundary. |
 | Hospitals | LA County hospital facilities | Nearest facility and the recorded emergency-room flag. |
 | Weather | Open-Meteo historical archive | Daily weather at the venue pin, joined to the daily crime count. |
-| Event permits | LADBS temporary special-event permits | Days matched to the nearest venue within 800 meters. |
+| Event permits | LADBS temporary special-event permits | Days matched to the nearest venue within half a mile. |
 | Dodger home games | MLB home-game list, 2020–2024 | Dodger Stadium only. |
 | City land area | U.S. Census QuickFacts, Los Angeles city, 2020 | 469.49 square miles. City rate only. |
 
@@ -105,7 +105,7 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
 That command is the whole setup. Before the site accepts a request, the server builds any processed file that is not already on disk:
 
-1. Venue buffers at 800 m (`pipeline.run`)
+1. Venue buffers at half a mile, calculated as 800 m (`pipeline.run`)
 2. Time of day and distance from the venue
 3. Permit-day comparison
 4. The NIBRS extract, if it is not downloaded yet

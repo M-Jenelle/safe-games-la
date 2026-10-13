@@ -1,4 +1,4 @@
-import { el, formatNumber, formatSports, formatWhen, text } from "./dom.js";
+import { el, formatNumber, formatSports, formatWhen, perSquareMile, text } from "./dom.js?v=miles5";
 import { metaStrip, rosterList, state, zoneFilter } from "./state.js";
 
 function visibleVenues() {
@@ -25,13 +25,13 @@ export function renderMeta() {
   const metaData = state.meta;
   metaStrip.replaceChildren(
     el("p", { className: "meta-line" }, [
-      text(`${Math.round(metaData.buffer_radius_m)} m buffer · ${metaData.venue_count} venues`),
+      text(`Half-mile circle · ${metaData.venue_count} venues`),
     ]),
     el("p", { className: "meta-line" }, [
       text(`Updated ${formatWhen(metaData.generated_at)}`),
     ]),
     el("p", { className: "meta-line meta-quiet" }, [
-      text(`Densest ${metaData.densest_venue.venue_name} (${formatNumber(metaData.densest_venue.crime_per_km2)}/km²) · quietest ${metaData.quietest_venue.venue_name}`),
+      text(`Densest ${metaData.densest_venue.venue_name} (${formatNumber(perSquareMile(metaData.densest_venue.crime_per_km2))}/mi²) · quietest ${metaData.quietest_venue.venue_name}`),
     ]),
   );
 }
@@ -59,7 +59,7 @@ export function renderRoster() {
     }, [
       el("div", { className: "card-top" }, [
         el("span", { className: "zone" }, [text(venue.olympic_zone)]),
-        el("span", { className: "rate" }, [text(`${formatNumber(venue.crime_per_km2)}/km²`)]),
+        el("span", { className: "rate" }, [text(`${formatNumber(perSquareMile(venue.crime_per_km2))}/mi²`)]),
       ]),
       el("h3", {}, [text(venue.venue_name)]),
       el("div", { className: "sports" }, [text(formatSports(venue.sports))]),

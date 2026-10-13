@@ -159,18 +159,17 @@ def location_note(
     buffer_m: float,
     others: list[dict],
 ) -> str:
-    rounded = int(round(distance_m))
+    from pipeline.city_baseline import format_miles
+
     circle = "inside" if distance_m <= buffer_m else "outside"
-    buffer = int(round(buffer_m))
-    note = f"Listed at {listed_name}, {rounded:,} m from this pin, {circle} the {buffer:,} m circle."
+    note = f"Listed at {listed_name}, {format_miles(distance_m)} from this pin, {circle} the half-mile circle."
     if shares_name(venue_name, listed_name):
         return note
     named = [other for other in others if shares_name(other["venue_name"], listed_name)]
     if not named:
         return note
     other = min(named, key=lambda item: item["distance_m"])
-    other_m = int(round(other["distance_m"]))
-    return f"{note} {other['venue_name']} is {other_m:,} m from the same pin."
+    return f"{note} {other['venue_name']} is {format_miles(other['distance_m'])} from the same pin."
 
 
 def _pin_distance(latitude: float, longitude: float, venue: dict) -> float:

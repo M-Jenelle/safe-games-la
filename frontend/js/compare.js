@@ -1,12 +1,12 @@
-import { blockForRange, mountDistanceSection, mountTimeSection, mountWeekdaySection, weekdaySummary } from "./charts.js";
-import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, text } from "./dom.js";
-import { closeVenuePage } from "./nav.js";
+import { blockForRange, mountDistanceSection, mountTimeSection, mountWeekdaySection, weekdaySummary } from "./charts.js?v=miles5";
+import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, text } from "./dom.js?v=miles5";
+import { closeVenuePage } from "./nav.js?v=miles5";
 import { mountHomeGames, mountPermitSection } from "./permits.js?v=weekday";
 import { mountWeatherSection } from "./weather.js";
-import { resizeMap } from "./shell.js";
+import { resizeMap } from "./shell.js?v=miles5";
 import { comparePage, state } from "./state.js";
-import { cityStats, densityHint, densityNote, incidentNote, presentCount, presentRate, stat } from "./stats.js";
-import { selectVenue } from "./venue.js";
+import { cityStats, densityHint, densityNote, incidentNote, presentCount, presentRate, stat } from "./stats.js?v=miles5";
+import { selectVenue } from "./venue.js?v=miles5";
 
 let compareStart = "";
 let compareEnd = "";

@@ -32,6 +32,18 @@ export function formatDistance(meters) {
   return `${(meters / 1000).toFixed(1)} km`;
 }
 
+const METERS_PER_MILE = 1609.344;
+const PER_SQ_MI = (METERS_PER_MILE ** 2) / 1e6;
+
+export function formatMiles(meters) {
+  if (meters == null) return "Unknown distance";
+  return `${(Number(meters) / METERS_PER_MILE).toFixed(2)} mi`;
+}
+
+export function perSquareMile(perKm2) {
+  return Math.round(Number(perKm2) * PER_SQ_MI * 10) / 10;
+}
+
 export function formatSports(value) {
   return String(value || "")
     .split(";")

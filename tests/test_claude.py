@@ -69,7 +69,7 @@ class ClaudeTests(unittest.TestCase):
 
     def post(self, message, **context):
         body = answer_question(message, context.get("venue_id"), context.get("prior_message"))
-        for text in ("LAPD", "2020–2024", "800 m radius"):
+        for text in ("LAPD", "2020–2024", "half-mile radius"):
             self.assertIn(text, body["answer"])
         self.assertNotIn(FAKE_KEY, json.dumps(body))
         return body

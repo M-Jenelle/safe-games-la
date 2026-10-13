@@ -12,7 +12,8 @@ from pathlib import Path
 # U.S. Census Bureau QuickFacts, Los Angeles city, 2020 land area.
 CITY_LAND_SQ_MI = 469.49
 # International square mile, from the exact statute mile of 1,609.344 m.
-SQ_MI_TO_KM2 = (1609.344 ** 2) / 1_000_000
+METERS_PER_MILE = 1609.344
+SQ_MI_TO_KM2 = (METERS_PER_MILE ** 2) / 1_000_000
 
 CITY_BASELINE_NOTE = (
     "Citywide rate is every LAPD report with a usable location, 2020-2024, "
@@ -26,6 +27,18 @@ def city_land_area_km2() -> float:
     return CITY_LAND_SQ_MI * SQ_MI_TO_KM2
 
 
+def per_square_mile(per_km2: float) -> float:
+    """The same rate, printed per square mile. Ranking is unchanged."""
+    return round(float(per_km2) * SQ_MI_TO_KM2, 1)
+
+
+def format_miles(meters: float | None) -> str:
+    """Straight-line distance for the page and for Torchy."""
+    if meters is None:
+        return "unknown distance"
+    return f"{float(meters) / METERS_PER_MILE:,.2f} miles"
+
+
 def city_rate(incident_count: int) -> float:
     """Reports per km², rounded like the venue densities."""
     area = city_land_area_km2()
@@ -37,24 +50,24 @@ def city_rate(incident_count: int) -> float:
 def compared_with_city(venue_rate: float, citywide_rate: float, period: str = "2020–2024") -> dict:
     """Say whether one venue density sits above, below, or near the city rate."""
     ratio = (venue_rate / citywide_rate) if citywide_rate else 0.0
-    city_label = f"{citywide_rate:,.1f}"
+    city_label = f"{per_square_mile(citywide_rate):,.1f}"
     if ratio >= 1.05:
         relation = "above"
         shown = f"{ratio:.1f}".rstrip("0").rstrip(".")
         value = f"{shown}×"
-        caption = f"above {city_label}/km², {period}"
-        summary = f"Above the city. {shown}× the citywide rate of {city_label} reports/km²."
+        caption = f"above {city_label}/mi², {period}"
+        summary = f"Above the city. {shown}× the citywide rate of {city_label} reports/mi²."
     elif ratio <= 0.95:
         relation = "below"
         percent = f"{ratio * 100:.1f}".rstrip("0").rstrip(".")
         value = f"{percent}%"
-        caption = f"of {city_label}/km², {period}"
-        summary = f"Below the city. {percent}% of the citywide rate of {city_label} reports/km²."
+        caption = f"of {city_label}/mi², {period}"
+        summary = f"Below the city. {percent}% of the citywide rate of {city_label} reports/mi²."
     else:
         relation = "near"
         value = "Same"
-        caption = f"as {city_label}/km², {period}"
-        summary = f"About the citywide rate of {city_label} reports/km²."
+        caption = f"as {city_label}/mi², {period}"
+        summary = f"About the citywide rate of {city_label} reports/mi²."
     return {
         "ratio": round(ratio, 3),
         "relation": relation,

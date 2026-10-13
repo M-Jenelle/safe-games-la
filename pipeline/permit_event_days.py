@@ -33,7 +33,7 @@ OTHER_DAY_MEAN_FOR_PERCENT = 0.25
 MONTH_NAMES = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 UI_DISCLAIMER = (
     "Permit days are a weaker signal than a published game. "
-    "The gap is an association inside the 800 m buffer, not a prediction."
+    "The gap is an association inside the half-mile circle, not a prediction."
 )
 DISCLAIMER = (
     "LADBS temporary special event permits are a weaker event signal than a "

@@ -351,15 +351,46 @@ _SLICE_ORDER = {
         ("evening", "6pm–12am"),
     ),
     "bands": (
-        ("near", "Within 200 m"),
-        ("mid", "200–400 m"),
-        ("far", "400–800 m"),
+        ("near", "Within 0.12 mi"),
+        ("mid", "0.12–0.25 mi"),
+        ("far", "0.25–0.50 mi"),
     ),
 }
 TIME_PRESENT_NOTE = "12:00 is often used for unknown hour."
 DISTANCE_PRESENT_NOTE = (
-    "Offense locations are rounded, so a point inside 200 m is not a crime at the door."
+    "Offense locations are rounded, so a point inside 0.12 miles is not a crime at the door."
 )
+
+
+def _relabel_bands(bands: list) -> list:
+    labels = {item_id: label for item_id, label in _SLICE_ORDER["bands"]}
+    return [
+        {**band, "label": labels.get(str(band.get("id") or ""), band.get("label"))}
+        for band in bands
+    ]
+
+
+def _shown_block(block: dict | None) -> dict | None:
+    """Copy a stored chart and use the half-mile wording. The file stays in meters."""
+    if not block:
+        return None
+    copy = dict(block)
+    disclaimer = str(copy.get("disclaimer") or "")
+    copy["disclaimer"] = disclaimer.replace("800m buffer", "half-mile circle").replace("800 m buffer", "half-mile circle")
+    if copy.get("bands"):
+        copy["bands"] = _relabel_bands(copy["bands"])
+    by_month = copy.get("by_month")
+    if isinstance(by_month, dict):
+        rewritten = {}
+        for month, month_block in by_month.items():
+            if not isinstance(month_block, dict) or not month_block.get("bands"):
+                rewritten[month] = month_block
+                continue
+            month_copy = dict(month_block)
+            month_copy["bands"] = _relabel_bands(month_block["bands"])
+            rewritten[month] = month_copy
+        copy["by_month"] = rewritten
+    return copy
 
 
 def _sum_slices(slice_key: str, blocks: list[dict]) -> list[dict]:
@@ -376,8 +407,6 @@ def _sum_slices(slice_key: str, blocks: list[dict]) -> list[dict]:
             item_id = str(item.get("id") or "")
             if item_id not in buckets:
                 continue
-            if item.get("label"):
-                labels[item_id] = str(item["label"])
             for group in item.get("groups") or []:
                 group_id = str(group.get("id") or "")
                 if not group_id:
@@ -448,15 +477,15 @@ def get_venue(venue_id: str) -> dict | None:
                 groups = (load_merged() or {}).get("meta", {}).get("groups") or {}
                 if groups:
                     enriched["crime_groups"] = groups
-            time_block = crime_time_for(venue_id)
+            time_block = _shown_block(crime_time_for(venue_id))
             if time_block:
                 enriched["crime_time"] = time_block
-            distance_block = crime_distance_for(venue_id)
+            distance_block = _shown_block(crime_distance_for(venue_id))
             if distance_block:
                 enriched["crime_distance"] = distance_block
             nibrs_charts = nibrs_charts_for(venue_id)
-            nibrs_time = (nibrs_charts or {}).get("time") or {}
-            nibrs_distance = (nibrs_charts or {}).get("distance") or {}
+            nibrs_time = _shown_block((nibrs_charts or {}).get("time")) or {}
+            nibrs_distance = _shown_block((nibrs_charts or {}).get("distance")) or {}
             if nibrs_charts:
                 enriched["nibrs_time"] = nibrs_time
                 enriched["nibrs_distance"] = nibrs_distance
@@ -678,7 +707,7 @@ def home_game_comparison(venue_id: str) -> dict | None:
             "Games after that day are left out."
         )
         disclaimer = (
-            "800 m buffer. One offense is not one report.\n"
+            "Half-mile circle. One offense is not one report.\n"
             "2020 games had little or no crowd. Group bars are 2020–2024 reports, with the weekday held fixed.\n"
             "A large percentage can be less than one extra record a day.\n"
             "This is a past comparison, not a forecast."
@@ -690,7 +719,7 @@ def home_game_comparison(venue_id: str) -> dict | None:
             "Other days are other March–October days of the same weekday in 2020–2024."
         )
         disclaimer = (
-            "Uses completed regular-season home games, 2020-2024, inside the 800 m buffer.\n"
+            "Uses completed regular-season home games, 2020-2024, inside the half-mile circle.\n"
             "2020 games had little or no crowd.\n"
             "A large percentage can still be less than one extra report a day.\n"
             "This is a past comparison, not a forecast."

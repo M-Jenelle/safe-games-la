@@ -1,8 +1,8 @@
 import { MONTH_NAMES, el, escapeHtml, fetchJson, monthLabel, text } from "./dom.js";
-import { resizeMap } from "./shell.js";
+import { resizeMap } from "./shell.js?v=miles5";
 import { mapHint, mapPanel, state } from "./state.js";
 import { pageCopy } from "./tips.js";
-import { selectVenue } from "./venue.js?v=weekday";
+import { selectVenue } from "./venue.js?v=miles5";
 
 function project(latitude, longitude) {
   const bounds = state.map.bounds;

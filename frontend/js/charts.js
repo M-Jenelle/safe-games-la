@@ -1,4 +1,4 @@
-import { MONTH_NAMES, el, formatNumber, monthLabel, text } from "./dom.js";
+import { MONTH_NAMES, el, formatNumber, monthLabel, text } from "./dom.js?v=miles5";
 import { bindChartHover, chartTip, ensureChartTip, hideChartTip, pageCopy, placeChartTip } from "./tips.js";
 
 export function filledMonths(byMonth) {
@@ -28,7 +28,7 @@ export function monthChart(entries, peakKey, onFocus, word = "incidents", estima
   svg.setAttribute("viewBox", "0 0 960 200");
   svg.setAttribute("role", "img");
   if (!entries.length) {
-    svg.setAttribute("aria-label", "No dated incidents in this buffer");
+    svg.setAttribute("aria-label", "No dated incidents in the half-mile circle");
     return svg;
   }
   const bars = [
@@ -116,7 +116,7 @@ export function overviewChart(byMonth) {
   svg.setAttribute("viewBox", "0 0 640 140");
   svg.setAttribute("role", "img");
   if (!entries.length) {
-    svg.setAttribute("aria-label", "No dated incidents in this buffer");
+    svg.setAttribute("aria-label", "No dated incidents in the half-mile circle");
     return svg;
   }
   const max = Math.max(...entries.map((entry) => entry.count), 1);
@@ -611,9 +611,9 @@ export function blockForRange(block, start, end) {
   }
   if (block.bands || parts.some((part) => part.bands)) {
     const bands = addSlices(parts, "bands", [
-      ["near", "Within 200 m"],
-      ["mid", "200–400 m"],
-      ["far", "400–800 m"],
+      ["near", "Within 0.12 mi"],
+      ["mid", "0.12–0.25 mi"],
+      ["far", "0.25–0.50 mi"],
     ]);
     return {
       total: parts.reduce((sum, part) => sum + (part.total || 0), 0),

@@ -38,7 +38,7 @@ GROUP_ORDER = (
     "other",
 )
 DISCLAIMER = (
-    "Uses 2020-2024 reports and is inside the 800m buffer.\n"
+    "Uses 2020-2024 reports and is inside the half-mile circle.\n"
     "12:00 is often used for unknown hour."
 )
 

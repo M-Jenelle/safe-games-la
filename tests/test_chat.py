@@ -16,6 +16,7 @@ from backend.chat import answer_question, suggested_questions
 from backend.datasets import load_city_baseline
 from backend.main import app
 from backend.store import DatasetNotFound, get_venue, home_game_comparison, permit_comparison
+from pipeline.city_baseline import per_square_mile
 
 
 class ChatTests(unittest.TestCase):
@@ -40,7 +41,7 @@ class ChatTests(unittest.TestCase):
         return answer_question(message, context.get("venue_id"), context.get("prior_message"))
 
     def assert_provenance(self, body):
-        for label in ("LAPD", "LA Open Data Portal", "Crime_Data_from_2020_to_2024.csv", "2020–2024", "800 m radius"):
+        for label in ("LAPD", "LA Open Data Portal", "Crime_Data_from_2020_to_2024.csv", "2020–2024", "half-mile radius"):
             self.assertIn(label, body["answer"])
         self.assertEqual(body["source"]["period"], "2020–2024")
         self.assertEqual(body["source"]["radius_m"], 800)
@@ -110,7 +111,8 @@ class ChatTests(unittest.TestCase):
 
         density = self.post("What is the crime density near Dodger Stadium?")
         self.assertEqual(density["question_type"], "density")
-        self.assertIn(f"{present['crime_per_km2']:,.1f}", density["answer"])
+        self.assertIn(f"{per_square_mile(present['crime_per_km2']):,.1f}", density["answer"])
+        self.assertIn("per mi²", density["answer"])
         self.assertIn("2020–present", density["answer"])
         self.assertIn(f"of {present['density_rank']['of']}", density["answer"])
 
@@ -550,7 +552,8 @@ class ChatTests(unittest.TestCase):
         self.assertEqual({row["venue_id"] for row in compared["results"]}, {"V01", "V05"})
         for venue_id in ("V01", "V05"):
             present = get_venue(venue_id)["present"]
-            self.assertIn(f"{present['crime_per_km2']:,.1f}", compared["answer"])
+            self.assertIn(f"{per_square_mile(present['crime_per_km2']):,.1f}", compared["answer"])
+            self.assertIn("per mi²", compared["answer"])
             self.assertIn(present["count"], [row["count"] for row in compared["results"]])
 
         third = self.post("Comparing Dodger Stadium, the Coliseum, and LA Zoo by density")
@@ -632,7 +635,7 @@ class ChatTests(unittest.TestCase):
         changes.sort(key=lambda item: (-item[0], item[1]))
         self.assertEqual(body["results"][0]["venue_id"], changes[0][2])
         self.assertEqual(body["results"][0]["count"], changes[0][0])
-        self.assertIn("800 m circle", body["answer"])
+        self.assertIn("half-mile circle", body["answer"])
         self.assertIn("not a full year", body["answer"])
         self.assertIn("This ranking crosses March 7, 2024", body["answer"])
 
@@ -848,7 +851,10 @@ class ChatTests(unittest.TestCase):
         self.assertIn("not a certainty", body["answer"])
         self.assertIn("not a forecast for 2028", body["answer"])
         self.assertIn("2020–present", body["answer"])
-        self.assertIn("home-game multiplier is not applied", body["answer"])
+        self.assertTrue(
+            "home-game multiplier is not applied" in body["answer"]
+            or "scaled by the count-model multiplier" in body["answer"]
+        )
         self.assertEqual(len(body["results"]), 3)
         last_month = max(get_venue("V01")["merged_by_month"])
         self.assertGreater(body["results"][0]["category"].split()[-1], last_month)
@@ -882,7 +888,7 @@ class ChatTests(unittest.TestCase):
         self.assertIn("not a safety assessment", walk["answer"])
         self.assertEqual(walk["results"][0]["count"], near["results"][0]["count"])
         none_nearby = self.post("How many crimes are on the Metro line at Dodger Stadium?")
-        self.assertIn("No rail station is recorded within 800", none_nearby["answer"])
+        self.assertIn("No rail station is recorded within half a mile", none_nearby["answer"])
         age = self.post("How old are theft victims near Dodger Stadium?")
         self.assertEqual(age["question_type"], "victim_age")
         self.assertIn("Victim age is not in these files", age["answer"])

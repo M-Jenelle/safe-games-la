@@ -20,6 +20,7 @@ from backend.context import CONTEXT_INTENTS, ContextUnavailable, context_answer,
 from backend.datasets import REPO_ROOT, _load_home_games, crime_time_for, load_city_baseline, load_merged, load_permit_day_rows
 from backend.store import DatasetNotFound, get_crime_points, get_venue, home_game_comparison, load_summary, permit_comparison
 from pipeline.crime_groups import GROUP_LABELS, crime_group, nibrs_group
+from pipeline.city_baseline import format_miles, per_square_mile
 from pipeline.geo import haversine_m
 
 PERIOD = "2020–2024"
@@ -33,7 +34,7 @@ SOURCE = {
 }
 PROVENANCE = (
     f"Source: {SOURCE['name']} ({SOURCE_FILE}). "
-    f"Period: {PERIOD}. Analysis: {RADIUS_M} m radius around each venue."
+    f"Period: {PERIOD}. Analysis: half-mile radius around each venue."
 )
 HEADLINE_INTENTS = {"present_total", "density", "city", "busiest_month"}
 PATTERN_INTENTS = {"top_groups", "weekend", "weekend_groups", "rose"}
@@ -65,7 +66,7 @@ PRESENT_SOURCE = {
 }
 PRESENT_PROVENANCE = (
     "Source: LAPD crime reports via the LA Open Data Portal, then LAPD NIBRS offenses "
-    "(crime_merged.json). Period: 2020–present. Analysis: 800 m radius around the venue. "
+    "(crime_merged.json). Period: 2020–present. Analysis: half-mile radius around the venue. "
     "This is the venue page headline, not the 2020–2024 report total."
 )
 _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
@@ -761,7 +762,7 @@ def _station_crime_answer(venue: dict, message: str) -> dict:
     if not stations:
         return _reply(
             "answered",
-            f"No rail station is recorded within {radius:g} m of {name}. "
+            f"No rail station is recorded within half a mile of {name}. "
             "The crime pins used here are the ones inside that circle, the same points behind the venue map. "
             "I cannot count records at a station farther away, along a track, or on a train. "
             "The files have station coordinates, not the track, and no field that says a crime happened on transit.",
@@ -801,9 +802,9 @@ def _station_crime_answer(venue: dict, message: str) -> dict:
         judgment = " This is not a safety assessment, and it is not a count of crimes on the sidewalk between the venue and the station."
     return _reply(
         "answered",
-        f"Near {name}, pins within {_STATION_RADIUS_M:g} m of {station['station_name']}: "
+        f"Near {name}, pins within half a mile of {station['station_name']}: "
         f"{report_count:,} LAPD reports through March 6, 2024, and {nibrs_count:,} NIBRS offenses from March 7, 2024. "
-        f"Lines: {lines}. The station is {float(station['distance_m']):,.1f} m from the venue pin, inside the {radius:g} m circle. "
+            f"Lines: {lines}. The station is {format_miles(station['distance_m'])} from the venue pin, inside the half-mile circle. "
         "Locations are rounded to about 11 m, so this is the neighborhood of the station pin, not a crime on a train. "
         "The files have no track geometry and no premise field for transit. "
         f"One NIBRS case can count more than once.{judgment}",
@@ -908,22 +909,22 @@ def _nearest_rail_answer(venue: dict, meta: dict) -> dict:
     stations = field.get("stations") or []
     name = venue["venue_name"]
     if not stations:
-        answer = f"No rail station is recorded within {radius:g} m of {name}."
+        answer = f"No rail station is recorded within half a mile of {name}."
         nearest = None
     else:
         nearest = min(stations, key=lambda station: float(station["distance_m"]))
         lines = nearest.get("lines") or "not recorded"
         answer = (
-            f"Nearest recorded rail station within {radius:g} m of {name}: {nearest['station_name']}. "
-            f"Lines: {lines}. Straight-line distance: {float(nearest['distance_m']):,.1f} m. "
-            "This is the closest station in the 800 m list, not a search of the whole rail system."
+            f"Nearest recorded rail station within half a mile of {name}: {nearest['station_name']}. "
+            f"Lines: {lines}. Straight-line distance: {format_miles(nearest['distance_m'])}. "
+            "This is the closest station in the half-mile list, not a search of the whole rail system."
         )
     sources = [{
         "name": "LA Metro GTFS rail stations",
         "file": source_file,
         "period": None,
         "radius_m": radius,
-        "scope": f"Within an {radius:g} m radius around the venue.",
+        "scope": "Within a half-mile radius around the venue.",
         "coverage_date": None,
         "processed_at": meta.get("generated_at"),
     }]
@@ -1621,14 +1622,15 @@ def _tool_compare(venues: list, args, mentions: list) -> dict | None:
     for venue, (count, rate) in zip(pair, figures):
         results.append(_result(venue, "2020–present", count))
         if metric == "density":
-            lines.append(f"{venue['venue_name']} — {rate:,.1f} per km², {count:,} records, 2020–present.")
+            shown = per_square_mile(rate)
+            lines.append(f"{venue['venue_name']} — {shown:,.1f} per mi², {count:,} records, 2020–present.")
         else:
             lines.append(f"{venue['venue_name']} — {count:,} records, 2020–present.")
     if metric == "density":
-        left_rate, right_rate = figures[0][1], figures[1][1]
+        left_rate, right_rate = per_square_mile(figures[0][1]), per_square_mile(figures[1][1])
         difference = abs(left_rate - right_rate)
         larger = pair[0] if left_rate >= right_rate else pair[1]
-        gap = f"\n{larger['venue_name']} is higher by {difference:,.1f} per km²." if difference else "\nThe densities are equal."
+        gap = f"\n{larger['venue_name']} is higher by {difference:,.1f} per mi²." if difference else "\nThe densities are equal."
     else:
         difference = abs(figures[0][0] - figures[1][0])
         larger = max(zip(pair, figures), key=lambda item: item[1][0])[0]
@@ -1665,7 +1667,7 @@ def _tool_rank_change(venues: list) -> dict | None:
     packed.sort(key=lambda item: (-item[3], item[0]["venue_name"]))
     partial = f" {end} runs through {through}, not a full year." if through.startswith(end) else ""
     caption = (
-        f"Venues ranked by the change in records from 2020 to {end} inside the 800 m circle.{partial}"
+        f"Venues ranked by the change in records from 2020 to {end} inside the half-mile circle.{partial}"
     )
     rows, results = [], []
     for index, (venue, start_count, end_count, change) in enumerate(packed, start=1):
@@ -1699,16 +1701,16 @@ def _tool_rank(venues: list, args) -> dict | None:
         packed.append((venue, figures[0], figures[1]))
     if metric == "density":
         packed.sort(key=lambda item: (-item[2], item[0]["venue_name"]))
-        caption = "Venues ranked by 2020–present crime density inside the 800 m circle."
+        caption = "Venues ranked by 2020–present crime density inside the half-mile circle."
     else:
         packed.sort(key=lambda item: (-item[1], item[0]["venue_name"]))
-        caption = "Venues ranked by 2020–present record count inside the 800 m circle."
+        caption = "Venues ranked by 2020–present record count inside the half-mile circle."
     rows, results = [], []
     for index, (venue, count, rate) in enumerate(packed, start=1):
-        rows.append([str(index), venue["venue_name"], _comma(count), f"{rate:,.1f}"])
+        rows.append([str(index), venue["venue_name"], _comma(count), f"{per_square_mile(rate):,.1f}"])
         results.append(_result(venue, "2020–present", count))
     table = {
-        "columns": ["Rank", "Venue", "Records", "Per km²"],
+        "columns": ["Rank", "Venue", "Records", "Per mi²"],
         "rows": rows,
     }
     return _reply(
@@ -1946,7 +1948,7 @@ def _rank_by_group(venues: list, group_id: str | None) -> dict:
         rows.append([str(index), venue["venue_name"], _comma(count)])
         results.append(_result(venue, label, count))
     caption = (
-        f"Venues ranked by {label} records, 2020–present, inside the 800 m circle."
+        f"Venues ranked by {label} records, 2020–present, inside the half-mile circle."
     )
     return _reply(
         "answered", caption, results=results, intent="rank_group",
@@ -2055,7 +2057,7 @@ def _answer_question(message: str, venue_id: str | None, engine: dict, prior_mes
     ):
         return _reply(
             "unavailable",
-            "The processed data does not match this demo's required source and 800 m radius. "
+            "The processed data does not match this demo's required source and half-mile radius. "
             "Rebuild it with `python -m pipeline.run --radius-m 800` before asking for counts.",
         )
 
@@ -3052,13 +3054,13 @@ def _event_lift_answer(venue: dict, message: str) -> dict:
         )
     if names:
         provenance = (
-            "Source: " + "; ".join(names) + ", 2020–2024, 800 m radius. "
+            "Source: " + "; ".join(names) + ", 2020–2024, half-mile radius. "
             + " ".join(notes)
             + " This is an association, not a forecast."
         )
     else:
         provenance = (
-            "Source: processed venue files, 2020–2024, 800 m radius. "
+            "Source: processed venue files, 2020–2024, half-mile radius. "
             "No permit-day or home-game comparison is published for this venue."
         )
     return _reply(
@@ -3074,7 +3076,7 @@ def _event_lift_answer(venue: dict, message: str) -> dict:
 
 def _year_note(year: str, through: str) -> str:
     if int(year) <= 2023:
-        return f"{year} counts LAPD reports inside the 800 m circle."
+        return f"{year} counts LAPD reports inside the half-mile circle."
     if year == "2024":
         return ""
     if through.startswith(year):
@@ -3130,7 +3132,7 @@ def _slice_answer(intent: str, venue: dict, message: str) -> dict:
             count = int(nibrs.get("count") or 0)
         end = str((baseline.get("nibrs") or {}).get("end") or through or "the latest extract")
         subject = label or "NIBRS offenses"
-        answer = f"{name} — {subject}: {count:,} NIBRS offenses inside the 800 m circle, March 7, 2024 through {end}."
+        answer = f"{name} — {subject}: {count:,} NIBRS offenses inside the half-mile circle, March 7, 2024 through {end}."
         if year:
             answer += f" {year} is only the offenses dated in that year."
         elif group:
@@ -3138,7 +3140,7 @@ def _slice_answer(intent: str, venue: dict, message: str) -> dict:
         category = label or "NIBRS offenses"
         provenance = (
             "Source: LAPD NIBRS offenses via the LA Open Data Portal (crime_merged.json). "
-            f"Period: March 7, 2024 through {end}. Analysis: 800 m radius around the venue. "
+            f"Period: March 7, 2024 through {end}. Analysis: half-mile radius around the venue. "
             "This is not the 2020–2024 report total."
         )
         return _reply(
@@ -3232,7 +3234,7 @@ def _citywide_answer() -> dict:
         "Source: LAPD crime reports via the LA Open Data Portal, then LAPD NIBRS offenses (city_baseline.json). "
         f"Period: 2020–present, through {through}. "
         "City land area: U.S. Census Bureau 2020, 469.49 square miles. "
-        "This is not the 2020–2024 venue-report total and not an 800 m venue circle."
+        "This is not the 2020–2024 venue-report total and not a half-mile venue circle."
     )
     return _reply(
         "answered",
@@ -3286,17 +3288,17 @@ def _headline_answer(intent: str, venue: dict) -> dict:
     count = int(present["count"])
     if intent == "present_total":
         answer = (
-            f"{name} — 2020–present: {count:,} records inside the 800 m circle."
+            f"{name} — 2020–present: {count:,} records inside the half-mile circle."
         )
         category = "2020–present"
     elif intent == "density":
-        rate = float(present["crime_per_km2"])
+        rate = per_square_mile(present["crime_per_km2"])
         rank = present.get("density_rank") or {}
         place = ""
         if rank:
             tied = "tied for " if rank.get("tied") else ""
             place = f", {tied}{_ordinal(int(rank['rank']))} of {int(rank['of'])}"
-        answer = f"Crime density near {name} is {rate:,.1f} per km², 2020–present{place}."
+        answer = f"Crime density near {name} is {rate:,.1f} per mi², 2020–present{place}."
         category = "2020–present density"
     elif intent == "city":
         city = ((detail or {}).get("city_baseline") or {}).get("present")

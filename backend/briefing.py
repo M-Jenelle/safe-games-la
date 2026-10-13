@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 from datetime import date, timedelta
 
+from pipeline.city_baseline import SQ_MI_TO_KM2
 from pipeline.permit_event_days import (
     MATERIAL_DAILY_DIFFERENCE,
     MIN_EVENT_DAYS_FOR_PERCENT,
@@ -23,7 +24,7 @@ PERMIT_INTRO = (
     "The comparison holds the weekday fixed: a Saturday permit is compared with other Saturdays."
 )
 PERMIT_NOT_MLB_NOTE = "These figures use permit days, not the MLB home-game list."
-INCIDENT_NOTE = "inside the buffer, 2020–present"
+INCIDENT_NOTE = "inside the half-mile circle, 2020–present"
 WET_ROW = "Wet Day vs Dry Day"
 HOT_ROW = "Hot Day vs Cooler Day"
 
@@ -38,7 +39,7 @@ def weather_intro(hot_f: int) -> str:
 
 def weather_disclaimer() -> str:
     return (
-        "Records inside the 800 m buffer. "
+        "Records inside the half-mile circle. "
         "This is an association, not a cause and not a forecast."
     )
 
@@ -66,12 +67,11 @@ def join_names(names: list[str]) -> str:
 
 
 def density_hint(radius_m: float, venue_count: int, reports_through: str) -> str:
-    area = f"{circle_area_km2(radius_m):.2f}"
+    area = f"{circle_area_km2(radius_m) / SQ_MI_TO_KM2:.2f}"
     others = max(int(venue_count) - 1, 0)
-    radius = f"{round(float(radius_m)):g}"
     return (
-        f"Records per square kilometer inside the {radius} m circle, from 2020 through the latest data. "
-        f"The circle covers about {area} km², so density is the count divided by that area. "
+        "Records per square mile inside the half-mile circle, from 2020 through the latest data. "
+        f"The circle covers about {area} square miles, so density is the count divided by that area. "
         f"The place compares this venue with the other {others}."
     )
 
@@ -79,17 +79,15 @@ def density_hint(radius_m: float, venue_count: int, reports_through: str) -> str
 def overlap_note(radius_m: float, names: list[str]) -> str:
     if not names:
         return ""
-    radius = f"{round(float(radius_m)):g}"
     return (
-        f"The {radius} m circle overlaps {join_names(names)}. "
+        f"The half-mile circle overlaps {join_names(names)}. "
         "An incident in the overlap is counted for each venue."
     )
 
 
 def pair_overlap_note(radius_m: float, left_name: str, right_name: str) -> str:
-    radius = f"{round(float(radius_m)):g}"
     return (
-        f"The {radius} m circles of {left_name} and {right_name} overlap. "
+        f"The half-mile circles of {left_name} and {right_name} overlap. "
         "An incident in the overlap is counted for each venue."
     )
 
@@ -229,7 +227,7 @@ def weather_hints(hot_f: int = 75) -> dict[str, str]:
     days = MIN_EVENT_DAYS_FOR_PERCENT
     return {
         "Weather": (
-            "Daily weather at the venue pin, compared with records inside the 800 m buffer, 2020–present."
+            "Daily weather at the venue pin, compared with records inside the half-mile circle, 2020–present."
         ),
         WET_ROW: (
             "A wet day had rain or snow. "

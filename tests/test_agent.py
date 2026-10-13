@@ -116,13 +116,13 @@ class AgentToolTests(unittest.TestCase):
         self.assertEqual(page["venue"], "Dodger Stadium")
         self.assertIn("Incidents", labels)
         self.assertGreater(labels["Incidents"]["value"], 0)
-        self.assertIn("per square kilometer", labels["Density"]["means"])
+        self.assertIn("per square mile", labels["Density"]["means"])
         kinds = explain_page("Dodger Stadium", "categories")
         self.assertGreater(len(kinds["entries"]), 1)
         self.assertTrue(any("March 7, 2024" in warning for warning in kinds["warnings"]))
         meaning = explain_page("", "density")
         self.assertIsNone(meaning["entries"][0]["value"])
-        self.assertIn("square kilometer", meaning["entries"][0]["means"])
+        self.assertIn("square mile", meaning["entries"][0]["means"])
 
     def test_brief_replies_stay_short(self):
         groups = brief_reply("Which offense groups are on the Coliseum page, and what do those labels mean after March 2024?")
@@ -141,7 +141,7 @@ class AgentToolTests(unittest.TestCase):
         self.assertLess(len(counted["answer"]), 220)
         city = brief_reply("How does Dodger Stadium compare with the city?")
         self.assertIn("citywide rate", city["answer"])
-        self.assertIn("1,148.3", city["answer"])
+        self.assertIn("2,974.1", city["answer"])
         weekend = brief_reply("What does the week look like on weekends near the Coliseum?")
         self.assertIn("busiest day", weekend["answer"])
 

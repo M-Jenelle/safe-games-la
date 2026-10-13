@@ -101,7 +101,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(clock["total"], body["crime_count_nearby"])
         self.assertEqual(clock["noon_count"], 311)
         self.assertEqual(clock["unknown_count"], 0)
-        self.assertIn("800m buffer", clock["disclaimer"])
+        self.assertIn("half-mile circle", clock["disclaimer"])
         self.assertIn("unknown hour", clock["disclaimer"])
         self.assertEqual(
             {period["id"]: period["count"] for period in clock["periods"]},
@@ -413,13 +413,13 @@ class ApiTests(unittest.TestCase):
             body["densest_venue"]["crime_per_km2"],
             body["quietest_venue"]["crime_per_km2"],
         )
-        self.assertIn("2.01", body["copy"]["density_hint"])
+        self.assertIn("0.78", body["copy"]["density_hint"])
         self.assertIn("at least 8 permit days", body["copy"]["permit_hints"]["Difference"])
         self.assertIn("0.05", body["copy"]["permit_hints"]["Offense Groups"])
 
     def test_display_fields_come_from_the_briefing(self):
         peacock = self.client.get("/api/venues/V04").json()
-        self.assertIn("2.01", peacock["display"]["density_hint"])
+        self.assertIn("0.78", peacock["display"]["density_hint"])
         self.assertIn("other 13", peacock["display"]["density_hint"])
         self.assertTrue(peacock["display"]["overlap_note"])
         self.assertFalse(peacock["home_games_available"])

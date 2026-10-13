@@ -46,7 +46,7 @@ def _month_span(start: date, end: date) -> str:
 
 def time_disclaimer(start: date, end: date) -> str:
     return (
-        f"Uses NIBRS offenses, {_month_span(start, end)}, inside the 800m buffer.\n"
+        f"Uses NIBRS offenses, {_month_span(start, end)}, inside the half-mile circle.\n"
         "One case can count more than once."
     )
 
