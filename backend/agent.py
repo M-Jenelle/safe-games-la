@@ -8,18 +8,23 @@ are attached after the prose. A neighborhood is never called safe or unsafe.
 from __future__ import annotations
 
 import json
+from datetime import date
+import logging
 import re
+import time
 
 import httpx
 
 from backend.agent_tools import (
     compare_conditions,
+    compare_periods,
     compare_with_city,
     correlate,
     crime_around,
     crime_detail,
     describe_data,
     explain_page,
+    expected_count,
     forecast,
     live_weather,
     metro_alerts,
@@ -28,6 +33,14 @@ from backend.agent_tools import (
     run_sql,
 )
 from backend.claude import ClaudeUnavailable, _access_token, _gemini_configuration
+
+_log = logging.getLogger("backend.agent")
+if not _log.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(message)s"))
+    _log.addHandler(_handler)
+    _log.setLevel(logging.INFO)
+    _log.propagate = False
 
 _TOOLS = {
     "describe_data": lambda arguments: describe_data(),
@@ -38,11 +51,23 @@ _TOOLS = {
         int(arguments.get("lag_days") or 0),
         bool(arguments.get("control_weekday", True)),
     ),
+    "expected_count": lambda arguments: expected_count(
+        str(arguments.get("venue") or ""),
+        str(arguments.get("start") or ""),
+        str(arguments.get("end") or ""),
+    ),
     "forecast": lambda arguments: forecast(
         str(arguments.get("venue") or ""),
         int(arguments.get("horizon") or 30),
         list(arguments.get("regressors") or []),
         dict(arguments.get("scenario") or {}),
+    ),
+    "compare_periods": lambda arguments: compare_periods(
+        str(arguments.get("venue") or ""),
+        str(arguments.get("earlier_start") or ""),
+        str(arguments.get("earlier_end") or ""),
+        str(arguments.get("later_start") or ""),
+        str(arguments.get("later_end") or ""),
     ),
     "compare_conditions": lambda arguments: compare_conditions(
         str(arguments.get("venue") or ""),
@@ -114,6 +139,34 @@ _DECLARATIONS = [
                 "scenario": {"type": "object"},
             },
             "required": ["venue", "horizon"],
+        },
+    },
+    {
+        "name": "expected_count",
+        "description": "Expected total for one venue over a past date range already in the loaded record. Returns expected_total, an 80% range, the training-mean baseline, and the recorded total. Dates are YYYY-MM-DD. Refuses the Games and any day after the loaded extract. A range that crosses March 7, 2024 is refused because the unit changes. This is not a future daily count. Quote expected_total, interval_80, and baseline_total.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "venue": {"type": "string"},
+                "start": {"type": "string"},
+                "end": {"type": "string"},
+            },
+            "required": ["venue", "start", "end"],
+        },
+    },
+    {
+        "name": "compare_periods",
+        "description": "Compare recorded totals for one venue across two date ranges. Use this for year-over-year or before-and-after. Dates are YYYY-MM-DD. If comparable is false, the unit changed on March 7, 2024, and the gap is not a change in crime. Do not invent a percent when change_pct is null.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "venue": {"type": "string"},
+                "earlier_start": {"type": "string"},
+                "earlier_end": {"type": "string"},
+                "later_start": {"type": "string"},
+                "later_end": {"type": "string"},
+            },
+            "required": ["venue", "earlier_start", "earlier_end", "later_start", "later_end"],
         },
     },
     {
@@ -229,6 +282,10 @@ _SYSTEM = (
     "Do not describe a partial result you did not calculate. "
     "forecast returns a multiplier for one recorded condition. Its interval is not a future daily count, "
     "and an Olympic Games scenario is refused. Do not present that multiplier as a forecast. There is no code interpreter. "
+    "A past date range uses expected_count. Quote expected_total, the 80% range, and baseline_total. "
+    "It refuses dates after the loaded extract and the Games. Do not turn that result into a 2028 count. "
+    "Year-over-year or before-and-after counts use compare_periods. "
+    "If comparable is false, say the unit changed on March 7, 2024, and do not call the gap a change in crime. "
     "A Dodger home-game or game-day question is the past home-game comparison through the last crime day. "
     "It is not a forecast and not the permit-day comparison. "
     "Venue ids are in the question payload. The venue key is venue_id. Do not invent an id. "
@@ -568,6 +625,9 @@ def direct_reply(message: str, venue_id: str | None = None) -> dict | None:
     text = str(message or "")
     if _PAGE_ASK.search(text):
         return None
+    expected = _expectation_reply(text, venue_id)
+    if expected is not None:
+        return expected
     if _FORECAST_ASK.search(text):
         return _forecast_reply(text, venue_id)
     if _HIGHEST_ASK.search(text):
@@ -592,6 +652,9 @@ def brief_reply(message: str, venue_id: str | None = None) -> dict | None:
         return hello
     if _PAGE_ASK.search(text):
         return _page_reply(text, venue_id)
+    expected = _expectation_reply(text, venue_id)
+    if expected is not None:
+        return expected
     if _FORECAST_ASK.search(text):
         return _forecast_reply(text, venue_id)
     if _HIGHEST_ASK.search(text):
@@ -643,6 +706,131 @@ def _page_reply(message: str, venue_id: str | None) -> dict:
     return _short(answer, "page")
 
 
+_EXPECT_ASK = re.compile(r"\b(expected|expectation)\b", re.IGNORECASE)
+_MONTHS = {
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
+}
+
+
+def _expectation_reply(message: str, venue_id: str | None) -> dict | None:
+    """A past range with an expected total. The wet-day multiplier stays on its own path."""
+    if not _EXPECT_ASK.search(message):
+        return None
+    if re.search(r"\b(olympics?|la28|2028)\b", message, re.IGNORECASE):
+        return _short(
+            "I cannot forecast the Games. There is no Olympic precedent at this venue.",
+            "forecast",
+        )
+    span = _range_in_text(message)
+    if span is None:
+        return None
+    from backend.agent_tools import expected_count
+
+    start, end = span
+    venue = _venue_in_text(message) or venue_id or ""
+    if not venue:
+        return _short("Name a venue for that expected total.", "forecast")
+    result = expected_count(venue, start.isoformat(), end.isoformat())
+    if result.get("error"):
+        return _short(str(result["error"]), "forecast")
+    low, high = result["interval_80"]
+    name = result["venue"]
+    actual = int(result["actual_total"])
+    expected = int(round(result["expected_total"]))
+    low_n = int(round(low))
+    high_n = int(round(high))
+    noun = "offenses" if result.get("unit") == "NIBRS offenses" else "reports"
+    if actual < low_n:
+        pace = "relatively quiet"
+    elif actual > high_n:
+        pace = "relatively busy"
+    else:
+        pace = "in the usual range"
+    answer = (
+        f"{name} had {actual:,} {noun} {_when_phrase(start, end)}. "
+        f"The expected number was {expected:,}. "
+        f"This {_span_name(start, end)} was {pace}, as most periods of this length fall between {low_n:,} and {high_n:,} {noun}."
+    )
+    body = _short(answer, "forecast")
+    if (result.get("backtest") or {}).get("no_better_than_baseline"):
+        body["caveat"] = "No better than baseline. The weekday means are not clearly under the training-mean error."
+    return body
+
+
+_MONTH_NAMES = (
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+)
+
+
+def _month_end(day: date) -> bool:
+    import calendar
+
+    return day.day == calendar.monthrange(day.year, day.month)[1]
+
+
+def _when_phrase(start: date, end: date) -> str:
+    """January - March 2023, or a single month or year when the range is one of those."""
+    if start.month == 1 and start.day == 1 and end.month == 12 and end.day == 31 and start.year == end.year:
+        return f"in {start.year}"
+    if start.day == 1 and _month_end(end):
+        start_name = _MONTH_NAMES[start.month - 1]
+        end_name = _MONTH_NAMES[end.month - 1]
+        if start.year == end.year and start.month == end.month:
+            return f"in {start_name} {start.year}"
+        if start.year == end.year:
+            return f"from {start_name} - {end_name} {start.year}"
+        return f"from {start_name} {start.year} - {end_name} {end.year}"
+    return f"from {start.isoformat()} to {end.isoformat()}"
+
+
+def _span_name(start: date, end: date) -> str:
+    """A calendar quarter or year gets that word. Any other range is a period."""
+    if start.month == 1 and start.day == 1 and end.month == 12 and end.day == 31 and start.year == end.year:
+        return "year"
+    quarter_start = start.day == 1 and start.month in {1, 4, 7, 10}
+    if quarter_start and start.year == end.year and end.month == start.month + 2 and _month_end(end):
+        return "quarter"
+    return "period"
+
+
+def _range_in_text(message: str) -> tuple | None:
+    """Two ISO dates, two month-years, or one calendar year."""
+    import calendar
+
+    isos = re.findall(r"\b(20\d\d)-(\d{2})-(\d{2})\b", message)
+    if len(isos) >= 2:
+        start = _iso_date(*isos[0])
+        end = _iso_date(*isos[1])
+        if start and end:
+            return start, end
+    months = re.findall(
+        r"\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(20\d\d)\b",
+        message,
+        re.IGNORECASE,
+    )
+    if len(months) >= 2:
+        first, second = months[0], months[1]
+        start_month = _MONTHS[first[0].lower()]
+        end_month = _MONTHS[second[0].lower()]
+        end_year = int(second[1])
+        last = calendar.monthrange(end_year, end_month)[1]
+        return date(int(first[1]), start_month, 1), date(end_year, end_month, last)
+    years = re.findall(r"\b(20\d\d)\b", message)
+    if len(years) == 1 and not isos and not months:
+        year = int(years[0])
+        return date(year, 1, 1), date(year, 12, 31)
+    return None
+
+
+def _iso_date(year: str, month: str, day: str):
+    try:
+        return date(int(year), int(month), int(day))
+    except ValueError:
+        return None
+
+
 def _forecast_reply(message: str, venue_id: str | None) -> dict:
     from backend.agent_tools import forecast
 
@@ -678,7 +866,13 @@ def _forecast_reply(message: str, venue_id: str | None) -> dict:
         f"The backtest was off by {mae} records a day on days with crime data. "
         f"There is no Olympic precedent at this venue, so the Games are refused."
     )
-    return _short(answer, "forecast")
+    body = _short(answer, "forecast")
+    if (result.get("backtest") or {}).get("no_better_than_baseline"):
+        body["confidence"] = {
+            "kind": "recorded",
+            "text": "No better than baseline. The holdout error is not clearly under the training-mean error.",
+        }
+    return body
 
 
 def _highest_reply() -> dict:
@@ -846,6 +1040,227 @@ def _pattern_fallback(message: str, venue_id: str | None, history: list[dict] | 
     return body
 
 
+_PLAIN_TOOL = {
+    "describe_data": "Data dictionary",
+    "run_sql": "Table query",
+    "correlate": "Correlation of two daily series",
+    "forecast": "Condition multiplier",
+    "expected_count": "Recorded expectation",
+    "compare_periods": "Two date ranges",
+    "compare_conditions": "Weekday-held-fixed comparison",
+    "rank_venues": "Ranking of the 14 venues",
+    "rank_nearby": "Ranking of nearby places",
+    "crime_detail": "Offense detail",
+    "crime_around": "Records within half a mile",
+    "live_weather": "Current weather",
+    "metro_alerts": "Metro service alerts",
+    "compare_with_city": "Citywide density comparison",
+    "explain_page": "Venue page",
+}
+_PRESENT_TOOLS = {"explain_page", "compare_with_city", "rank_venues", "crime_around"}
+_FORWARD = re.compile(
+    r"\b(will see|will have|will be|expected to|forecasts?|projected|projection|predicts?|"
+    r"during the (?:olympics|games)|in 2028)\b",
+    re.IGNORECASE,
+)
+_NOT_FORWARD = re.compile(r"\bnot a (?:forecast|future|projection)\b", re.IGNORECASE)
+_GAMES_WORD = re.compile(r"\b(olympics?|la28|the games)\b", re.IGNORECASE)
+_FALLBACK_NOTE = "Gemini is unavailable. This answer is calculated from the tables."
+
+
+def _ambiguous_venue(message: str) -> dict | None:
+    """Ask when one phrase matches more than one venue. A selected pin does not resolve it."""
+    from backend.chat import _mentions, _normalize
+    from backend.datasets import load_summary
+
+    normalized = _normalize(message)
+    for start, end, candidates in _mentions(normalized, load_summary()["venues"]):
+        if len(candidates) < 2:
+            continue
+        names = ", ".join(venue["venue_name"] for venue in candidates)
+        prefix = normalized[:start]
+        if prefix.endswith("the "):
+            prefix = prefix[:-4]
+        choices = [
+            {
+                "venue_id": venue["venue_id"],
+                "venue_name": venue["venue_name"],
+                "message": f"{prefix}{venue['venue_name']}{normalized[end:]}".strip(),
+            }
+            for venue in candidates
+        ]
+        body = _short(f"Which venue do you mean by “{normalized[start:end]}”? {names}.", "clarify")
+        body["status"] = "clarification"
+        body["choices"] = choices
+        return body
+    return None
+
+
+def _attach_fallback(body: dict) -> None:
+    if body.get("tool") == "conversation" or body.get("status") == "clarification":
+        return
+    if "model is not available" in str(body.get("answer") or "").lower():
+        return
+    confidence = dict(body.get("confidence") or {})
+    text = str(confidence.get("text") or "").strip()
+    confidence["text"] = f"{_FALLBACK_NOTE} {text}".strip() if text else _FALLBACK_NOTE
+    confidence["kind"] = confidence.get("kind") or "recorded"
+    body["confidence"] = confidence
+
+
+def _computation_line(name: str, arguments: dict, result: dict) -> str:
+    parts = [_PLAIN_TOOL.get(name, "Calculation")]
+    venue = str(result.get("venue") or "")
+    if not venue and name not in {"run_sql", "correlate"}:
+        venue = str(arguments.get("venue") or "")[:80]
+    if venue:
+        parts.append(f"for {venue}")
+    period = _computation_period(name, arguments, result)
+    if period:
+        parts.append(period)
+    size = _computation_size(result)
+    if size:
+        parts.append(size)
+    if result.get("error"):
+        parts.append("no result")
+    return ", ".join(parts) + "."
+
+
+def _computation_period(name: str, arguments: dict, result: dict) -> str:
+    if name == "compare_periods" and result.get("earlier_start"):
+        return (
+            f"{result['earlier_start']} to {result['earlier_end']} against "
+            f"{result['later_start']} to {result['later_end']}"
+        )
+    if name == "forecast" and result.get("crime_data_through"):
+        return f"recorded days through {result['crime_data_through']}"
+    if name == "expected_count" and result.get("start"):
+        return f"{result['start']} to {result['end']}"
+    if name in {"live_weather", "metro_alerts"}:
+        return "current reading"
+    if name in _PRESENT_TOOLS and not result.get("error"):
+        return "2020–present"
+    return ""
+
+
+def _computation_size(result: dict) -> str:
+    if result.get("result_kind") == "recorded_expectation" and isinstance(result.get("days"), int):
+        return f"{result['days']:,} recorded days"
+    if isinstance(result.get("n"), int) and result.get("result_kind") != "condition_multiplier":
+        return f"{result['n']:,} aligned days"
+    if isinstance(result.get("earlier_days"), int) and isinstance(result.get("later_days"), int):
+        return f"{result['earlier_days']:,} and {result['later_days']:,} days"
+    if isinstance(result.get("row_count"), int):
+        return f"{result['row_count']:,} rows"
+    if isinstance(result.get("scored_days"), int):
+        return f"{result['scored_days']:,} holdout days"
+    backtest = result.get("backtest") or {}
+    if isinstance(backtest.get("scored_days"), int):
+        return f"{backtest['scored_days']:,} holdout days"
+    if isinstance(result.get("event_days"), int):
+        return f"{result['event_days']:,} days"
+    for entry in result.get("entries") or []:
+        value = entry.get("value")
+        label = entry.get("label")
+        if isinstance(value, int) and label:
+            return f"{label} {value:,}"
+    return ""
+
+
+def _answer_checks(answer: str, results: list[dict], question: str) -> str:
+    notes = []
+    forward = _forward_note(answer, results)
+    if forward:
+        notes.append(forward)
+    figures = _figure_note(answer, results, question)
+    if figures:
+        notes.append(figures)
+    return " ".join(notes)
+
+
+def _forward_note(answer: str, results: list[dict]) -> str:
+    text = answer or ""
+    looks_ahead = bool(_FORWARD.search(text))
+    if _GAMES_WORD.search(text) and re.search(r"\b(will|expect|predict|forecast)\b", text, re.IGNORECASE):
+        looks_ahead = True
+    if not looks_ahead:
+        return ""
+    if _NOT_FORWARD.search(text) and not re.search(r"\bwill be\b", text, re.IGNORECASE):
+        return ""
+    forecast_ran = any(
+        item.get("result_kind") in {"condition_multiplier", "recorded_expectation"}
+        or item.get("games_period") == "refused"
+        for item in results
+    )
+    if not forecast_ran:
+        return "That looks ahead, and no forecast was run. This record does not project the Games."
+    projects = any(item.get("projects_daily_counts") is False for item in results)
+    if projects and re.search(r"\bwill be\b|\bdaily count of\b", text, re.IGNORECASE):
+        return "That reads as a future daily count. The calculation returned a condition multiplier, not a projection."
+    return ""
+
+
+def _figure_note(answer: str, results: list[dict], question: str) -> str:
+    known: list[float] = []
+    for item in results:
+        _walk_numbers(item, known)
+    asked = _parse_numbers(question)
+    unsupported = []
+    for number in _parse_numbers(answer):
+        if _number_supported(number, known, asked):
+            continue
+        shown = f"{int(number):,}" if number == int(number) else f"{number:,.2f}".rstrip("0").rstrip(".")
+        if shown not in unsupported:
+            unsupported.append(shown)
+        if len(unsupported) == 3:
+            break
+    if not unsupported:
+        return ""
+    return "A figure in that reply is not in the calculation: " + ", ".join(unsupported) + "."
+
+
+def _parse_numbers(text: str) -> list[float]:
+    found = []
+    for match in re.finditer(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?", text or ""):
+        found.append(float(match.group(0).replace(",", "")))
+    return found
+
+
+def _walk_numbers(value, found: list[float]) -> None:
+    if isinstance(value, bool) or value is None:
+        return
+    if isinstance(value, (int, float)):
+        found.append(float(value))
+        return
+    if isinstance(value, str):
+        found.extend(_parse_numbers(value))
+        return
+    if isinstance(value, dict):
+        for item in value.values():
+            _walk_numbers(item, found)
+        return
+    if isinstance(value, (list, tuple)):
+        if value and isinstance(value[0], dict):
+            found.append(float(len(value)))
+        for item in value:
+            _walk_numbers(item, found)
+
+
+def _number_supported(number: float, known: list[float], asked: list[float]) -> bool:
+    if 2000 <= number <= 2030 and number == int(number):
+        return True
+    if any(abs(number - item) <= 0.05 for item in asked):
+        return True
+    for item in known:
+        if abs(number - item) <= 0.05:
+            return True
+        if abs(item) >= 20 and abs(number - item) / abs(item) <= 0.005:
+            return True
+        if abs(number - round(item)) <= 0.05 or abs(number - round(item, 1)) <= 0.05:
+            return True
+    return False
+
+
 def answer_events(message: str, venue_id: str | None = None, history: list[dict] | None = None):
     """The model picks a tool and writes the sentence. Fixed sentences run only if the model is down."""
     yield {"event": "status", "text": "Looking that up…"}
@@ -854,15 +1269,27 @@ def answer_events(message: str, venue_id: str | None = None, history: list[dict]
         yield {"event": "template", **recorded}
         yield {"event": "narration", "narration": None}
         return
+    choice = _ambiguous_venue(message)
+    if choice is not None:
+        yield {"event": "template", **choice}
+        yield {"event": "narration", "narration": None}
+        return
+    expected = _expectation_reply(message, venue_id)
+    if expected is not None:
+        yield {"event": "template", **expected}
+        yield {"event": "narration", "narration": None}
+        return
     from backend.claude import settings
 
-    if settings()["claude_configured"]:
+    fell_back = not settings()["claude_configured"]
+    if not fell_back:
         try:
             yield from _agent_events(message, venue_id, history)
             yield {"event": "narration", "narration": None}
             return
         except ClaudeUnavailable:
             yield {"event": "clear"}
+            fell_back = True
     short = brief_reply(message, venue_id)
     if short is None:
         short = _pattern_fallback(message, venue_id, history)
@@ -872,6 +1299,8 @@ def answer_events(message: str, venue_id: str | None = None, history: list[dict]
             "conversation",
         )
         short["confidence"] = {"kind": "none", "text": ""}
+    if fell_back:
+        _attach_fallback(short)
     yield {"event": "template", **short}
     yield {"event": "narration", "narration": None}
 
@@ -901,6 +1330,7 @@ def _agent_events(message: str, venue_id: str | None, history: list[dict] | None
     })}]}]
     warnings: list[str] = []
     forecasts: list[dict] = []
+    traces: list[tuple[str, dict, dict]] = []
     answer = ""
     with httpx.Client(timeout=httpx.Timeout(25.0, connect=5.0)) as client:
         for step in range(_MAX_STEPS):
@@ -929,9 +1359,12 @@ def _agent_events(message: str, venue_id: str | None, history: list[dict] | None
                 contents.append({"role": "model", "parts": [{"functionCall": call} for call in calls]})
                 responses = []
                 for call in calls:
-                    result = _run_tool(call.get("name") or "", call.get("args") or {})
+                    name = call.get("name") or ""
+                    args = call.get("args") if isinstance(call.get("args"), dict) else {}
+                    result = _run_tool(name, args)
+                    traces.append((name, args, result))
                     warnings.extend(result.get("warnings") or [])
-                    if (call.get("name") or "") == "forecast" and result.get("backtest"):
+                    if name == "forecast" and result.get("backtest"):
                         forecasts.append(result)
                     responses.append({
                         "functionResponse": {"name": call.get("name") or "tool", "response": result},
@@ -951,15 +1384,17 @@ def _agent_events(message: str, venue_id: str | None, history: list[dict] | None
             f"A constant training mean was off by {backtest.get('baseline_mae')}."
         )
     notes = list(dict.fromkeys(warnings))
+    check = _answer_checks(answer, [result for _, _, result in traces], message)
     yield {
         "event": "template",
         "version": "v2",
         "status": "answered",
         "answer": answer,
         "caveat": " ".join(notes),
-        "confidence": {"kind": "recorded", "text": ""},
+        "confidence": {"kind": "recorded", "text": check},
         "narration": None,
         "table": None,
+        "computation": [_computation_line(name, args, result) for name, args, result in traces],
         "links": [],
         "choices": [],
         "results": [],
@@ -970,16 +1405,34 @@ def _agent_events(message: str, venue_id: str | None, history: list[dict] | None
 
 
 def _run_tool(name: str, arguments: dict) -> dict:
+    started = time.perf_counter()
     function = _TOOLS.get(name)
     if function is None:
-        return {"error": f"Unknown tool {name}.", "warnings": []}
-    try:
-        result = function(arguments if isinstance(arguments, dict) else {})
-    except (TypeError, ValueError) as exc:
-        return {"error": str(exc)[:300], "warnings": []}
-    if not isinstance(result, dict):
-        return {"result": result, "warnings": []}
+        result = {"error": f"Unknown tool {name}.", "warnings": []}
+    else:
+        try:
+            result = function(arguments if isinstance(arguments, dict) else {})
+        except (TypeError, ValueError) as exc:
+            result = {"error": str(exc)[:300], "warnings": []}
+        if not isinstance(result, dict):
+            result = {"result": result, "warnings": []}
+    elapsed = int(round((time.perf_counter() - started) * 1000))
+    _log.info(
+        "tool_call name=%s ms=%s venue=%s",
+        name,
+        elapsed,
+        _log_venue(arguments if isinstance(arguments, dict) else {}, result),
+    )
     return result
+
+
+def _log_venue(arguments: dict, result: dict) -> str:
+    venue = str(result.get("venue") or result.get("venue_id") or arguments.get("venue") or "")
+    if not venue:
+        blob = " ".join(str(arguments.get(key) or "") for key in ("query", "sql_a", "sql_b"))
+        found = re.search(r"\bV\d{2}\b", blob)
+        venue = found.group(0) if found else ""
+    return venue[:80]
 
 
 def _stream_model(client: httpx.Client, project: str, location: str, model: str, contents: list[dict], use_tools: bool = True):

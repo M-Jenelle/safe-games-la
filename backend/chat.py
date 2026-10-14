@@ -84,7 +84,7 @@ HELP = (
     "and hospitals (with the recorded emergency-room flag), and listed venue sports. "
     "I can count LAPD reports and NIBRS offenses whose pin falls within 200 m of a rail station recorded inside the venue circle. "
     "That is the neighborhood of the station pin, not a crime on a train and not a safety judgment. "
-    "I can give a seasonal estimate for the next three months at one venue: the average of that month in earlier years. "
+    "I can give a seasonal estimate for the next three months at one venue: the average of that month in earlier years with the same counting unit. April through December 2024 are left out. "
     "That figure is not recorded crime and not a certainty. "
     "I cannot answer a count of permits, Ticketmaster listings, tonight, hourly counts, other distances, traffic, schedules, fares, "
     "nearest emergency-room hospitals, travel/response times, crime causes, live "
@@ -2331,8 +2331,24 @@ def _venue_month_counts(venue: dict) -> dict[str, int]:
     return {str(month): int(count or 0) for month, count in raw.items()}
 
 
+def _month_unit(key: str) -> str | None:
+    """A month that contains March 7, 2024 mixes one LAPD report with one NIBRS offense."""
+    if key < "2024-03":
+        return "lapd"
+    if key > "2024-03":
+        return "nibrs"
+    return None
+
+
+def _same_unit_sample(key: str, unit: str) -> bool:
+    """April–December 2024 stays out. That stretch of the extract is thin."""
+    if _month_unit(key) != unit:
+        return False
+    return not ("2024-04" <= key <= "2024-12")
+
+
 def seasonal_estimates(by_month: dict[str, int], horizon: int = 3) -> list[dict]:
-    """Average of the same calendar month in up to the three prior years."""
+    """Average of the same calendar month in up to three earlier years of the same counting unit."""
     keys = sorted(key for key in by_month if re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", str(key)))
     if not keys:
         return []
@@ -2354,17 +2370,26 @@ def seasonal_estimates(by_month: dict[str, int], horizon: int = 3) -> list[dict]
         if month == 13:
             month = 1
             year += 1
+        target = f"{year:04d}-{month:02d}"
+        unit = _month_unit(target)
+        if unit is None:
+            continue
         samples = []
-        for prior in range(year - 1, year - 4, -1):
+        sample_years = []
+        prior = year - 1
+        while prior >= start_year and len(samples) < 3:
             key = f"{prior:04d}-{month:02d}"
-            if key in filled:
+            if key in filled and _same_unit_sample(key, unit):
                 samples.append(filled[key])
+                sample_years.append(prior)
+            prior -= 1
         if not samples:
             continue
         estimates.append({
-            "key": f"{year:04d}-{month:02d}",
+            "key": target,
             "count": (sum(samples) + len(samples) // 2) // len(samples),
             "years": len(samples),
+            "sample_years": sample_years,
         })
     return estimates
 
@@ -2675,7 +2700,8 @@ def _seasonal_answer(venue: dict) -> dict:
     ]
     answer = (
         f"Near {name}, the next {len(estimates)} months are seasonal estimates, not recorded crime and not a certainty. "
-        "Each figure is the average of that calendar month in up to the three most recent earlier years, rounded to a whole number. "
+        "Each figure is the average of that calendar month in up to three earlier years with the same counting unit, rounded to a whole number. "
+        "April through December 2024 are left out, because that stretch of the extract is thin. "
         + " ".join(lines)
         + schedule_note
         + " This does not say a crime will occur, and it is not a forecast for 2028."

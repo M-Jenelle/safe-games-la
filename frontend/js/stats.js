@@ -1,5 +1,5 @@
-import { categoryRows, filledMonths, overviewChart } from "./charts.js?v=miles5";
-import { el, formatMiles, formatNumber, formatSports, ordinal, perSquareMile, text } from "./dom.js?v=miles5";
+import { categoryRows, filledMonths, overviewChart } from "./charts.js?v=months1";
+import { el, formatMiles, formatNumber, formatSports, ordinal, perSquareMile, text } from "./dom.js?v=months1";
 import { jurisdictionLabel } from "./roster.js";
 import { mapHint, overview, state } from "./state.js";
 import { infoMark, pageCopy } from "./tips.js";

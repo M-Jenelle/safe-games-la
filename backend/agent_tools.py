@@ -795,6 +795,7 @@ def forecast(venue: str, horizon: int, regressors: list[str] | None = None, scen
     fitted = fit_count_model(rows, "event") if rows else None
     weekday = weekday_standardized(rows, "event") if rows else None
     backtest = _backtest(hold, primary, weekday, fitted, scenario, train)
+    _mark_baseline(backtest, warnings)
     end = pd.to_datetime(recorded["date"]).max().date()
     return {
         "venue": venue,
@@ -814,6 +815,273 @@ def forecast(venue: str, horizon: int, regressors: list[str] | None = None, scen
         "weather_rows_without_crime": int(len(frame) - len(recorded)),
         "warnings": warnings,
     }
+
+
+_GAMES_YEAR = 2028
+_EXPECTATION_NOTE = (
+    "This is the expected total for recorded days already in the file. "
+    "It is not a forecast of a future day, and the Games are refused."
+)
+
+
+def expected_count(venue: str, start: str, end: str) -> dict:
+    """Expected total for a past range, with an 80% range and the training-mean baseline."""
+    found = _summary_venue(venue)
+    if found is None:
+        return {"error": f"No venue matched {venue}.", "games_period": "not_requested", "projects_daily_counts": False, "warnings": []}
+    start_day = _parse_day(start)
+    end_day = _parse_day(end)
+    if start_day is None or end_day is None:
+        return {"error": "Use dates as YYYY-MM-DD.", "games_period": "not_requested", "projects_daily_counts": False, "warnings": []}
+    if end_day < start_day:
+        return {"error": "The end date is before the start date.", "games_period": "not_requested", "projects_daily_counts": False, "warnings": []}
+    warnings = [REPORTED_WARNING, _EXPECTATION_NOTE]
+    refused = {
+        "games_period": "refused",
+        "projects_daily_counts": False,
+        "warnings": warnings,
+    }
+    if start_day.year >= _GAMES_YEAR or end_day.year >= _GAMES_YEAR:
+        refused["error"] = "The Games period is refused. There is no Olympic precedent at this venue."
+        return refused
+    frame = _venue_frame(found["venue_id"])
+    recorded = frame[frame["incident_count"].notna()].copy()
+    if recorded.empty:
+        return {"error": f"No crime days for {venue}.", "games_period": "not_requested", "projects_daily_counts": False, "warnings": warnings}
+    recorded["date"] = pd.to_datetime(recorded["date"])
+    through = recorded["date"].max().date()
+    if end_day > through or start_day > through:
+        return {
+            "error": (
+                f"That range goes past the loaded record, which ends {through.isoformat()}. "
+                "This does not project those days."
+            ),
+            "crime_data_through": through.isoformat(),
+            "games_period": "not_requested",
+            "projects_daily_counts": False,
+            "warnings": warnings,
+        }
+    break_day = date.fromisoformat(SERIES_BREAK)
+    if start_day < break_day and end_day >= break_day:
+        return {
+            "error": (
+                "That range crosses March 7, 2024, when the unit changed from one LAPD report "
+                "to one NIBRS offense. Ask for a range entirely on one side of that date."
+            ),
+            "games_period": "not_requested",
+            "projects_daily_counts": False,
+            "warnings": warnings + [SERIES_WARNING],
+        }
+    if end_day < break_day:
+        unit = "LAPD reports"
+        series = recorded[recorded["date"] < pd.Timestamp(break_day)]
+    else:
+        unit = "NIBRS offenses"
+        series = recorded[recorded["date"] >= pd.Timestamp(break_day)]
+    window_mask = (series["date"] >= pd.Timestamp(start_day)) & (series["date"] <= pd.Timestamp(end_day))
+    window = series.loc[window_mask]
+    train = series.loc[~window_mask]
+    if window.empty:
+        return {"error": "No recorded days in that range.", "games_period": "not_requested", "projects_daily_counts": False, "warnings": warnings}
+    if len(train) < 30:
+        return {"error": "Not enough other recorded days to score that range.", "games_period": "not_requested", "projects_daily_counts": False, "warnings": warnings}
+    overall = float(train["incident_count"].mean())
+    by_weekday = train.groupby(train["date"].dt.dayofweek)["incident_count"].mean()
+    weekday_errors = []
+    baseline_errors = []
+    weekday_total = 0.0
+    for record in window.itertuples(index=False):
+        actual = float(record.incident_count)
+        weekday_level = float(by_weekday.get(record.date.dayofweek, overall))
+        weekday_total += weekday_level
+        weekday_errors.append(abs(actual - weekday_level))
+        baseline_errors.append(abs(actual - overall))
+    n = int(len(window))
+    baseline_total = round(overall * n, 1)
+    weekday_rounded = round(weekday_total, 1)
+    backtest = {
+        "holdout_days": n,
+        "scored_days": n,
+        "mae": round(sum(weekday_errors) / n, 2),
+        "baseline_mae": round(sum(baseline_errors) / n, 2),
+        "baseline": "training daily mean",
+        "baseline_daily_mean": round(overall, 2),
+    }
+    _mark_baseline(backtest, warnings)
+    expected = baseline_total if backtest["no_better_than_baseline"] else weekday_rounded
+    low, high, spread = _eighty_percent(_count_blocks(train), n, expected)
+    return {
+        "venue": found["venue_name"],
+        "venue_id": found["venue_id"],
+        "result_kind": "recorded_expectation",
+        "projects_daily_counts": False,
+        "games_period": "not_requested",
+        "start": start_day.isoformat(),
+        "end": end_day.isoformat(),
+        "unit": unit,
+        "days": n,
+        "actual_total": int(pd.to_numeric(window["incident_count"], errors="coerce").fillna(0).sum()),
+        "expected_total": expected,
+        "baseline_total": baseline_total,
+        "weekday_total": weekday_rounded,
+        "interval_80": [low, high],
+        "interval_level": 0.8,
+        "interval_spread": spread,
+        "quoted": "training daily mean" if backtest["no_better_than_baseline"] else "weekday means",
+        "backtest": backtest,
+        "crime_data_through": through.isoformat(),
+        "warnings": warnings,
+    }
+
+
+def _count_blocks(frame: pd.DataFrame) -> list[pd.Series]:
+    """Split recorded days where the calendar skips, so a rolling total does not bridge a gap."""
+    ordered = frame.sort_values("date").reset_index(drop=True)
+    if ordered.empty:
+        return []
+    dates = pd.to_datetime(ordered["date"])
+    gap = dates.diff().dt.days.ne(1)
+    gap.iloc[0] = False
+    blocks = []
+    for _, group in ordered.groupby(gap.cumsum()):
+        blocks.append(pd.to_numeric(group["incident_count"], errors="coerce").astype(float))
+    return blocks
+
+
+def _eighty_percent(blocks: list[pd.Series], days: int, center: float) -> tuple[float, float, str]:
+    """10th and 90th percentile of totals with the same length, recentered on the quoted expectation."""
+    rolls = []
+    for block in blocks:
+        if len(block) >= days:
+            rolls.append(block.rolling(days).sum().dropna())
+    combined = pd.concat(rolls) if rolls else pd.Series(dtype=float)
+    if len(combined) >= 20:
+        low = float(combined.quantile(0.10))
+        high = float(combined.quantile(0.90))
+        shift = center - float(combined.mean())
+        spread = "rolling totals of the same length"
+    else:
+        values = pd.concat(blocks) if blocks else pd.Series([0.0])
+        std = float(values.std(ddof=1)) if len(values) > 1 else 0.0
+        spread_width = 1.2816 * std * (days ** 0.5)
+        low = center - spread_width
+        high = center + spread_width
+        shift = 0.0
+        spread = "independent recorded days"
+    low = round(max(0.0, low + shift), 1)
+    high = round(max(low, high + shift), 1)
+    return low, high, spread
+
+
+def compare_periods(
+    venue: str,
+    earlier_start: str,
+    earlier_end: str,
+    later_start: str,
+    later_end: str,
+) -> dict:
+    """Totals for two date ranges. A window that crosses March 7, 2024 is not a change in crime."""
+    found = _summary_venue(venue)
+    if found is None:
+        return {"error": f"No venue matched {venue}.", "warnings": []}
+    earlier = _period_window(found["venue_id"], earlier_start, earlier_end)
+    later = _period_window(found["venue_id"], later_start, later_end)
+    if "error" in earlier:
+        return earlier
+    if "error" in later:
+        return later
+    same_unit = earlier["unit"] == later["unit"] and earlier["unit"] != "mixed"
+    warnings = [REPORTED_WARNING]
+    difference = None
+    change_pct = None
+    if same_unit:
+        difference = later["total"] - earlier["total"]
+        if earlier["total"]:
+            change_pct = round(difference / earlier["total"] * 100, 1)
+    else:
+        warnings.append(SERIES_WARNING)
+        warnings.append(
+            "The gap is not a change in crime. The unit changed on March 7, 2024, "
+            "from one LAPD report to one NIBRS offense."
+        )
+    return {
+        "venue": found["venue_name"],
+        "venue_id": found["venue_id"],
+        "comparable": same_unit,
+        "unit": earlier["unit"] if same_unit else "mixed",
+        "earlier_start": earlier["start"],
+        "earlier_end": earlier["end"],
+        "earlier_total": earlier["total"],
+        "earlier_days": earlier["days"],
+        "later_start": later["start"],
+        "later_end": later["end"],
+        "later_total": later["total"],
+        "later_days": later["days"],
+        "difference": difference,
+        "change_pct": change_pct,
+        "warnings": warnings,
+    }
+
+
+def _period_window(venue_id: str, start_text: str, end_text: str) -> dict:
+    start = _parse_day(start_text)
+    end = _parse_day(end_text)
+    if start is None or end is None:
+        return {"error": "Use dates as YYYY-MM-DD.", "warnings": []}
+    if end < start:
+        return {"error": "The end date is before the start date.", "warnings": []}
+    frame = connect().execute(
+        """
+        SELECT date, incident_count, count_source
+        FROM venue_days
+        WHERE venue_id = ?
+          AND incident_count IS NOT NULL
+          AND date BETWEEN ? AND ?
+        """,
+        [venue_id, start.isoformat(), end.isoformat()],
+    ).df()
+    break_day = date.fromisoformat(SERIES_BREAK)
+    sources = {str(item) for item in frame["count_source"].dropna().tolist()} if not frame.empty else set()
+    crosses = start < break_day and end >= break_day
+    if crosses or {"report", "nibrs"} <= sources:
+        unit = "mixed"
+    elif end < break_day:
+        unit = "LAPD reports"
+    else:
+        unit = "NIBRS offenses"
+    total = int(pd.to_numeric(frame["incident_count"], errors="coerce").fillna(0).sum()) if not frame.empty else 0
+    return {
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "total": total,
+        "days": int(len(frame)),
+        "unit": unit,
+    }
+
+
+def _parse_day(value: str) -> date | None:
+    text = str(value or "").strip()
+    if len(text) < 10:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def _mark_baseline(backtest: dict, warnings: list[str]) -> None:
+    """Flag a holdout that is not clearly under the training-mean error."""
+    mae = backtest.get("mae")
+    baseline = backtest.get("baseline_mae")
+    if mae is None or baseline is None:
+        backtest["no_better_than_baseline"] = False
+        return
+    clearly_better = float(mae) < float(baseline) * 0.95
+    backtest["no_better_than_baseline"] = not clearly_better
+    if backtest["no_better_than_baseline"]:
+        warnings.append(
+            "No better than baseline. The holdout error is not clearly under the training-mean error."
+        )
 
 
 def _unknown_venue_id(query: str) -> str:

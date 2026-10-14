@@ -1,4 +1,4 @@
-import { MONTH_NAMES, el, formatNumber, monthLabel, text } from "./dom.js?v=miles5";
+import { MONTH_NAMES, el, formatNumber, monthLabel, text } from "./dom.js?v=months1";
 import { bindChartHover, chartTip, ensureChartTip, hideChartTip, pageCopy, placeChartTip } from "./tips.js";
 
 export function filledMonths(byMonth) {
@@ -71,7 +71,10 @@ export function monthChart(entries, peakKey, onFocus, word = "incidents", estima
     hit.setAttribute("fill", "transparent");
     if (entry.estimate) hit.setAttribute("class", "is-estimate");
     else hit.addEventListener("click", () => onFocus(entry.key));
-    bindChartHover(hit, entry, entry.estimate ? "estimated records" : word);
+    const estimateWord = entry.sampleYears
+      ? `estimated records, from ${entry.sampleYears}`
+      : "estimated records";
+    bindChartHover(hit, entry, entry.estimate ? estimateWord : word);
     svg.append(hit);
     const year = entry.key.slice(0, 4);
     if (year !== labeledYear) {

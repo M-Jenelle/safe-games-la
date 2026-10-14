@@ -1,4 +1,4 @@
-import { el, formatNumber, formatSports, formatWhen, perSquareMile, text } from "./dom.js?v=miles5";
+import { el, formatNumber, formatSports, formatWhen, perSquareMile, text } from "./dom.js?v=months1";
 import { metaStrip, rosterList, state, zoneFilter } from "./state.js";
 
 function visibleVenues() {

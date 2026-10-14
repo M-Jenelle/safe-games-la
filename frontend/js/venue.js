@@ -1,12 +1,12 @@
-import { categoryRows, filledMonths, monthChart, monthTable, mountDistanceSection, mountTimeSection, mountWeekdaySection, scopedBlock, scopedWeekday, yearTotals } from "./charts.js?v=miles5";
-import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, monthTitle, text } from "./dom.js?v=miles5";
+import { categoryRows, filledMonths, monthChart, monthTable, mountDistanceSection, mountTimeSection, mountWeekdaySection, scopedBlock, scopedWeekday, yearTotals } from "./charts.js?v=months1";
+import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, monthTitle, text } from "./dom.js?v=months1";
 import { renderMap } from "./map.js";
 import { closeVenuePage, openVenuePage, renderChatContext, venueToolbar } from "./nav.js";
 import { mountHomeGames, mountPermitSection } from "./permits.js?v=weekday";
 import { mountWeatherSection } from "./weather.js";
 import { renderRoster } from "./roster.js";
 import { detail, overview, requests, state, zoneFilter } from "./state.js";
-import { careStations, cityStats, densityHint, densityNote, incidentNote, overlapNote, presentCount, presentRate, renderOverview, stat, transitStations } from "./stats.js?v=miles5";
+import { careStations, cityStats, densityHint, densityNote, incidentNote, overlapNote, presentCount, presentRate, renderOverview, stat, transitStations } from "./stats.js?v=months1";
 
 export function renderDetail() {
   const venue = state.detail;
@@ -262,10 +262,22 @@ export function renderDetail() {
     syncYearSelect();
   }
 
+  function monthUnit(key) {
+    if (key < "2024-03") return "lapd";
+    if (key > "2024-03") return "nibrs";
+    return "";
+  }
+
+  function sameUnitSample(key, unit) {
+    if (monthUnit(key) !== unit) return false;
+    return !(key >= "2024-04" && key <= "2024-12");
+  }
+
   function seasonalEstimates(byMonth) {
     const entries = filledMonths(byMonth);
     if (!entries.length) return [];
     const counts = new Map(entries.map((entry) => [entry.key, entry.count]));
+    const earliest = Number(entries[0].key.slice(0, 4));
     let year = Number(entries[entries.length - 1].key.slice(0, 4));
     let month = Number(entries[entries.length - 1].key.slice(5));
     const estimates = [];
@@ -275,16 +287,23 @@ export function renderDetail() {
         month = 1;
         year += 1;
       }
+      const target = `${year}-${padMonth(month)}`;
+      const unit = monthUnit(target);
+      if (!unit) continue;
       const samples = [];
-      for (let prior = year - 1; prior >= year - 3; prior -= 1) {
+      const sampleYears = [];
+      for (let prior = year - 1; prior >= earliest && samples.length < 3; prior -= 1) {
         const key = `${prior}-${padMonth(month)}`;
-        if (counts.has(key)) samples.push(counts.get(key));
+        if (!counts.has(key) || !sameUnitSample(key, unit)) continue;
+        samples.push(counts.get(key));
+        sampleYears.push(prior);
       }
       if (!samples.length) continue;
       const sum = samples.reduce((total, value) => total + value, 0);
       estimates.push({
-        key: `${year}-${padMonth(month)}`,
+        key: target,
         count: Math.floor((sum + Math.floor(samples.length / 2)) / samples.length),
+        sampleYears: sampleYears.join(", "),
       });
     }
     return withSchedule(estimates);
@@ -337,7 +356,7 @@ export function renderDetail() {
           ? " Months with a listed home game are scaled by the count-model multiplier."
           : " No home game on the stored schedule falls in these months, so the home-game multiplier is not applied.")
         : "";
-      estimateNote.textContent = `The gray bars and gray table numbers after ${monthLabel(lastKey)} are estimates: the average of that month in up to three earlier years. They are not recorded crime and not a certainty.${scheduleNote}`;
+      estimateNote.textContent = `The gray bars and gray table numbers after ${monthLabel(lastKey)} are estimates: the average of that month in up to three earlier years with the same counting unit. April through December 2024 are left out, because that stretch of the extract is thin. They are not recorded crime and not a certainty.${scheduleNote}`;
     } else {
       estimateNote.hidden = true;
       estimateNote.textContent = "";
