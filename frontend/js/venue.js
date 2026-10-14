@@ -1,12 +1,12 @@
-import { categoryRows, filledMonths, monthChart, monthTable, mountDistanceSection, mountTimeSection, mountWeekdaySection, scopedBlock, scopedWeekday, yearTotals } from "./charts.js?v=months1";
-import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, monthTitle, text } from "./dom.js?v=months1";
+import { categoryRows, filledMonths, monthChart, monthTable, mountDistanceSection, mountTimeSection, mountWeekdaySection, scopedBlock, scopedWeekday, yearTotals } from "./charts.js?v=months3";
+import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, monthTitle, text } from "./dom.js?v=months3";
 import { renderMap } from "./map.js";
 import { closeVenuePage, openVenuePage, renderChatContext, venueToolbar } from "./nav.js";
 import { mountHomeGames, mountPermitSection } from "./permits.js?v=weekday";
 import { mountWeatherSection } from "./weather.js";
 import { renderRoster } from "./roster.js";
 import { detail, overview, requests, state, zoneFilter } from "./state.js";
-import { careStations, cityStats, densityHint, densityNote, incidentNote, overlapNote, presentCount, presentRate, renderOverview, stat, transitStations } from "./stats.js?v=months1";
+import { careStations, cityStats, densityHint, densityNote, incidentNote, overlapNote, presentCount, presentRate, renderOverview, stat, transitStations } from "./stats.js?v=months3";
 
 export function renderDetail() {
   const venue = state.detail;
@@ -273,13 +273,66 @@ export function renderDetail() {
     return !(key >= "2024-04" && key <= "2024-12");
   }
 
-  function seasonalEstimates(byMonth) {
-    const entries = filledMonths(byMonth);
-    if (!entries.length) return [];
-    const counts = new Map(entries.map((entry) => [entry.key, entry.count]));
-    const earliest = Number(entries[0].key.slice(0, 4));
-    let year = Number(entries[entries.length - 1].key.slice(0, 4));
-    let month = Number(entries[entries.length - 1].key.slice(5));
+  function shiftMonth(key, delta) {
+    let year = Number(key.slice(0, 4));
+    let month = Number(key.slice(5)) + delta;
+    while (month < 1) {
+      month += 12;
+      year -= 1;
+    }
+    while (month > 12) {
+      month -= 12;
+      year += 1;
+    }
+    return `${year}-${padMonth(month)}`;
+  }
+
+  function partialMonth(key, through) {
+    if (!through || !through.startsWith(key) || through.length < 10) return false;
+    return through.slice(8, 10) !== padMonth(daysInMonth(key));
+  }
+
+  function paceRatio(recorded, endKey, unit, skipMonth) {
+    const year = Number(endKey.slice(0, 4));
+    const endMonth = Number(endKey.slice(5));
+    let recentTotal = 0;
+    let recentDays = 0;
+    let priorTotal = 0;
+    let priorDays = 0;
+    let used = 0;
+    let firstMonth = 0;
+    let lastMonth = 0;
+    for (let month = 1; month <= endMonth; month += 1) {
+      if (month === skipMonth) continue;
+      const recent = `${year}-${padMonth(month)}`;
+      const prior = `${year - 1}-${padMonth(month)}`;
+      if (!recorded.has(recent) || !recorded.has(prior)) continue;
+      if (!sameUnitSample(recent, unit) || !sameUnitSample(prior, unit)) continue;
+      recentTotal += recorded.get(recent);
+      recentDays += daysInMonth(recent);
+      priorTotal += recorded.get(prior);
+      priorDays += daysInMonth(prior);
+      used += 1;
+      if (!firstMonth) firstMonth = month;
+      lastMonth = month;
+    }
+    if (!used || !priorTotal) return { ratio: 1, start: "", end: "" };
+    return {
+      ratio: (recentTotal / recentDays) / (priorTotal / priorDays),
+      start: `${year}-${padMonth(firstMonth)}`,
+      end: `${year}-${padMonth(lastMonth)}`,
+    };
+  }
+
+  function seasonalEstimates(byMonth, through) {
+    const keys = Object.keys(byMonth).filter((key) => /^\d{4}-\d{2}$/.test(key)).sort();
+    if (!keys.length) return [];
+    const recorded = new Map(keys.map((key) => [key, byMonth[key] || 0]));
+    const earliest = Number(keys[0].slice(0, 4));
+    const lastKey = keys[keys.length - 1];
+    const paceEnd = partialMonth(lastKey, through) ? shiftMonth(lastKey, -1) : lastKey;
+    let year = Number(lastKey.slice(0, 4));
+    let month = Number(lastKey.slice(5));
     const estimates = [];
     for (let step = 0; step < 3; step += 1) {
       month += 1;
@@ -290,20 +343,22 @@ export function renderDetail() {
       const target = `${year}-${padMonth(month)}`;
       const unit = monthUnit(target);
       if (!unit) continue;
-      const samples = [];
-      const sampleYears = [];
-      for (let prior = year - 1; prior >= earliest && samples.length < 3; prior -= 1) {
+      let shape = "";
+      for (let prior = year - 1; prior >= earliest; prior -= 1) {
         const key = `${prior}-${padMonth(month)}`;
-        if (!counts.has(key) || !sameUnitSample(key, unit)) continue;
-        samples.push(counts.get(key));
-        sampleYears.push(prior);
+        if (!recorded.has(key) || !sameUnitSample(key, unit)) continue;
+        shape = key;
+        break;
       }
-      if (!samples.length) continue;
-      const sum = samples.reduce((total, value) => total + value, 0);
+      if (!shape) continue;
+      const pace = paceRatio(recorded, paceEnd, unit, month);
       estimates.push({
         key: target,
-        count: Math.floor((sum + Math.floor(samples.length / 2)) / samples.length),
-        sampleYears: sampleYears.join(", "),
+        count: Math.round(recorded.get(shape) * pace.ratio),
+        sampleYears: `${shape.slice(0, 4)}${pace.start ? ", scaled by this year's pace" : ""}`,
+        paceStart: pace.start,
+        paceEnd: pace.end,
+        partialMonth: partialMonth(lastKey, through) ? lastKey : "",
       });
     }
     return withSchedule(estimates);
@@ -337,8 +392,9 @@ export function renderDetail() {
     );
     const series = seriesMonths();
     const lastKey = series.length ? series[series.length - 1].key : "";
+    const through = venue.city_baseline?.present?.through || "";
     const estimates = lastKey && entries.some((entry) => entry.key === lastKey)
-      ? seasonalEstimates(bundle.byMonth)
+      ? seasonalEstimates(bundle.byMonth, through)
       : [];
     yearHost.replaceChildren(...yearsNow.map(([year, count]) => (
       el("article", { className: year === peakYearNow[0] ? "year-card is-peak" : "year-card" }, [
@@ -356,7 +412,14 @@ export function renderDetail() {
           ? " Months with a listed home game are scaled by the count-model multiplier."
           : " No home game on the stored schedule falls in these months, so the home-game multiplier is not applied.")
         : "";
-      estimateNote.textContent = `The gray bars and gray table numbers after ${monthLabel(lastKey)} are estimates: the average of that month in up to three earlier years with the same counting unit. April through December 2024 are left out, because that stretch of the extract is thin. They are not recorded crime and not a certainty.${scheduleNote}`;
+      const pace = estimates.find((entry) => entry.paceStart);
+      const paceNote = pace
+        ? ` They take that month from the latest comparable year and scale it by how ${monthLabel(pace.paceStart)} through ${monthLabel(pace.paceEnd)} is running against those months a year earlier.`
+        : " They take that month from the latest comparable year.";
+      const partialNote = pace?.partialMonth
+        ? ` ${monthLabel(pace.partialMonth)} is left out of that pace, because the record stops on ${through}.`
+        : "";
+      estimateNote.textContent = `The gray bars and gray table numbers after ${monthLabel(lastKey)} are estimates.${paceNote}${partialNote} April through December 2024 are left out, because that stretch of the extract is thin. They are not recorded crime and not a certainty.${scheduleNote}`;
     } else {
       estimateNote.hidden = true;
       estimateNote.textContent = "";

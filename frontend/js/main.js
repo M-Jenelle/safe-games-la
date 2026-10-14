@@ -1,11 +1,11 @@
-import { compareRoute, openCompare, syncCompareLink } from "./compare.js?v=months1";
-import { fetchJson } from "./dom.js?v=months1";
-import { bindCrimeView, bindFacilityViews, bindHeatRange, bindLayerToggles, ensureGoogleMap, fillLayerView, loadCrimeHeat, renderMap } from "./map.js?v=months1";
-import { closeVenuePage, renderChatContext, venueIdFromLocation } from "./nav.js?v=months1";
-import { renderMeta, renderRoster, renderZoneOptions } from "./roster.js?v=months1";
+import { compareRoute, openCompare, syncCompareLink } from "./compare.js?v=months3";
+import { fetchJson } from "./dom.js?v=months3";
+import { bindCrimeView, bindFacilityViews, bindHeatRange, bindLayerToggles, ensureGoogleMap, fillLayerView, loadCrimeHeat, renderMap } from "./map.js?v=months3";
+import { closeVenuePage, renderChatContext, venueIdFromLocation } from "./nav.js?v=months3";
+import { renderMeta, renderRoster, renderZoneOptions } from "./roster.js?v=months3";
 import { comparePage, mapHint, metaStrip, state } from "./state.js";
 import { pageCopy } from "./tips.js";
-import { selectVenue } from "./venue.js?v=months1";
+import { selectVenue } from "./venue.js?v=months3";
 
 async function init() {
   bindLayerToggles();

@@ -857,9 +857,22 @@ class ChatTests(unittest.TestCase):
         self.assertNotIn(2024, estimates["2026-10"]["sample_years"])
         self.assertNotIn(2023, estimates["2026-10"]["sample_years"])
         earlier = {item["key"]: item for item in seasonal_estimates({"2021-01": 10, "2022-01": 20, "2023-01": 30, "2023-12": 1})}
-        self.assertEqual(earlier["2024-01"]["count"], 20)
-        self.assertEqual(earlier["2024-01"]["sample_years"], [2023, 2022, 2021])
+        self.assertEqual(earlier["2024-01"]["count"], 30)
+        self.assertEqual(earlier["2024-01"]["sample_years"], [2023])
         self.assertNotIn("2024-03", earlier)
+
+    def test_seasonal_estimate_scales_by_this_years_pace(self):
+        counts = {f"2025-{month:02d}": 30 for month in range(1, 10)}
+        counts.update({f"2026-{month:02d}": 15 for month in range(1, 9)})
+        counts.update({"2025-10": 22, "2025-11": 20, "2025-12": 18, "2026-09": 1})
+        scaled = {item["key"]: item for item in seasonal_estimates(counts, through="2026-09-19")}
+        self.assertEqual(scaled["2026-10"]["count"], 11)
+        self.assertEqual(scaled["2026-11"]["count"], 10)
+        self.assertEqual(scaled["2026-12"]["count"], 9)
+        self.assertEqual(scaled["2026-10"]["shape_key"], "2025-10")
+        self.assertEqual(scaled["2026-10"]["partial_month"], "2026-09")
+        finished = seasonal_estimates(counts, through="2026-09-30")
+        self.assertNotEqual(finished[0]["count"], 11)
 
     def test_next_month_estimate_stays_a_seasonal_average(self):
         body = self.post("Estimate the next months near Dodger Stadium")

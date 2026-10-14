@@ -2,9 +2,9 @@ import { syncCompareLink } from "./compare.js";
 import { el, text } from "./dom.js";
 import { renderMap, syncCrimeHint } from "./map.js";
 import { renderRoster } from "./roster.js";
-import { resizeMap } from "./shell.js?v=months1";
+import { resizeMap } from "./shell.js?v=months3";
 import { comparePage, detail, mapHint, overview, requests, state } from "./state.js";
-import { renderDetail } from "./venue.js?v=months1";
+import { renderDetail } from "./venue.js?v=months3";
 
 export function renderChatContext() {
   const venue = state.venues.find((item) => item.venue_id === state.selectedId);

@@ -84,7 +84,7 @@ HELP = (
     "and hospitals (with the recorded emergency-room flag), and listed venue sports. "
     "I can count LAPD reports and NIBRS offenses whose pin falls within 200 m of a rail station recorded inside the venue circle. "
     "That is the neighborhood of the station pin, not a crime on a train and not a safety judgment. "
-    "I can give a seasonal estimate for the next three months at one venue: the average of that month in earlier years with the same counting unit. April through December 2024 are left out. "
+    "I can give a seasonal estimate for the next three months at one venue: that month from the latest comparable year, scaled by how the current year is running. A month the extract does not finish is left out of that pace. April through December 2024 are left out. "
     "That figure is not recorded crime and not a certainty. "
     "I cannot answer a count of permits, Ticketmaster listings, tonight, hourly counts, other distances, traffic, schedules, fares, "
     "nearest emergency-room hospitals, travel/response times, crime causes, live "
@@ -2347,49 +2347,108 @@ def _same_unit_sample(key: str, unit: str) -> bool:
     return not ("2024-04" <= key <= "2024-12")
 
 
-def seasonal_estimates(by_month: dict[str, int], horizon: int = 3) -> list[dict]:
-    """Average of the same calendar month in up to three earlier years of the same counting unit."""
+def _round_half_up(value: float) -> int:
+    return int(value + 0.5) if value >= 0 else int(value - 0.5)
+
+
+def _month_key(year: int, month: int) -> str:
+    return f"{year:04d}-{month:02d}"
+
+
+def _shift_month(key: str, delta: int) -> str:
+    year, month = int(key[:4]), int(key[5:])
+    month += delta
+    while month < 1:
+        month += 12
+        year -= 1
+    while month > 12:
+        month -= 12
+        year += 1
+    return _month_key(year, month)
+
+
+def _is_partial_month(key: str, through: str | None) -> bool:
+    """True when the extract stops before the last day of this month."""
+    if not through or not through.startswith(key) or len(through) < 10:
+        return False
+    year, month = int(key[:4]), int(key[5:])
+    return through[8:10] != f"{calendar.monthrange(year, month)[1]:02d}"
+
+
+def _pace_ratio(recorded: dict[str, int], end_key: str, unit: str, skip_month: int = 0) -> tuple[float, str, str]:
+    """This year's daily rate through end_key, divided by the same months a year earlier.
+
+    The month being estimated is left out, so a January total is not scaled by January itself.
+    """
+    year = int(end_key[:4])
+    end_month = int(end_key[5:])
+    recent_total = recent_days = prior_total = prior_days = 0
+    used = 0
+    first_month = last_month = 0
+    for month in range(1, end_month + 1):
+        if month == skip_month:
+            continue
+        recent = _month_key(year, month)
+        prior = _month_key(year - 1, month)
+        if recent not in recorded or prior not in recorded:
+            continue
+        if not _same_unit_sample(recent, unit) or not _same_unit_sample(prior, unit):
+            continue
+        recent_total += recorded[recent]
+        recent_days += calendar.monthrange(year, month)[1]
+        prior_total += recorded[prior]
+        prior_days += calendar.monthrange(year - 1, month)[1]
+        used += 1
+        if first_month == 0:
+            first_month = month
+        last_month = month
+    if used == 0 or recent_days == 0 or prior_days == 0 or prior_total == 0:
+        return 1.0, "", ""
+    ratio = (recent_total / recent_days) / (prior_total / prior_days)
+    return ratio, _month_key(year, first_month), _month_key(year, last_month)
+
+
+def seasonal_estimates(by_month: dict[str, int], horizon: int = 3, through: str | None = None) -> list[dict]:
+    """That calendar month from the latest comparable year, scaled by how this year is running."""
     keys = sorted(key for key in by_month if re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", str(key)))
     if not keys:
         return []
-    start_year, start_month = (int(part) for part in keys[0].split("-"))
-    end_year, end_month = (int(part) for part in keys[-1].split("-"))
-    filled: dict[str, int] = {}
-    year, month = start_year, start_month
-    while (year, month) <= (end_year, end_month):
-        key = f"{year:04d}-{month:02d}"
-        filled[key] = int(by_month.get(key) or 0)
-        month += 1
-        if month == 13:
-            month = 1
-            year += 1
+    recorded = {key: int(by_month.get(key) or 0) for key in keys}
+    start_year = int(keys[0][:4])
+    last_key = keys[-1]
+    pace_end = _shift_month(last_key, -1) if _is_partial_month(last_key, through) else last_key
     estimates = []
-    year, month = end_year, end_month
+    year, month = int(last_key[:4]), int(last_key[5:])
     for _step in range(horizon):
         month += 1
         if month == 13:
             month = 1
             year += 1
-        target = f"{year:04d}-{month:02d}"
+        target = _month_key(year, month)
         unit = _month_unit(target)
         if unit is None:
             continue
-        samples = []
-        sample_years = []
+        shape = None
         prior = year - 1
-        while prior >= start_year and len(samples) < 3:
-            key = f"{prior:04d}-{month:02d}"
-            if key in filled and _same_unit_sample(key, unit):
-                samples.append(filled[key])
-                sample_years.append(prior)
+        while prior >= start_year:
+            key = _month_key(prior, month)
+            if key in recorded and _same_unit_sample(key, unit):
+                shape = key
+                break
             prior -= 1
-        if not samples:
+        if shape is None:
             continue
+        ratio, pace_start, pace_stop = _pace_ratio(recorded, pace_end, unit, skip_month=month)
         estimates.append({
             "key": target,
-            "count": (sum(samples) + len(samples) // 2) // len(samples),
-            "years": len(samples),
-            "sample_years": sample_years,
+            "count": _round_half_up(recorded[shape] * ratio),
+            "years": 1,
+            "sample_years": [int(shape[:4])],
+            "shape_key": shape,
+            "pace_ratio": round(ratio, 4),
+            "pace_start": pace_start,
+            "pace_end": pace_stop,
+            "partial_month": last_key if _is_partial_month(last_key, through) else "",
         })
     return estimates
 
@@ -2680,7 +2739,7 @@ def _seasonal_answer(venue: dict) -> dict:
     if cached is not None:
         return cached
     detail = get_venue(venue["venue_id"]) or venue
-    estimates = seasonal_estimates(_venue_month_counts(detail))
+    estimates = seasonal_estimates(_venue_month_counts(detail), through=_through_date())
     name = venue["venue_name"]
     if not estimates:
         reply = _reply(
@@ -2691,17 +2750,37 @@ def _seasonal_answer(venue: dict) -> dict:
         _seasonal_cache[venue["venue_id"]] = reply
         return reply
     estimates, schedule_note = _with_home_game_schedule(detail, estimates)
+    first = estimates[0]
+    shape_years = {item["sample_years"][0] for item in estimates}
+    shape_phrase = (
+        f"that month in {next(iter(shape_years))}"
+        if len(shape_years) == 1
+        else "that month from the latest comparable year"
+    )
+    if first.get("pace_start") and first.get("pace_end"):
+        method = (
+            f"Each figure is {shape_phrase}, scaled by how "
+            f"{_month_label(first['pace_start'])} through {_month_label(first['pace_end'])} "
+            f"is running against those months of {int(first['pace_end'][:4]) - 1}."
+        )
+        if first.get("partial_month"):
+            method += (
+                f" {_month_label(first['partial_month'])} is left out of that pace, "
+                f"because the record stops on {_through_date()}."
+            )
+    else:
+        method = "Each figure is that calendar month from the latest comparable year."
     lines = [
         (
             f"{_month_label(item['key'])}: {_comma(item['count'])} estimated records, "
-            f"averaged from {item['years']} earlier {'year' if item['years'] == 1 else 'years'}."
+            f"from {_month_label(item['shape_key'])}."
         )
         for item in estimates
     ]
     answer = (
         f"Near {name}, the next {len(estimates)} months are seasonal estimates, not recorded crime and not a certainty. "
-        "Each figure is the average of that calendar month in up to three earlier years with the same counting unit, rounded to a whole number. "
-        "April through December 2024 are left out, because that stretch of the extract is thin. "
+        + method
+        + " April through December 2024 are left out, because that stretch of the extract is thin. "
         + " ".join(lines)
         + schedule_note
         + " This does not say a crime will occur, and it is not a forecast for 2028."

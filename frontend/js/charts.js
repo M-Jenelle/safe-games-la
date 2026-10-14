@@ -1,4 +1,4 @@
-import { MONTH_NAMES, el, formatNumber, monthLabel, text } from "./dom.js?v=months1";
+import { MONTH_NAMES, el, formatNumber, monthLabel, text } from "./dom.js?v=months3";
 import { bindChartHover, chartTip, ensureChartTip, hideChartTip, pageCopy, placeChartTip } from "./tips.js";
 
 export function filledMonths(byMonth) {
