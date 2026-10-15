@@ -1,5 +1,16 @@
-import { MONTH_NAMES, el, formatNumber, monthLabel, text } from "./dom.js?v=months3";
+import { MONTH_NAMES, el, formatNumber, monthLabel, text } from "./dom.js?v=months6";
 import { bindChartHover, chartTip, ensureChartTip, hideChartTip, pageCopy, placeChartTip } from "./tips.js";
+
+const REPORT_COLOR = "#0085C7";
+const OFFENSE_COLOR = "#800000";
+const MIXED_COLOR = "#C4A000";
+const SERIES_BREAK = "2024-03";
+
+export function monthSeries(key) {
+  if (key < SERIES_BREAK) return { kind: "report", fill: REPORT_COLOR, word: "reports" };
+  if (key === SERIES_BREAK) return { kind: "mixed", fill: MIXED_COLOR, word: "reports and offenses" };
+  return { kind: "offense", fill: OFFENSE_COLOR, word: "offenses" };
+}
 
 export function filledMonths(byMonth) {
   const keys = Object.keys(byMonth).sort();
@@ -21,7 +32,7 @@ export function filledMonths(byMonth) {
   return entries;
 }
 
-export function monthChart(entries, peakKey, onFocus, word = "incidents", estimates = []) {
+export function monthChart(entries, peakKey, onFocus, word = "incidents", estimates = [], splitSeries = false) {
   hideChartTip();
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("class", "chart");
@@ -40,9 +51,10 @@ export function monthChart(entries, peakKey, onFocus, word = "incidents", estima
   const estimateNote = estimates.length
     ? ` Estimates for ${monthLabel(estimates[0].key)} to ${monthLabel(estimates[estimates.length - 1].key)} are seasonal averages, not recorded crime.`
     : "";
+  const peakWord = splitSeries ? monthSeries(peak.key).word : word;
   svg.setAttribute(
     "aria-label",
-    `Monthly ${word} from ${monthLabel(entries[0].key)} to ${monthLabel(entries[entries.length - 1].key)}. Peak ${monthLabel(peak.key)} with ${formatNumber(peak.count)}.${estimateNote}`,
+    `Monthly ${splitSeries ? "reports and offenses" : word} from ${monthLabel(entries[0].key)} to ${monthLabel(entries[entries.length - 1].key)}. Peak ${monthLabel(peak.key)} with ${formatNumber(peak.count)} ${peakWord}.${estimateNote}`,
   );
   const width = 960 / bars.length;
   let labeledYear = "";
@@ -58,6 +70,14 @@ export function monthChart(entries, peakKey, onFocus, word = "incidents", estima
     if (entry.estimate) {
       rect.setAttribute("class", "is-estimate");
       rect.setAttribute("fill", "#b9b6b0");
+    } else if (splitSeries) {
+      const series = monthSeries(entry.key);
+      rect.setAttribute("fill", series.fill);
+      rect.dataset.month = entry.key;
+      if (entry.key === peakKey) {
+        rect.setAttribute("stroke", "#1a1a1a");
+        rect.setAttribute("stroke-width", "1.2");
+      }
     } else {
       rect.setAttribute("fill", entry.key === peakKey ? "#DF0024" : "#0085C7");
       rect.dataset.month = entry.key;
@@ -74,7 +94,10 @@ export function monthChart(entries, peakKey, onFocus, word = "incidents", estima
     const estimateWord = entry.sampleYears
       ? `estimated records, from ${entry.sampleYears}`
       : "estimated records";
-    bindChartHover(hit, entry, entry.estimate ? estimateWord : word);
+    const barWord = entry.estimate
+      ? estimateWord
+      : (splitSeries ? monthSeries(entry.key).word : word);
+    bindChartHover(hit, entry, barWord);
     svg.append(hit);
     const year = entry.key.slice(0, 4);
     if (year !== labeledYear) {
@@ -111,7 +134,7 @@ export function categoryRows(byCategory, total, options = {}) {
   });
 }
 
-export function overviewChart(byMonth) {
+export function overviewChart(byMonth, splitSeries = false) {
   hideChartTip();
   const entries = filledMonths(byMonth);
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -124,9 +147,10 @@ export function overviewChart(byMonth) {
   }
   const max = Math.max(...entries.map((entry) => entry.count), 1);
   const peak = entries.reduce((best, entry) => (entry.count > best.count ? entry : best), entries[0]);
+  const peakWord = splitSeries ? monthSeries(peak.key).word : "incidents";
   svg.setAttribute(
     "aria-label",
-    `Monthly incidents from ${entries[0].key} to ${entries[entries.length - 1].key}. Peak ${peak.key} with ${peak.count}.`,
+    `Monthly ${splitSeries ? "reports and offenses" : "incidents"} from ${entries[0].key} to ${entries[entries.length - 1].key}. Peak ${peak.key} with ${peak.count} ${peakWord}.`,
   );
   const width = 640 / entries.length;
   entries.forEach((entry, index) => {
@@ -138,7 +162,15 @@ export function overviewChart(byMonth) {
     rect.setAttribute("y", String(120 - height));
     rect.setAttribute("width", String(barWidth));
     rect.setAttribute("height", String(height));
-    rect.setAttribute("fill", entry.key === peak.key ? "#DF0024" : "#0085C7");
+    if (splitSeries) {
+      rect.setAttribute("fill", monthSeries(entry.key).fill);
+      if (entry.key === peak.key) {
+        rect.setAttribute("stroke", "#1a1a1a");
+        rect.setAttribute("stroke-width", "1.2");
+      }
+    } else {
+      rect.setAttribute("fill", entry.key === peak.key ? "#DF0024" : "#0085C7");
+    }
     svg.append(rect);
     const hit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
     hit.setAttribute("x", String(x));
@@ -146,7 +178,7 @@ export function overviewChart(byMonth) {
     hit.setAttribute("width", String(barWidth));
     hit.setAttribute("height", "120");
     hit.setAttribute("fill", "transparent");
-    bindChartHover(hit, entry, "incidents");
+    bindChartHover(hit, entry, splitSeries ? monthSeries(entry.key).word : "incidents");
     svg.append(hit);
   });
   svg.addEventListener("mouseleave", hideChartTip);
@@ -162,7 +194,7 @@ export function yearTotals(entries) {
   return [...totals.entries()];
 }
 
-export function monthTable(entries, peakKey, activeKey, estimates = []) {
+export function monthTable(entries, peakKey, activeKey, estimates = [], splitSeries = false) {
   const monthsPresent = [...new Set([
     ...entries.map((entry) => Number(entry.key.slice(5))),
     ...estimates.map((entry) => Number(entry.key.slice(5))),
@@ -194,6 +226,7 @@ export function monthTable(entries, peakKey, activeKey, estimates = []) {
         return el("td", { className: "is-estimate" }, [text(formatNumber(entry.count))]);
       }
       const classes = [];
+      if (splitSeries && entry) classes.push(`is-${monthSeries(entry.key).kind}`);
       if (entry && entry.key === peakKey) classes.push("is-peak");
       if (entry && entry.key === activeKey) classes.push("is-active");
       return el("td", {

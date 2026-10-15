@@ -12,7 +12,7 @@ This is a coordination tool for the Olympic committee and emergency services. It
 
 Open the map. Fourteen LA28 venues are already on it. The crime layer is a heatmap of LAPD reports, so concentrations show up as color rather than as a list of pins.
 
-Select a venue. The briefing under the map shows the 2020–present record count, density, how that circle compares with the city, nearby transit, and the nearest fire station, police station, and hospital. Expand opens the full page: offense groups, weekday pattern, month, time of day, distance from the venue, permit-day context, and weather. Time of day and distance are waffle charts. Click a square to see the offense groups in that slice.
+Select a venue. The briefing shows LAPD reports for 2020–2024 and NIBRS offenses from March 7, 2024 as two counts, plus density, how that circle compares with the city, nearby transit, and the nearest fire station, police station, and hospital. Expand opens the full page: offense groups, weekday pattern, month, time of day, distance from the venue, permit-day context, and weather. Time of day and distance are waffle charts. Click a square to see the offense groups in that slice.
 
 Compare two venues side by side, including a weather view. Ask Torchy a plain-language question. The figures are calculated from the venue tables.
 
@@ -56,7 +56,7 @@ The assignment is to turn the Los Angeles crime file from 2020 to 2024 into some
 
 Each venue has a half-mile circle. The calculation uses 800 meters, which is half a mile. Crime, rail, and bus counts use that circle. The nearest fire station, police station, and hospital come from the full loaded list, so a station can sit outside the circle. Those distances, and each Metro station distance, are shown in miles. Density is records per square mile. The city comparison uses that same square-mile rate.
 
-Two crime files cover the period, and they are not added together. Through March 6, 2024 the count is one LAPD police report. From March 7, 2024 forward the count is one NIBRS offense. A trend that crosses that date is shown as two series. Offense groups on the NIBRS side use NIBRS codes.
+Two crime files cover the period, and they are not added together. Through March 6, 2024 the count is one LAPD police report. From March 7, 2024 forward the count is one NIBRS offense. A trend that crosses that date is shown as two series. Offense groups on the NIBRS side use NIBRS codes. On the month chart, blue is a report through February 2024, maroon is an offense from April 2024, and March 2024 is gold because it includes both.
 
 Monthly counts from March through December 2024 sit well below the months on either side. At Crypto.com Arena, February 2024 is 290 records and January 2025 is 241, while April 2024 is 96 and December 2024 is 115. That gap is in the extract. It is not labeled as a drop in crime. Gray months after the latest record take that calendar month from the latest comparable year and scale it by how the current year is running over the same complete months. A month the extract does not finish is left out of that pace. April through December 2024 stay out, because that stretch of the extract is thin.
 

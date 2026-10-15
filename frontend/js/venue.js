@@ -1,12 +1,12 @@
-import { categoryRows, filledMonths, monthChart, monthTable, mountDistanceSection, mountTimeSection, mountWeekdaySection, scopedBlock, scopedWeekday, yearTotals } from "./charts.js?v=months3";
-import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, monthTitle, text } from "./dom.js?v=months3";
+import { categoryRows, filledMonths, monthChart, monthSeries, monthTable, mountDistanceSection, mountTimeSection, mountWeekdaySection, scopedBlock, scopedWeekday, yearTotals } from "./charts.js?v=months6";
+import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, monthTitle, text } from "./dom.js?v=months6";
 import { renderMap } from "./map.js";
 import { closeVenuePage, openVenuePage, renderChatContext, venueToolbar } from "./nav.js";
 import { mountHomeGames, mountPermitSection } from "./permits.js?v=weekday";
 import { mountWeatherSection } from "./weather.js";
 import { renderRoster } from "./roster.js";
 import { detail, overview, requests, state, zoneFilter } from "./state.js";
-import { careStations, cityStats, densityHint, densityNote, incidentNote, overlapNote, presentCount, presentRate, renderOverview, stat, transitStations } from "./stats.js?v=months3";
+import { careStations, cityStats, densityHint, densityNote, overlapNote, presentCount, presentRate, recordStats, renderOverview, SERIES_NOTE, stat, transitStations } from "./stats.js?v=months6";
 
 export function renderDetail() {
   const venue = state.detail;
@@ -53,7 +53,7 @@ export function renderDetail() {
   const chartHost = el("div", { className: "chart-host" });
   const yearHost = el("div", { className: "year-row" });
   const seriesHint = el("p", { className: "muted" });
-  const estimateNote = el("p", { className: "muted" });
+  const estimateNote = el("p", { className: "muted footnote" });
 
   function seriesData() {
     if (venue.merged_by_month) {
@@ -190,12 +190,22 @@ export function renderDetail() {
 
   function markMonth(key) {
     const peakKey = rangePeak()?.key;
+    const split = Boolean(venue.merged_by_month);
     detail.querySelectorAll("[data-month]").forEach((node) => {
-      const active = node.dataset.month === key;
+      const active = Boolean(key) && node.dataset.month === key;
       node.classList.toggle("is-active", active);
-      if (node.tagName === "rect") {
-        node.setAttribute("fill", node.dataset.month === peakKey ? "#DF0024" : (active ? "#1a1a1a" : "#0085C7"));
+      if (node.tagName !== "rect" || node.classList.contains("is-estimate")) return;
+      if (split && node.dataset.month) {
+        node.setAttribute("fill", monthSeries(node.dataset.month).fill);
+        if (node.dataset.month === peakKey || active) {
+          node.setAttribute("stroke", "#1a1a1a");
+          node.setAttribute("stroke-width", active ? "2" : "1.2");
+        } else {
+          node.removeAttribute("stroke");
+        }
+        return;
       }
+      node.setAttribute("fill", node.dataset.month === peakKey ? "#DF0024" : (active ? "#1a1a1a" : "#0085C7"));
     });
   }
 
@@ -207,7 +217,7 @@ export function renderDetail() {
       tableWrap.replaceChildren(el("p", { className: "muted" }, [text(bundle.empty)]));
       return;
     }
-    const table = monthTable(filtered, peakKey, selectedKey, estimates);
+    const table = monthTable(filtered, peakKey, selectedKey, estimates, Boolean(venue.merged_by_month));
     table.addEventListener("click", (event) => {
       const cell = event.target.closest("td[data-month]");
       if (cell?.dataset.month) selectMonth(cell.dataset.month);
@@ -403,23 +413,21 @@ export function renderDetail() {
       ])
     )));
     chartHost.replaceChildren(entries.length
-      ? monthChart(entries, peakNow?.key, selectMonth, bundle.word, estimates)
+      ? monthChart(entries, peakNow?.key, selectMonth, bundle.word, estimates, Boolean(venue.merged_by_month))
       : el("p", { className: "muted" }, [text(bundle.empty)]));
     if (estimates.length) {
       estimateNote.hidden = false;
-      const scheduleNote = venue.home_games_available
-        ? (estimates.some((entry) => entry.scheduledGames)
-          ? " Months with a listed home game are scaled by the count-model multiplier."
-          : " No home game on the stored schedule falls in these months, so the home-game multiplier is not applied.")
+      const scheduleNote = venue.home_games_available && estimates.some((entry) => entry.scheduledGames)
+        ? " A listed home game raises that month."
         : "";
       const pace = estimates.find((entry) => entry.paceStart);
       const paceNote = pace
-        ? ` They take that month from the latest comparable year and scale it by how ${monthLabel(pace.paceStart)} through ${monthLabel(pace.paceEnd)} is running against those months a year earlier.`
-        : " They take that month from the latest comparable year.";
-      const partialNote = pace?.partialMonth
-        ? ` ${monthLabel(pace.partialMonth)} is left out of that pace, because the record stops on ${through}.`
+        ? `, scaled by ${monthLabel(pace.paceStart)}–${monthLabel(pace.paceEnd)}`
         : "";
-      estimateNote.textContent = `The gray bars and gray table numbers after ${monthLabel(lastKey)} are estimates.${paceNote}${partialNote} April through December 2024 are left out, because that stretch of the extract is thin. They are not recorded crime and not a certainty.${scheduleNote}`;
+      const partialNote = pace?.partialMonth
+        ? ` ${monthLabel(pace.partialMonth)} is left out because the record stops on ${through}.`
+        : "";
+      estimateNote.textContent = `* Gray bars after ${monthLabel(lastKey)} are estimates, not recorded crime. Each follows that month in the latest comparable year${paceNote}.${partialNote}${scheduleNote}`;
     } else {
       estimateNote.hidden = true;
       estimateNote.textContent = "";
@@ -475,8 +483,10 @@ export function renderDetail() {
   }
 
   function seriesNote() {
-    const hint = "Click a bar or a table cell to filter incident types to that month. Click it again to clear. Red is the busiest month.";
-    return hint;
+    const peak = venue.merged_by_month
+      ? "The outlined bar is the busiest month."
+      : "Red is the busiest month.";
+    return `Click a bar or a table cell to filter that month. Click it again to clear. ${peak}`;
   }
 
   function presentChart(merged, reportsBlock, nibrsBlock, scope) {
@@ -558,7 +568,7 @@ export function renderDetail() {
       el("h2", { className: "detail-title", id: "detail-heading" }, [text(venue.venue_name)]),
       el("p", { className: "address" }, [text(`${venue.address}, ${venue.city}`)]),
       el("div", { className: "stats" }, [
-        stat("Incidents", formatNumber(total), incidentNote(venue)),
+        ...recordStats(venue),
         stat("Density", formatNumber(presentRate(venue)), densityNote(venue), densityHint(venue)),
         ...cityStats(venue),
         stat("Busiest month", peak?.key ? monthLabel(peak.key) : "None", peak?.count ? `${formatNumber(peak.count)} records` : "No dated records"),
@@ -566,7 +576,7 @@ export function renderDetail() {
     ]),
     overlapNote(venue) ? el("p", { className: "terms" }, [text(overlapNote(venue))]) : el("span"),
     el("section", { className: "crime-unit", "aria-label": "Crime patterns" }, [
-      el("h3", { className: "section-title", id: "section-months" }, [text("Incidents by Month")]),
+      el("h3", { className: "section-title", id: "section-months" }, [text("Reports and Offenses by Month")]),
       el("div", { className: "table-filters" }, [
         el("label", {}, [text("Year"), yearSelect]),
         el("label", {}, [
@@ -581,6 +591,7 @@ export function renderDetail() {
       seriesHint,
       yearHost,
       chartHost,
+      el("p", { className: "muted footnote" }, [text(venue.merged_by_month ? `* ${SERIES_NOTE}` : "")]),
       estimateNote,
       tableWrap,
       el("h3", { className: "section-title", id: "section-categories" }, [text("Incident Types")]),

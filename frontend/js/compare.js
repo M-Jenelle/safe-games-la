@@ -1,12 +1,12 @@
-import { blockForRange, mountDistanceSection, mountTimeSection, mountWeekdaySection, weekdaySummary } from "./charts.js?v=months3";
-import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, text } from "./dom.js?v=months3";
-import { closeVenuePage } from "./nav.js?v=months3";
+import { blockForRange, mountDistanceSection, mountTimeSection, mountWeekdaySection, weekdaySummary } from "./charts.js?v=months6";
+import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, text } from "./dom.js?v=months6";
+import { closeVenuePage } from "./nav.js?v=months6";
 import { mountHomeGames, mountPermitSection } from "./permits.js?v=weekday";
 import { mountWeatherSection } from "./weather.js";
-import { resizeMap } from "./shell.js?v=months3";
+import { resizeMap } from "./shell.js?v=months6";
 import { comparePage, state } from "./state.js";
-import { cityStats, densityHint, densityNote, incidentNote, presentCount, presentRate, stat } from "./stats.js?v=months3";
-import { selectVenue } from "./venue.js?v=months3";
+import { cityStats, densityHint, densityNote, presentRate, recordStats, stat } from "./stats.js?v=months6";
+import { selectVenue } from "./venue.js?v=months6";
 
 let compareStart = "";
 let compareEnd = "";
@@ -99,7 +99,7 @@ function compareIdentity(venue) {
     el("h2", { className: "detail-title" }, [text(venue.venue_name)]),
     venue.address ? el("p", { className: "address" }, [text(`${venue.address}, ${venue.city}`)]) : el("span"),
     el("div", { className: "stats" }, [
-      stat("Incidents", formatNumber(presentCount(venue)), incidentNote(venue)),
+      ...recordStats(venue),
       stat("Density", formatNumber(presentRate(venue)), densityNote(venue), densityHint(venue)),
       ...cityStats(venue),
       stat("Busiest month", peak?.key ? monthLabel(peak.key) : "None", peak?.count ? `${formatNumber(peak.count)} records` : "No dated records"),

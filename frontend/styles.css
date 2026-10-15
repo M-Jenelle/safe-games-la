@@ -854,10 +854,11 @@ select { width: 132px; }
   margin: 0;
   padding: 4px 0 0;
   border: 0;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .identity-unit .stat {
-  padding: 0 18px;
+  padding: 0 12px;
 }
 
 .identity-unit .stat:first-child {
@@ -921,17 +922,17 @@ select { width: 132px; }
   font-weight: 600;
 }
 
-.month-table td.is-peak,
-.month-table td.is-active {
-  color: var(--data);
-  font-weight: 700;
-}
+.month-table td.is-report { color: #0085C7; }
+.month-table td.is-offense { color: #800000; }
+.month-table td.is-mixed { color: #8A6D00; }
+
+.month-table td.is-peak { font-weight: 700; }
 
 .month-table td[data-month]:not([data-month=""]) { cursor: pointer; }
 
 .month-table td.is-estimate { color: #6b6b6b; }
 
-.month-table td.is-active { background: rgba(223, 0, 36, 0.08); }
+.month-table td.is-active { background: rgba(0, 0, 0, 0.05); }
 
 .table-filters {
   display: flex;
@@ -990,7 +991,10 @@ select { width: 132px; }
 
 .chart rect { cursor: pointer; }
 
-.chart rect.is-estimate { cursor: default; }
+.footnote {
+  font-size: 0.75rem;
+  margin: 4px 0;
+}
 
 .category-list {
   display: grid;
