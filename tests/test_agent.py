@@ -11,7 +11,16 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from backend.agent import _for_reader, _join_gaps, _without_safety_judgment, answer_events, brief_reply
+from backend.agent import (
+    _answer_checks,
+    _computation_line,
+    _for_reader,
+    _join_gaps,
+    _run_tool,
+    _without_safety_judgment,
+    answer_events,
+    brief_reply,
+)
 from backend.claude import ClaudeUnavailable
 from backend.agent_tools import (
     FORECAST_WARNING,
@@ -19,8 +28,10 @@ from backend.agent_tools import (
     SERIES_WARNING,
     _is_event_flag,
     compare_conditions,
+    compare_periods,
     compare_with_city,
     explain_page,
+    expected_count,
     correlate,
     describe_data,
     forecast,
@@ -283,6 +294,10 @@ class AgentToolTests(unittest.TestCase):
         self.assertEqual(result["backtest"]["scored_days"], result["backtest"]["holdout_days"])
         self.assertIsNotNone(result["backtest"]["baseline_mae"])
         self.assertIn("not a forecast", FORECAST_WARNING)
+        close = result["backtest"]["mae"] >= result["backtest"]["baseline_mae"] * 0.95
+        self.assertEqual(result["backtest"]["no_better_than_baseline"], close)
+        if close:
+            self.assertTrue(any("no better than baseline" in warning.lower() for warning in result["warnings"]))
         refused = forecast("V01", 400, ["wet_day"], {"wet_day": 1})
         self.assertIn("400", refused["error"])
         self.assertIn("not applied", refused["error"])
@@ -455,6 +470,136 @@ class AgentToolTests(unittest.TestCase):
              patch("backend.agent._access_token", side_effect=RuntimeError("reauth")):
             with self.assertRaises(ClaudeUnavailable):
                 agent_answer("How many records are near Dodger Stadium?")
+
+    def test_compare_periods_stops_at_the_series_break(self):
+        same = compare_periods("Dodger Stadium", "2022-01-01", "2022-12-31", "2023-01-01", "2023-12-31")
+        self.assertTrue(same["comparable"])
+        self.assertEqual(same["unit"], "LAPD reports")
+        self.assertIsNotNone(same["difference"])
+        self.assertGreater(same["earlier_days"], 0)
+        crossed = compare_periods("V01", "2023-01-01", "2023-12-31", "2025-01-01", "2025-12-31")
+        self.assertFalse(crossed["comparable"])
+        self.assertIsNone(crossed["difference"])
+        self.assertIsNone(crossed["change_pct"])
+        self.assertTrue(any("not a change in crime" in warning for warning in crossed["warnings"]))
+        self.assertIn("error", compare_periods("V01", "March", "2023-01-01", "2023-01-01", "2023-02-01"))
+
+    def test_an_ambiguous_name_asks_before_the_model(self):
+        with patch("backend.claude.settings", return_value={"claude_configured": True, "model": "gemini", "provider": "gemini"}), \
+             patch("backend.agent._agent_events") as agent:
+            event = next(item for item in answer_events("How many incidents were reported near the stadium?") if item["event"] == "template")
+        agent.assert_not_called()
+        self.assertEqual(event["status"], "clarification")
+        self.assertGreaterEqual(len(event["choices"]), 2)
+        self.assertIn("Dodger Stadium", event["answer"])
+        self.assertIn("BMO Stadium", event["answer"])
+        dodger = next(choice for choice in event["choices"] if choice["venue_id"] == "V01")
+        self.assertIn("Dodger Stadium", dodger["message"])
+        self.assertNotIn("the Dodger", dodger["message"])
+
+    def test_a_table_answer_says_when_gemini_is_down(self):
+        event = next(item for item in answer_events("How many incidents were reported near Dodger Stadium?") if item["event"] == "template")
+        self.assertIn("1,418", event["answer"])
+        self.assertIn("Gemini is unavailable", event["confidence"]["text"])
+        hello = next(item for item in answer_events("Hi") if item["event"] == "template")
+        self.assertNotIn("Gemini", hello["confidence"]["text"])
+
+    def test_unsupported_figures_and_a_games_forecast_are_flagged(self):
+        invented = _answer_checks("Dodger Stadium has 9,999 records.", [{"records": 1418}], "How many incidents?")
+        self.assertIn("9,999", invented)
+        rounded = _answer_checks("About 1,420 records.", [{"records": 1418}], "How many incidents?")
+        self.assertEqual(rounded, "")
+        kept = _answer_checks(
+            "That multiplier is not a forecast.",
+            [{"games_period": "refused", "result_kind": "condition_multiplier", "projects_daily_counts": False}],
+            "What is the forecast?",
+        )
+        self.assertEqual(kept, "")
+        games = _answer_checks("Crime will be lower during the Olympics.", [], "Forecast the Games")
+        self.assertIn("no forecast was run", games)
+        line = _computation_line("run_sql", {"query": "SELECT present_records FROM venues"}, {"row_count": 4, "rows": []})
+        self.assertIn("4 rows", line)
+        self.assertNotIn("SELECT", line)
+        self.assertNotIn("run_sql", line)
+
+    def test_a_tool_call_logs_the_name_and_venue_only(self):
+        with self.assertLogs("backend.agent", level="INFO") as captured:
+            _run_tool("run_sql", {"query": "SELECT present_records FROM venues WHERE venue_id = 'V01'"})
+        line = " ".join(captured.output)
+        self.assertIn("name=run_sql", line)
+        self.assertIn("venue=V01", line)
+        self.assertNotIn("SELECT", line)
+
+    def test_an_agent_reply_shows_how_it_was_computed(self):
+        steps = {"n": 0}
+
+        def fake_stream(client, project, location, model, contents, use_tools=True):
+            steps["n"] += 1
+            if steps["n"] == 1:
+                yield {"event": "_call", "call": {"name": "explain_page", "args": {"venue": "Dodger Stadium", "topic": "overview"}}}
+                return
+            yield {"event": "delta", "text": "Dodger Stadium has 1,418 records."}
+
+        with patch("backend.agent._gemini_configuration", return_value=("proj", "us-west1", "gemini")), \
+             patch("backend.agent._stream_model", fake_stream), \
+             patch("backend.claude.settings", return_value={"claude_configured": True, "model": "gemini", "provider": "gemini"}):
+            event = next(
+                item for item in answer_events("How many incidents were reported near Dodger Stadium?")
+                if item["event"] == "template"
+            )
+        self.assertTrue(event["computation"])
+        self.assertIn("Venue page", event["computation"][0])
+        self.assertIn("Dodger Stadium", event["computation"][0])
+        self.assertIn("2020–present", event["computation"][0])
+        self.assertNotIn("explain_page", event["computation"][0])
+        self.assertNotIn("SELECT", " ".join(event["computation"]))
+        self.assertEqual(event["confidence"]["text"], "")
+
+    def test_a_past_range_returns_an_expected_total_and_refuses_the_games(self):
+        result = expected_count("Dodger Stadium", "2023-01-01", "2023-03-31")
+        self.assertEqual(result["result_kind"], "recorded_expectation")
+        self.assertFalse(result["projects_daily_counts"])
+        self.assertEqual(result["games_period"], "not_requested")
+        self.assertEqual(result["unit"], "LAPD reports")
+        self.assertEqual(len(result["interval_80"]), 2)
+        self.assertLessEqual(result["interval_80"][0], result["expected_total"])
+        self.assertGreaterEqual(result["interval_80"][1], result["expected_total"])
+        self.assertGreater(result["actual_total"], 0)
+        self.assertIn("baseline_total", result)
+        games = expected_count("V01", "2028-07-14", "2028-07-30")
+        self.assertEqual(games["games_period"], "refused")
+        self.assertNotIn("expected_total", games)
+        self.assertFalse(games["projects_daily_counts"])
+        later = expected_count("V01", "2027-01-01", "2027-01-31")
+        self.assertIn("loaded record", later["error"])
+        self.assertNotIn("expected_total", later)
+        crossed = expected_count("V01", "2024-01-01", "2024-06-01")
+        self.assertIn("March 7, 2024", crossed["error"])
+        reply = brief_reply("What is the expected total at Dodger Stadium from 2023-01-01 to 2023-03-31?")
+        self.assertEqual(
+            reply["answer"],
+            "Dodger Stadium had 14 reports from January - March 2023. "
+            "The expected number was 34. "
+            "This quarter was relatively quiet, as most periods of this length fall between 16 and 63 reports.",
+        )
+        self.assertIn("No better than baseline", reply["caveat"])
+        self.assertNotIn("2028", reply["answer"])
+        refused = brief_reply("What is the expected total at Dodger Stadium during the Olympics?")
+        self.assertIn("cannot forecast the Games", refused["answer"])
+        with patch("backend.claude.settings", return_value={"claude_configured": True, "model": "gemini", "provider": "gemini"}), \
+             patch("backend.agent._agent_events") as agent:
+            games = next(
+                item for item in answer_events("What is the expected total at Dodger Stadium during the Olympics?")
+                if item["event"] == "template"
+            )
+            past = next(
+                item for item in answer_events("What is the expected total at Dodger Stadium from 2023-01-01 to 2023-03-31?")
+                if item["event"] == "template"
+            )
+        agent.assert_not_called()
+        self.assertIn("cannot forecast the Games", games["answer"])
+        self.assertIn("had 14 reports", past["answer"])
+        self.assertIn("expected number was 34", past["answer"])
 
 
 if __name__ == "__main__":

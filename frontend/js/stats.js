@@ -1,5 +1,5 @@
-import { categoryRows, filledMonths, overviewChart } from "./charts.js?v=miles5";
-import { el, formatMiles, formatNumber, formatSports, ordinal, perSquareMile, text } from "./dom.js?v=miles5";
+import { categoryRows, filledMonths, overviewChart } from "./charts.js?v=months6";
+import { el, formatMiles, formatNumber, formatSports, ordinal, perSquareMile, text } from "./dom.js?v=months6";
 import { jurisdictionLabel } from "./roster.js";
 import { mapHint, overview, state } from "./state.js";
 import { infoMark, pageCopy } from "./tips.js";
@@ -25,6 +25,27 @@ export function stat(label, value, note, hint) {
 export function densityHint(venue) {
   return venue?.display?.density_hint || pageCopy("density_hint");
 }
+
+export function offenseCount(venue) {
+  if (venue?.nibrs?.count != null) return venue.nibrs.count;
+  if (venue?.nibrs_count != null) return venue.nibrs_count;
+  return null;
+}
+
+export function recordStats(venue) {
+  const stats = [
+    stat("Incidents", formatNumber(venue?.crime_count_nearby || 0), "LAPD reports, 2020–2024"),
+  ];
+  const offenses = offenseCount(venue);
+  if (offenses != null) {
+    const through = venue?.city_baseline?.present?.through;
+    const note = through ? `NIBRS, March 7, 2024–${through}` : "NIBRS, from March 7, 2024";
+    stats.push(stat("Offenses", formatNumber(offenses), note));
+  }
+  return stats;
+}
+
+export const SERIES_NOTE = "Blue bars are LAPD reports through February 2024, maroon bars are NIBRS offenses from April 2024, and the gold bar is March 2024, which includes both.";
 
 export function incidentNote(venue) {
   return venue?.display?.incident_note || pageCopy("incident_note");
@@ -150,7 +171,7 @@ export function renderOverview() {
     ]),
     el("p", { className: "address" }, [text(`${venue.address}, ${venue.city}`)]),
     el("div", { className: "stats" }, [
-      stat("Incidents", formatNumber(presentCount(venue)), incidentNote(venue)),
+      ...recordStats(venue),
       stat("Density", formatNumber(presentRate(venue)), densityNote(venue), densityHint(venue)),
       ...cityStats(venue),
       stat("Jurisdiction", jurisdictionLabel(venue.lapd_jurisdiction), "nearest local station"),

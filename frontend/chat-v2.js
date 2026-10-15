@@ -84,6 +84,21 @@
     article.append(details);
   }
 
+  function computationNote(article, lines) {
+    if (!lines || !lines.length) return;
+    const details = document.createElement("details");
+    details.className = "chat-source";
+    const summary = document.createElement("summary");
+    summary.textContent = "How this was computed";
+    details.append(summary);
+    for (const line of lines) {
+      const note = document.createElement("p");
+      note.textContent = line;
+      details.append(note);
+    }
+    article.append(details);
+  }
+
   function questionButton(label, message) {
     const button = document.createElement("button");
     button.type = "button";
@@ -223,6 +238,7 @@
               article.append(table);
             }
             addLine(article, "chat-caveat", body.confidence?.text);
+            computationNote(article, body.computation);
             sourceCitation(article, body.caveat);
             for (const link of body.links || []) {
               const anchor = document.createElement("a");

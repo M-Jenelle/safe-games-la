@@ -1,12 +1,12 @@
-import { categoryRows, filledMonths, monthChart, monthTable, mountDistanceSection, mountTimeSection, mountWeekdaySection, scopedBlock, scopedWeekday, yearTotals } from "./charts.js?v=miles5";
-import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, monthTitle, text } from "./dom.js?v=miles5";
+import { categoryRows, filledMonths, monthChart, monthSeries, monthTable, mountDistanceSection, mountTimeSection, mountWeekdaySection, scopedBlock, scopedWeekday, yearTotals } from "./charts.js?v=months6";
+import { MONTH_NAMES, el, fetchJson, formatNumber, formatSports, monthLabel, monthTitle, text } from "./dom.js?v=months6";
 import { renderMap } from "./map.js";
 import { closeVenuePage, openVenuePage, renderChatContext, venueToolbar } from "./nav.js";
 import { mountHomeGames, mountPermitSection } from "./permits.js?v=weekday";
 import { mountWeatherSection } from "./weather.js";
 import { renderRoster } from "./roster.js";
 import { detail, overview, requests, state, zoneFilter } from "./state.js";
-import { careStations, cityStats, densityHint, densityNote, incidentNote, overlapNote, presentCount, presentRate, renderOverview, stat, transitStations } from "./stats.js?v=miles5";
+import { careStations, cityStats, densityHint, densityNote, overlapNote, presentCount, presentRate, recordStats, renderOverview, SERIES_NOTE, stat, transitStations } from "./stats.js?v=months6";
 
 export function renderDetail() {
   const venue = state.detail;
@@ -53,7 +53,7 @@ export function renderDetail() {
   const chartHost = el("div", { className: "chart-host" });
   const yearHost = el("div", { className: "year-row" });
   const seriesHint = el("p", { className: "muted" });
-  const estimateNote = el("p", { className: "muted" });
+  const estimateNote = el("p", { className: "muted footnote" });
 
   function seriesData() {
     if (venue.merged_by_month) {
@@ -190,12 +190,22 @@ export function renderDetail() {
 
   function markMonth(key) {
     const peakKey = rangePeak()?.key;
+    const split = Boolean(venue.merged_by_month);
     detail.querySelectorAll("[data-month]").forEach((node) => {
-      const active = node.dataset.month === key;
+      const active = Boolean(key) && node.dataset.month === key;
       node.classList.toggle("is-active", active);
-      if (node.tagName === "rect") {
-        node.setAttribute("fill", node.dataset.month === peakKey ? "#DF0024" : (active ? "#1a1a1a" : "#0085C7"));
+      if (node.tagName !== "rect" || node.classList.contains("is-estimate")) return;
+      if (split && node.dataset.month) {
+        node.setAttribute("fill", monthSeries(node.dataset.month).fill);
+        if (node.dataset.month === peakKey || active) {
+          node.setAttribute("stroke", "#1a1a1a");
+          node.setAttribute("stroke-width", active ? "2" : "1.2");
+        } else {
+          node.removeAttribute("stroke");
+        }
+        return;
       }
+      node.setAttribute("fill", node.dataset.month === peakKey ? "#DF0024" : (active ? "#1a1a1a" : "#0085C7"));
     });
   }
 
@@ -207,7 +217,7 @@ export function renderDetail() {
       tableWrap.replaceChildren(el("p", { className: "muted" }, [text(bundle.empty)]));
       return;
     }
-    const table = monthTable(filtered, peakKey, selectedKey, estimates);
+    const table = monthTable(filtered, peakKey, selectedKey, estimates, Boolean(venue.merged_by_month));
     table.addEventListener("click", (event) => {
       const cell = event.target.closest("td[data-month]");
       if (cell?.dataset.month) selectMonth(cell.dataset.month);
@@ -262,12 +272,77 @@ export function renderDetail() {
     syncYearSelect();
   }
 
-  function seasonalEstimates(byMonth) {
-    const entries = filledMonths(byMonth);
-    if (!entries.length) return [];
-    const counts = new Map(entries.map((entry) => [entry.key, entry.count]));
-    let year = Number(entries[entries.length - 1].key.slice(0, 4));
-    let month = Number(entries[entries.length - 1].key.slice(5));
+  function monthUnit(key) {
+    if (key < "2024-03") return "lapd";
+    if (key > "2024-03") return "nibrs";
+    return "";
+  }
+
+  function sameUnitSample(key, unit) {
+    if (monthUnit(key) !== unit) return false;
+    return !(key >= "2024-04" && key <= "2024-12");
+  }
+
+  function shiftMonth(key, delta) {
+    let year = Number(key.slice(0, 4));
+    let month = Number(key.slice(5)) + delta;
+    while (month < 1) {
+      month += 12;
+      year -= 1;
+    }
+    while (month > 12) {
+      month -= 12;
+      year += 1;
+    }
+    return `${year}-${padMonth(month)}`;
+  }
+
+  function partialMonth(key, through) {
+    if (!through || !through.startsWith(key) || through.length < 10) return false;
+    return through.slice(8, 10) !== padMonth(daysInMonth(key));
+  }
+
+  function paceRatio(recorded, endKey, unit, skipMonth) {
+    const year = Number(endKey.slice(0, 4));
+    const endMonth = Number(endKey.slice(5));
+    let recentTotal = 0;
+    let recentDays = 0;
+    let priorTotal = 0;
+    let priorDays = 0;
+    let used = 0;
+    let firstMonth = 0;
+    let lastMonth = 0;
+    for (let month = 1; month <= endMonth; month += 1) {
+      if (month === skipMonth) continue;
+      const recent = `${year}-${padMonth(month)}`;
+      const prior = `${year - 1}-${padMonth(month)}`;
+      if (!recorded.has(recent) || !recorded.has(prior)) continue;
+      if (!sameUnitSample(recent, unit) || !sameUnitSample(prior, unit)) continue;
+      recentTotal += recorded.get(recent);
+      recentDays += daysInMonth(recent);
+      priorTotal += recorded.get(prior);
+      priorDays += daysInMonth(prior);
+      used += 1;
+      if (!firstMonth) firstMonth = month;
+      lastMonth = month;
+    }
+    if (!used || !priorTotal) return { ratio: 1, start: "", end: "" };
+    return {
+      ratio: (recentTotal / recentDays) / (priorTotal / priorDays),
+      start: `${year}-${padMonth(firstMonth)}`,
+      end: `${year}-${padMonth(lastMonth)}`,
+    };
+  }
+
+  function seasonalEstimates(byMonth, through) {
+    const keys = Object.keys(byMonth).filter((key) => /^\d{4}-\d{2}$/.test(key)).sort();
+    if (!keys.length) return [];
+    const recorded = new Map(keys.map((key) => [key, byMonth[key] || 0]));
+    const earliest = Number(keys[0].slice(0, 4));
+    const lastKey = keys[keys.length - 1];
+    const paceEnd = partialMonth(lastKey, through) ? shiftMonth(lastKey, -1) : lastKey;
+    let year = Number(lastKey.slice(0, 4));
+    let month = Number(lastKey.slice(5));
     const estimates = [];
     for (let step = 0; step < 3; step += 1) {
       month += 1;
@@ -275,16 +350,25 @@ export function renderDetail() {
         month = 1;
         year += 1;
       }
-      const samples = [];
-      for (let prior = year - 1; prior >= year - 3; prior -= 1) {
+      const target = `${year}-${padMonth(month)}`;
+      const unit = monthUnit(target);
+      if (!unit) continue;
+      let shape = "";
+      for (let prior = year - 1; prior >= earliest; prior -= 1) {
         const key = `${prior}-${padMonth(month)}`;
-        if (counts.has(key)) samples.push(counts.get(key));
+        if (!recorded.has(key) || !sameUnitSample(key, unit)) continue;
+        shape = key;
+        break;
       }
-      if (!samples.length) continue;
-      const sum = samples.reduce((total, value) => total + value, 0);
+      if (!shape) continue;
+      const pace = paceRatio(recorded, paceEnd, unit, month);
       estimates.push({
-        key: `${year}-${padMonth(month)}`,
-        count: Math.floor((sum + Math.floor(samples.length / 2)) / samples.length),
+        key: target,
+        count: Math.round(recorded.get(shape) * pace.ratio),
+        sampleYears: `${shape.slice(0, 4)}${pace.start ? ", scaled by this year's pace" : ""}`,
+        paceStart: pace.start,
+        paceEnd: pace.end,
+        partialMonth: partialMonth(lastKey, through) ? lastKey : "",
       });
     }
     return withSchedule(estimates);
@@ -318,8 +402,9 @@ export function renderDetail() {
     );
     const series = seriesMonths();
     const lastKey = series.length ? series[series.length - 1].key : "";
+    const through = venue.city_baseline?.present?.through || "";
     const estimates = lastKey && entries.some((entry) => entry.key === lastKey)
-      ? seasonalEstimates(bundle.byMonth)
+      ? seasonalEstimates(bundle.byMonth, through)
       : [];
     yearHost.replaceChildren(...yearsNow.map(([year, count]) => (
       el("article", { className: year === peakYearNow[0] ? "year-card is-peak" : "year-card" }, [
@@ -328,16 +413,21 @@ export function renderDetail() {
       ])
     )));
     chartHost.replaceChildren(entries.length
-      ? monthChart(entries, peakNow?.key, selectMonth, bundle.word, estimates)
+      ? monthChart(entries, peakNow?.key, selectMonth, bundle.word, estimates, Boolean(venue.merged_by_month))
       : el("p", { className: "muted" }, [text(bundle.empty)]));
     if (estimates.length) {
       estimateNote.hidden = false;
-      const scheduleNote = venue.home_games_available
-        ? (estimates.some((entry) => entry.scheduledGames)
-          ? " Months with a listed home game are scaled by the count-model multiplier."
-          : " No home game on the stored schedule falls in these months, so the home-game multiplier is not applied.")
+      const scheduleNote = venue.home_games_available && estimates.some((entry) => entry.scheduledGames)
+        ? " A listed home game raises that month."
         : "";
-      estimateNote.textContent = `The gray bars and gray table numbers after ${monthLabel(lastKey)} are estimates: the average of that month in up to three earlier years. They are not recorded crime and not a certainty.${scheduleNote}`;
+      const pace = estimates.find((entry) => entry.paceStart);
+      const paceNote = pace
+        ? `, scaled by ${monthLabel(pace.paceStart)}–${monthLabel(pace.paceEnd)}`
+        : "";
+      const partialNote = pace?.partialMonth
+        ? ` ${monthLabel(pace.partialMonth)} is left out because the record stops on ${through}.`
+        : "";
+      estimateNote.textContent = `* Gray bars after ${monthLabel(lastKey)} are estimates, not recorded crime. Each follows that month in the latest comparable year${paceNote}.${partialNote}${scheduleNote}`;
     } else {
       estimateNote.hidden = true;
       estimateNote.textContent = "";
@@ -393,8 +483,10 @@ export function renderDetail() {
   }
 
   function seriesNote() {
-    const hint = "Click a bar or a table cell to filter incident types to that month. Click it again to clear. Red is the busiest month.";
-    return hint;
+    const peak = venue.merged_by_month
+      ? "The outlined bar is the busiest month."
+      : "Red is the busiest month.";
+    return `Click a bar or a table cell to filter that month. Click it again to clear. ${peak}`;
   }
 
   function presentChart(merged, reportsBlock, nibrsBlock, scope) {
@@ -476,7 +568,7 @@ export function renderDetail() {
       el("h2", { className: "detail-title", id: "detail-heading" }, [text(venue.venue_name)]),
       el("p", { className: "address" }, [text(`${venue.address}, ${venue.city}`)]),
       el("div", { className: "stats" }, [
-        stat("Incidents", formatNumber(total), incidentNote(venue)),
+        ...recordStats(venue),
         stat("Density", formatNumber(presentRate(venue)), densityNote(venue), densityHint(venue)),
         ...cityStats(venue),
         stat("Busiest month", peak?.key ? monthLabel(peak.key) : "None", peak?.count ? `${formatNumber(peak.count)} records` : "No dated records"),
@@ -484,7 +576,7 @@ export function renderDetail() {
     ]),
     overlapNote(venue) ? el("p", { className: "terms" }, [text(overlapNote(venue))]) : el("span"),
     el("section", { className: "crime-unit", "aria-label": "Crime patterns" }, [
-      el("h3", { className: "section-title", id: "section-months" }, [text("Incidents by Month")]),
+      el("h3", { className: "section-title", id: "section-months" }, [text("Reports and Offenses by Month")]),
       el("div", { className: "table-filters" }, [
         el("label", {}, [text("Year"), yearSelect]),
         el("label", {}, [
@@ -499,6 +591,7 @@ export function renderDetail() {
       seriesHint,
       yearHost,
       chartHost,
+      el("p", { className: "muted footnote" }, [text(venue.merged_by_month ? `* ${SERIES_NOTE}` : "")]),
       estimateNote,
       tableWrap,
       el("h3", { className: "section-title", id: "section-categories" }, [text("Incident Types")]),

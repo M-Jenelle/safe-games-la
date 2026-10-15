@@ -1,9 +1,9 @@
-import { closeCompare } from "./compare.js?v=miles5";
-import { renderMap } from "./map.js?v=miles5";
+import { closeCompare } from "./compare.js?v=months6";
+import { renderMap } from "./map.js?v=months6";
 import { clearSelection, closeVenuePage, openVenuePage } from "./nav.js";
-import { renderRoster } from "./roster.js?v=miles5";
+import { renderRoster } from "./roster.js?v=months6";
 import { appShell, comparePage, detail, overview, roster, rosterBackdrop, rosterList, rosterToggle, rosterToggleLabel, sortMode, state, zoneFilter } from "./state.js";
-import { selectVenue } from "./venue.js?v=miles5";
+import { selectVenue } from "./venue.js?v=months6";
 
 const NARROW_ROSTER = 980;
 let rosterNarrow = window.innerWidth <= NARROW_ROSTER;

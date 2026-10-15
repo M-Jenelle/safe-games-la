@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from backend.chat import answer_question, suggested_questions
+from backend.chat import answer_question, seasonal_estimates, suggested_questions
 from backend.datasets import load_city_baseline
 from backend.main import app
 from backend.store import DatasetNotFound, get_venue, home_game_comparison, permit_comparison
@@ -842,6 +842,37 @@ class ChatTests(unittest.TestCase):
             body = answer_question("How many incidents near Dodger Stadium?")
         self.assertEqual(body["engine"], "fallback")
         self.assertEqual(body["engine_note"], "Verified by local rules.")
+
+    def test_seasonal_average_uses_the_same_counting_unit(self):
+        counts = {
+            "2023-10": 30, "2023-11": 40, "2023-12": 50,
+            "2024-10": 5, "2024-11": 6, "2024-12": 7,
+            "2025-10": 20, "2025-11": 22, "2025-12": 18,
+            "2026-09": 9,
+        }
+        estimates = {item["key"]: item for item in seasonal_estimates(counts)}
+        self.assertEqual(list(estimates), ["2026-10", "2026-11", "2026-12"])
+        self.assertEqual(estimates["2026-10"]["count"], 20)
+        self.assertEqual(estimates["2026-10"]["sample_years"], [2025])
+        self.assertNotIn(2024, estimates["2026-10"]["sample_years"])
+        self.assertNotIn(2023, estimates["2026-10"]["sample_years"])
+        earlier = {item["key"]: item for item in seasonal_estimates({"2021-01": 10, "2022-01": 20, "2023-01": 30, "2023-12": 1})}
+        self.assertEqual(earlier["2024-01"]["count"], 30)
+        self.assertEqual(earlier["2024-01"]["sample_years"], [2023])
+        self.assertNotIn("2024-03", earlier)
+
+    def test_seasonal_estimate_scales_by_this_years_pace(self):
+        counts = {f"2025-{month:02d}": 30 for month in range(1, 10)}
+        counts.update({f"2026-{month:02d}": 15 for month in range(1, 9)})
+        counts.update({"2025-10": 22, "2025-11": 20, "2025-12": 18, "2026-09": 1})
+        scaled = {item["key"]: item for item in seasonal_estimates(counts, through="2026-09-19")}
+        self.assertEqual(scaled["2026-10"]["count"], 11)
+        self.assertEqual(scaled["2026-11"]["count"], 10)
+        self.assertEqual(scaled["2026-12"]["count"], 9)
+        self.assertEqual(scaled["2026-10"]["shape_key"], "2025-10")
+        self.assertEqual(scaled["2026-10"]["partial_month"], "2026-09")
+        finished = seasonal_estimates(counts, through="2026-09-30")
+        self.assertNotEqual(finished[0]["count"], 11)
 
     def test_next_month_estimate_stays_a_seasonal_average(self):
         body = self.post("Estimate the next months near Dodger Stadium")
