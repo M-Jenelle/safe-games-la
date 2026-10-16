@@ -9,6 +9,9 @@ COPY backend backend
 COPY frontend frontend
 COPY pipeline pipeline
 COPY data data
+# The Tuesday NIBRS rebuild matches permit dates from this file. DuckDB is
+# loaded from the files that rebuild writes, so it is not available here.
+COPY prediction_data/ladbs_tse_permits.csv prediction_data/ladbs_tse_permits.csv
 
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8080

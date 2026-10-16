@@ -1201,22 +1201,346 @@ def _forward_note(answer: str, results: list[dict]) -> str:
 
 
 def _figure_note(answer: str, results: list[dict], question: str) -> str:
+    """Flag a figure that is missing, tied to the wrong venue or period, or arithmetically off."""
     known: list[float] = []
     for item in results:
         _walk_numbers(item, known)
+    claims = _claim_sources(results)
     asked = _parse_numbers(question)
-    unsupported = []
-    for number in _parse_numbers(answer):
-        if _number_supported(number, known, asked):
+    unsupported: list[str] = []
+    notes: list[str] = []
+    for sentence in re.split(r"(?<=[.!?])\s+", answer or ""):
+        if not sentence:
             continue
-        shown = f"{int(number):,}" if number == int(number) else f"{number:,.2f}".rstrip("0").rstrip(".")
-        if shown not in unsupported:
-            unsupported.append(shown)
-        if len(unsupported) == 3:
-            break
-    if not unsupported:
+        venues = _venues_in_text(sentence)
+        for match in re.finditer(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?", sentence):
+            number = float(match.group(0).replace(",", ""))
+            if _structural_number(number, sentence) or any(abs(number - item) <= 0.05 for item in asked):
+                continue
+            holders = [claim for claim in claims if _close_number(number, claim.numbers)]
+            if not _number_supported(number, known, asked):
+                if _arithmetic_supports(number, sentence):
+                    continue
+                shown = _shown_number(number)
+                if shown not in unsupported:
+                    unsupported.append(shown)
+                if len(unsupported) == 3:
+                    break
+                continue
+            venue_note = _venue_issue(number, sentence, venues, holders)
+            if venue_note and venue_note not in notes:
+                notes.append(venue_note)
+                continue
+            period_note = _period_issue(number, sentence, match.start(), holders)
+            if period_note and period_note not in notes:
+                notes.append(period_note)
+        arithmetic = _arithmetic_issue(sentence, claims)
+        if arithmetic and arithmetic not in notes:
+            notes.append(arithmetic)
+    if unsupported:
+        notes.append("A figure in that reply is not in the calculation: " + ", ".join(unsupported) + ".")
+    return " ".join(notes[:3])
+
+
+class _Claim:
+    def __init__(self, venue_id: str, venue: str, start: date | None, end: date | None, numbers: list[float], difference: float | None, change_pct: float | None):
+        self.venue_id = venue_id
+        self.venue = venue
+        self.start = start
+        self.end = end
+        self.numbers = numbers
+        self.difference = difference
+        self.change_pct = change_pct
+
+
+_PROSE_KEYS = {
+    "warnings", "error", "topics", "interval_means", "label", "means", "source",
+    "hint", "summary", "caption", "reading", "unit", "status", "result_kind",
+    "games_period", "regressor", "topic", "interval_means",
+}
+_RELATION = re.compile(
+    r"\b(more|fewer|higher|lower|above|below|increase|decrease|increased|decreased|than|difference)\b",
+    re.IGNORECASE,
+)
+_PERCENT = re.compile(
+    r"(\d+(?:\.\d+)?)\s*(?:%|percent)\s*(?:more|fewer|higher|lower|above|below)\b|"
+    r"\b(?:more|fewer|higher|lower|above|below|up|down)\s+(?:by\s+)?(\d+(?:\.\d+)?)\s*(?:%|percent)",
+    re.IGNORECASE,
+)
+_DIFFERENCE = re.compile(
+    r"\bdifference of\s+(-?[\d,]+(?:\.\d+)?)|\b(-?[\d,]+(?:\.\d+)?)\s+(?:more|fewer)\s+than\b",
+    re.IGNORECASE,
+)
+
+
+def _claim_sources(results: list[dict]) -> list[_Claim]:
+    claims: list[_Claim] = []
+    for item in results:
+        claims.extend(_collect_claims(item))
+    return claims
+
+
+def _collect_claims(value, venue_id: str = "", venue: str = "", start: date | None = None, end: date | None = None) -> list[_Claim]:
+    if isinstance(value, list):
+        claims: list[_Claim] = []
+        for item in value:
+            claims.extend(_collect_claims(item, venue_id, venue, start, end))
+        return claims
+    if not isinstance(value, dict):
+        return []
+    venue_id = str(value.get("venue_id") or venue_id or "")
+    venue = str(value.get("venue") or value.get("venue_name") or venue or "")
+    if value.get("start") and value.get("end"):
+        start = _claim_day(value.get("start"))
+        end = _claim_day(value.get("end"))
+    elif value.get("crime_data_through") and start is None:
+        end = _claim_day(value.get("crime_data_through"))
+    claims = []
+    skip: set[str] = set()
+    for start_key, end_key, fields in (
+        ("earlier_start", "earlier_end", ("earlier_total", "earlier_days")),
+        ("later_start", "later_end", ("later_total", "later_days")),
+    ):
+        if not (value.get(start_key) and value.get(end_key)):
+            continue
+        numbers: list[float] = []
+        for field in fields:
+            if field in value:
+                _walk_numbers(value[field], numbers)
+                skip.add(field)
+        claims.append(_Claim(
+            venue_id, venue, _claim_day(value.get(start_key)), _claim_day(value.get(end_key)), numbers, None, None,
+        ))
+        skip.update({start_key, end_key})
+    for key, item in value.items():
+        if key in skip:
+            continue
+        scoped = isinstance(item, dict) and _names_a_scope(item)
+        scoped = scoped or (
+            isinstance(item, list) and any(isinstance(row, dict) and _names_a_scope(row) for row in item)
+        )
+        if scoped:
+            claims.extend(_collect_claims(item, venue_id, venue, start, end))
+            skip.add(key)
+    numbers = []
+    for key, item in value.items():
+        if key in skip or key in _PROSE_KEYS:
+            continue
+        _walk_numbers(item, numbers)
+    difference = None if "difference" in skip else _as_float(value.get("difference"))
+    change_pct = None if "change_pct" in skip else _as_float(value.get("change_pct"))
+    if numbers or difference is not None or change_pct is not None:
+        claims.append(_Claim(venue_id, venue, start, end, numbers, difference, change_pct))
+    return claims
+
+
+def _names_a_scope(value: dict) -> bool:
+    return any(value.get(key) for key in ("venue", "venue_name", "venue_id", "earlier_start")) or bool(
+        value.get("start") and value.get("end")
+    )
+
+
+def _claim_day(value) -> date | None:
+    match = re.match(r"(\d{4})-(\d{2})-(\d{2})", str(value or ""))
+    if not match:
+        return None
+    try:
+        return date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    except ValueError:
+        return None
+
+
+def _as_float(value) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _shown_number(number: float) -> str:
+    if abs(number - round(number)) <= 0.05:
+        return f"{int(round(number)):,}"
+    return f"{number:,.1f}"
+
+
+def _structural_number(number: float, sentence: str) -> bool:
+    if number != int(number):
+        return False
+    if 2000 <= number <= 2030:
+        return True
+    return number <= 14 and bool(re.search(r"\b(rank|of 14|\d(?:st|nd|rd|th))\b", sentence, re.IGNORECASE))
+
+
+def _close_number(number: float, known: list[float]) -> bool:
+    for item in known:
+        if abs(number - item) <= 0.05:
+            return True
+        if abs(item) >= 20 and abs(number - item) / abs(item) <= 0.005:
+            return True
+        if abs(number - round(item)) <= 0.05 or abs(number - round(item, 1)) <= 0.05:
+            return True
+    return False
+
+
+def _same_venue(claim: _Claim, venues: list[str]) -> bool:
+    if claim.venue_id and claim.venue_id in venues:
+        return True
+    return bool(claim.venue) and claim.venue in {_display_name(venue_id) for venue_id in venues}
+
+
+def _venue_issue(number: float, sentence: str, venues: list[str], holders: list[_Claim]) -> str:
+    scoped = [claim for claim in holders if claim.venue_id or claim.venue]
+    if any(not (claim.venue_id or claim.venue) for claim in holders):
         return ""
-    return "A figure in that reply is not in the calculation: " + ", ".join(unsupported) + "."
+    if not scoped:
+        return ""
+    shown = _shown_number(number)
+    if not venues:
+        if re.search(r"\b(citywide|the city|los angeles)\b", sentence, re.IGNORECASE):
+            name = scoped[0].venue or _display_name(scoped[0].venue_id)
+            return f"{shown} is recorded for {name}, not the citywide total."
+        return ""
+    if any(_same_venue(claim, venues) for claim in scoped):
+        return ""
+    name = scoped[0].venue or _display_name(scoped[0].venue_id)
+    asked = _display_name(venues[0])
+    return f"{shown} is recorded for {name}, not {asked}."
+
+
+def _period_issue(number: float, sentence: str, position: int, holders: list[_Claim]) -> str:
+    year = _nearby_year(sentence, position)
+    if year is None:
+        return ""
+    dated = [claim for claim in holders if claim.start or claim.end]
+    if not dated or any(not claim.start and not claim.end for claim in holders):
+        return ""
+    if any(_covers_year(claim, year) for claim in dated):
+        return ""
+    claim = dated[0]
+    if claim.start and claim.end:
+        span = f"{claim.start.isoformat()} to {claim.end.isoformat()}"
+    elif claim.end:
+        span = f"recorded days through {claim.end.isoformat()}"
+    else:
+        span = f"recorded days from {claim.start.isoformat()}"
+    return f"{_shown_number(number)} is recorded for {span}, not {year}."
+
+
+def _nearby_year(sentence: str, position: int) -> int | None:
+    nearest = None
+    distance = 80
+    for match in re.finditer(r"\b(20[0-2]\d)\b", sentence):
+        if match.start() == position:
+            continue
+        gap = abs(match.start() - position)
+        if gap < distance:
+            distance = gap
+            nearest = int(match.group(1))
+    return nearest
+
+
+def _covers_year(claim: _Claim, year: int) -> bool:
+    if claim.start and claim.end:
+        return claim.start.year <= year <= claim.end.year
+    if claim.end:
+        return year <= claim.end.year
+    if claim.start:
+        return year >= claim.start.year
+    return False
+
+
+def _sentence_counts(sentence: str) -> list[float]:
+    counts = []
+    for number in _parse_numbers(sentence):
+        if _structural_number(number, sentence):
+            continue
+        counts.append(number)
+    return counts
+
+
+def _operand_counts(sentence: str) -> list[float]:
+    """Counts in the sentence, with a claimed percent or difference taken out."""
+    stripped = _DIFFERENCE.sub(" ", _PERCENT.sub(" ", sentence or ""))
+    return _sentence_counts(stripped)
+
+
+def _arithmetic_supports(number: float, sentence: str) -> bool:
+    """A percent or difference computed from other figures in the same sentence."""
+    counts = _operand_counts(sentence)
+    if len(counts) < 2 or not _RELATION.search(sentence):
+        return False
+    if any(abs(item - number) <= 0.05 for item in _claimed_percents(sentence)):
+        return any(abs(number - pct) <= 0.6 for pct in _increase_percents(counts))
+    claimed = _claimed_difference(sentence)
+    if claimed is not None and abs(claimed - number) <= 0.05:
+        return any(abs(number - gap) <= max(0.5, 0.005 * gap) for gap in _pair_gaps(counts))
+    return False
+
+
+def _arithmetic_issue(sentence: str, claims: list[_Claim]) -> str:
+    if not _RELATION.search(sentence):
+        return ""
+    counts = _operand_counts(sentence)
+    for claimed in _claimed_percents(sentence):
+        pair_pcts = _increase_percents(counts)
+        stored = [claim.change_pct for claim in claims if claim.change_pct is not None]
+        if any(abs(claimed - pct) <= 0.6 for pct in [*pair_pcts, *stored]):
+            continue
+        if pair_pcts:
+            closest = min(pair_pcts, key=lambda pct: abs(pct - claimed))
+            return f"Those figures differ by {_shown_number(closest)}%, not {_shown_number(claimed)}%."
+        if stored:
+            return f"The calculated change is {_shown_number(stored[0])}%, not {_shown_number(claimed)}%."
+    claimed = _claimed_difference(sentence)
+    if claimed is None:
+        return ""
+    gaps = _pair_gaps(counts)
+    stored = [abs(claim.difference) for claim in claims if claim.difference is not None]
+    if any(abs(claimed - gap) <= max(0.5, 0.005 * gap) for gap in [*gaps, *stored]):
+        return ""
+    if gaps:
+        closest = min(gaps, key=lambda gap: abs(gap - claimed))
+        return f"The difference between those figures is {_shown_number(closest)}, not {_shown_number(claimed)}."
+    if stored:
+        return f"The calculated difference is {_shown_number(stored[0])}, not {_shown_number(claimed)}."
+    return ""
+
+
+def _increase_percents(counts: list[float]) -> list[float]:
+    """How much larger one figure is than another, as a percent of the smaller one."""
+    percents = []
+    for left in range(len(counts)):
+        for right in range(left + 1, len(counts)):
+            base = min(abs(counts[left]), abs(counts[right]))
+            if base == 0:
+                continue
+            percents.append(round(abs(counts[left] - counts[right]) / base * 100, 1))
+    return percents
+
+
+def _pair_gaps(counts: list[float]) -> list[float]:
+    gaps = []
+    for left in range(len(counts)):
+        for right in range(left + 1, len(counts)):
+            gaps.append(round(abs(counts[left] - counts[right]), 1))
+    return gaps
+
+
+def _claimed_percents(sentence: str) -> list[float]:
+    found = []
+    for match in _PERCENT.finditer(sentence or ""):
+        raw = next(group for group in match.groups() if group)
+        found.append(float(raw))
+    return found
+
+
+def _claimed_difference(sentence: str) -> float | None:
+    match = _DIFFERENCE.search(sentence or "")
+    if not match:
+        return None
+    raw = next(group for group in match.groups() if group)
+    return float(raw.replace(",", ""))
 
 
 def _parse_numbers(text: str) -> list[float]:

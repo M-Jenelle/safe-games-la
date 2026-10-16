@@ -73,6 +73,19 @@ gcloud projects add-iam-policy-binding $project `
     --role "roles/run.developer"
 if ($LASTEXITCODE -ne 0) { throw "Could not let the job reload the site." }
 
+gcloud artifacts repositories add-iam-policy-binding cloud-run-source-deploy `
+    --project $project `
+    --location $region `
+    --member "serviceAccount:$jobAccount" `
+    --role "roles/artifactregistry.reader"
+if ($LASTEXITCODE -ne 0) { throw "Could not let the job read the site image." }
+
+gcloud iam service-accounts add-iam-policy-binding $runtime `
+    --project $project `
+    --member "serviceAccount:$jobAccount" `
+    --role "roles/iam.serviceAccountUser"
+if ($LASTEXITCODE -ne 0) { throw "Could not let the job start a site revision." }
+
 $image = gcloud run services describe $service --project $project --region $region --format="value(spec.template.spec.containers[0].image)"
 if ($LASTEXITCODE -ne 0 -or -not $image) { throw "Could not read the site image. Deploy the site first." }
 

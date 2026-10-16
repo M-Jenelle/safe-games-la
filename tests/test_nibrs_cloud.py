@@ -1,6 +1,7 @@
 import json
 import os
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from pipeline.nibrs_cloud import (
@@ -111,6 +112,13 @@ class NibrsCloudTests(unittest.TestCase):
         ):
             publish_and_roll(_manifest(40, "downloaded"), True, storage=store)
         self.assertEqual(calls, ["upload", "40"])
+
+    def test_image_includes_the_permit_file_the_rebuild_reads(self):
+        dockerfile = Path(__file__).resolve().parents[1].joinpath("Dockerfile").read_text(encoding="utf-8")
+        self.assertIn(
+            "COPY prediction_data/ladbs_tse_permits.csv prediction_data/ladbs_tse_permits.csv",
+            dockerfile,
+        )
 
 
 if __name__ == "__main__":
